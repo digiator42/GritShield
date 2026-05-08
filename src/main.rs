@@ -1,3 +1,6 @@
+mod core;
+
 fn main() {
-    println!("Hello, world!");
+    
+    core::server::run_server("127.0.0.1", "8000");
 }
