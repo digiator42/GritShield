@@ -3,7 +3,7 @@ use std::io::{BufRead, BufReader, Read};
 use std::net::TcpStream;
 use std::time::{Duration, Instant};
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum HttpMethod {
     GET,
     POST,

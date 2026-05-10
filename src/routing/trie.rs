@@ -1,23 +1,30 @@
+use crate::protocol::request::HttpMethod;
 use std::collections::HashMap;
 
 type Handler = fn() -> String;
 
 pub struct Node {
-    pub childern: HashMap<String, Node>,
+    pub children: HashMap<String, Node>,
     pub is_end: bool,
-    pub handler: Option<Handler>,
+    pub methods: HashMap<HttpMethod, Handler>,
     pub parameter_name: Option<String>,
 }
 
 impl Node {
     pub fn new() -> Self {
         Node {
-            childern: HashMap::new(),
+            children: HashMap::new(),
             is_end: false,
-            handler: None,
+            methods: HashMap::new(),
             parameter_name: None,
         }
     }
+}
+
+pub enum RoutingResult {
+    Found(Handler, HashMap<String, String>),
+    MethodNotAllowed,
+    NotFound,
 }
 
 pub struct Router {
@@ -29,45 +36,55 @@ impl Router {
         Router { root: Node::new() }
     }
 
-    pub fn add_route(&mut self, path: &str, handler: Handler) {
+    pub fn add_route(&mut self, method: HttpMethod, path: &str, handler: Handler) {
         let mut current = &mut self.root;
 
         for segment in path.split('/').filter(|s| !s.is_empty()) {
             if segment.starts_with(':') {
                 let param_name = segment[1..].to_string();
                 current = current
-                    .childern
+                    .children
                     .entry(":param".to_string())
                     .or_insert(Node::new());
                 current.parameter_name = Some(param_name);
             }
 
             current = current
-                .childern
+                .children
                 .entry(segment.to_string())
                 .or_insert(Node::new());
         }
         current.is_end = true;
-        current.handler = Some(handler);
+        current.methods.insert(method, handler);
     }
 
-    pub fn match_route(&self, path: &str) -> Option<(Handler, HashMap<String, String>)> {
+    pub fn match_route(&self, method: &HttpMethod, path: &str) -> RoutingResult {
         let mut current = &self.root;
         let mut params = HashMap::new();
 
         for segment in path.split('/').filter(|s| !s.is_empty()) {
-            if let Some(next_node) = current.childern.get(segment) {
+            if let Some(next_node) = current.children.get(segment) {
                 current = next_node;
-            } else if let Some(param_node) = current.childern.get(":param") {
+            } else if let Some(param_node) = current.children.get(":param") {
                 if let Some(ref name) = param_node.parameter_name {
                     // If the segment isn't a direct match, check if this level accepts a parameter
                     params.insert(name.clone(), segment.to_string());
                 }
                 current = param_node;
             } else {
-                return None;
+                return RoutingResult::NotFound;
             }
         }
-        current.handler.map(|h| (h, params))
+        // Check if the specific method is supported at this node
+        match current.methods.get(method) {
+            Some(handler) => RoutingResult::Found(*handler, params),
+            None => {
+                if !current.methods.is_empty() {
+                    RoutingResult::MethodNotAllowed
+                } else {
+                    RoutingResult::NotFound
+                }
+            }
+        }
     }
 }
