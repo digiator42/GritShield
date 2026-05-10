@@ -2,6 +2,7 @@ use std::io::prelude::*;
 use std::net::TcpListener;
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
+use std::time::Duration;
 
 use crate::protocol::request::Request;
 
@@ -75,10 +76,20 @@ pub fn run_server(host: &str, port: &str) {
 }
 
 fn handle_connection(mut stream: std::net::TcpStream) {
+    if let Err(e) = stream.set_read_timeout(Some(Duration::from_secs(5))) {
+        eprintln!("Kernel Error: Failed to set read timeout: {}", e);
+        return;
+    }
+
+    if let Err(e) = stream.set_write_timeout(Some(Duration::from_secs(5))) {
+        eprintln!("Kernel Error: Failed to set write timeout: {}", e);
+        return;
+    }
+
     match Request::parse(&stream) {
         Ok(request) => {
             println!("Request Received: {:?} {}", request.method, request.path);
-            println!("body {:?}", request.body);
+            println!("body {:?}", request.body.len());
 
             let response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nKernerl Verified.";
             stream.write_all(response.as_bytes()).unwrap();

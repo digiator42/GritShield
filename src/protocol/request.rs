@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read};
 use std::net::TcpStream;
+use std::time::{Duration, Instant};
 
 #[derive(Debug)]
 pub enum HttpMethod {
@@ -21,7 +22,14 @@ pub struct Request {
 
 impl Request {
     pub fn parse(stream: &TcpStream) -> Result<Self, String> {
+        let start_time = Instant::now();
+        let global_timeout = Duration::from_secs(10);
+
         let mut reader = BufReader::new(stream);
+
+        if start_time.elapsed() > global_timeout {
+            return Err("Total request time exceeded limit".to_string());
+        }
 
         // "GET /index.html HTTP/1.1"
         let mut first_line = String::new();
@@ -81,6 +89,10 @@ impl Request {
             reader
                 .read_exact(&mut body)
                 .map_err(|_| "Failed to read body")?;
+
+            if start_time.elapsed() > global_timeout {
+                return Err("Timeout: Total request time exceeded".into());
+            }
         }
 
         Ok(Request {
