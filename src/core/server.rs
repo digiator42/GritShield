@@ -1,7 +1,9 @@
+use std::io::prelude::*;
+use std::net::TcpListener;
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
-use std::net::TcpListener;
-use std::io::prelude::*;
+
+use crate::protocol::request::Request;
 
 pub struct ThreadPool {
     workers: Vec<Worker>,
@@ -57,7 +59,6 @@ impl Worker {
     }
 }
 
-
 pub fn run_server(host: &str, port: &str) {
     let listener = TcpListener::bind(format!("{}:{}", host, port)).unwrap();
     let pool = ThreadPool::new(4);
@@ -74,12 +75,20 @@ pub fn run_server(host: &str, port: &str) {
 }
 
 fn handle_connection(mut stream: std::net::TcpStream) {
-    let mut buffer = [0; 1024];
+    match Request::parse(&stream) {
+        Ok(request) => {
+            println!("Request Received: {:?} {}", request.method, request.path);
+            println!("body {:?}", request.body);
 
-    stream.read(&mut buffer).unwrap();
+            let response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nKernerl Verified.";
+            stream.write_all(response.as_bytes()).unwrap();
+        }
 
-    let response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nKernerl Verified.";
+        Err(e) => {
+            eprintln!("Security Warning: {}", e);
 
-    stream.write_all(response.as_bytes()).unwrap();
-    stream.flush().unwrap();
+            let response = "HTTP/1.1 400 Bad Request\r\n\r\nInvalid Syntax.";
+            stream.write_all(response.as_bytes()).unwrap();
+        }
+    }
 }

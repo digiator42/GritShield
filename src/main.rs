@@ -1,6 +1,5 @@
-mod core;
+use gritshield::core::server;
 
 fn main() {
-    
-    core::server::run_server("127.0.0.1", "8000");
+    server::run_server("127.0.0.1", "8000");
 }
