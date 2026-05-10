@@ -1,7 +1,8 @@
 use crate::protocol::request::HttpMethod;
+use crate::security::xss::{SafeHtml, UntrustedString};
 use std::collections::HashMap;
 
-type Handler = fn() -> String;
+pub type Handler = fn(HashMap<String, UntrustedString>) -> SafeHtml;
 
 pub struct Node {
     pub children: HashMap<String, Node>,
@@ -22,7 +23,7 @@ impl Node {
 }
 
 pub enum RoutingResult {
-    Found(Handler, HashMap<String, String>),
+    Found(Handler, HashMap<String, UntrustedString>),
     MethodNotAllowed,
     NotFound,
 }
@@ -68,7 +69,7 @@ impl Router {
             } else if let Some(param_node) = current.children.get(":param") {
                 if let Some(ref name) = param_node.parameter_name {
                     // If the segment isn't a direct match, check if this level accepts a parameter
-                    params.insert(name.clone(), segment.to_string());
+                    params.insert(name.clone(), UntrustedString::new(segment.to_string()));
                 }
                 current = param_node;
             } else {
