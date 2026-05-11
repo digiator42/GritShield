@@ -1,5 +1,5 @@
 use std::io::prelude::*;
-use std::net::TcpListener;
+use std::net::{Shutdown, TcpListener};
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 use std::time::Duration;
@@ -86,7 +86,7 @@ fn handle_connection(mut stream: std::net::TcpStream) {
         return;
     }
 
-    match Request::parse(&stream) {
+    match Request::parse(&mut stream) {
         Ok(request) => {
             println!("Request Received: {:?} {}", request.method, request.path);
             println!("body {:?}", request.body.len());
@@ -100,6 +100,9 @@ fn handle_connection(mut stream: std::net::TcpStream) {
 
             let response = "HTTP/1.1 400 Bad Request\r\n\r\nInvalid Syntax.";
             stream.write_all(response.as_bytes()).unwrap();
+            stream.flush().unwrap();
+
+            let _ = stream.shutdown(Shutdown::Write);
         }
     }
 }

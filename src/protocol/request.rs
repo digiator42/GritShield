@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Read};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
 use std::time::{Duration, Instant};
 
@@ -21,7 +21,7 @@ pub struct Request {
 }
 
 impl Request {
-    pub fn parse(stream: &TcpStream) -> Result<Self, String> {
+    pub fn parse(mut stream: &TcpStream) -> Result<Self, String> {
         let start_time = Instant::now();
         let global_timeout = Duration::from_secs(10);
 

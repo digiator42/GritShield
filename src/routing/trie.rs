@@ -48,12 +48,12 @@ impl Router {
                     .entry(":param".to_string())
                     .or_insert(Node::new());
                 current.parameter_name = Some(param_name);
+            } else {
+                current = current
+                    .children
+                    .entry(segment.to_string())
+                    .or_insert(Node::new());
             }
-
-            current = current
-                .children
-                .entry(segment.to_string())
-                .or_insert(Node::new());
         }
         current.is_end = true;
         current.methods.insert(method, handler);
