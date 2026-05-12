@@ -67,7 +67,7 @@ impl Worker {
     }
 }
 
-pub fn run_server(host: &str, port: &str) {
+pub fn run_server(host: &str, port: &str, router: Router) {
     let listener = TcpListener::bind(format!("{}:{}", host, port)).unwrap();
     let pool = ThreadPool::new(4);
 
@@ -77,10 +77,6 @@ pub fn run_server(host: &str, port: &str) {
         host,
         port
     );
-
-    // Initialize the router once outside the loop
-    let mut router = Router::new();
-    router.add_route(HttpMethod::GET, "/profile/:name", profile_handler);
 
     // Wrap in an Arc so multiple threads in ThreadPool can read it safely
     let shared_router = std::sync::Arc::new(router);
