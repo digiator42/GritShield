@@ -21,9 +21,11 @@ pub struct Request {
 }
 
 impl Request {
-    pub fn parse(mut stream: &TcpStream) -> Result<Self, String> {
+    pub fn parse(stream: &TcpStream) -> Result<Self, String> {
         let start_time = Instant::now();
         let global_timeout = Duration::from_secs(10);
+
+        println!("{:?}", start_time);
 
         let mut reader = BufReader::new(stream);
 
@@ -37,6 +39,8 @@ impl Request {
             println!("{}", e);
             "Failed to read request line"
         })?;
+
+        println!("==> {}", first_line);
 
         let parts: Vec<&str> = first_line.split_whitespace().collect();
 
