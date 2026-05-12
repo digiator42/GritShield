@@ -9,6 +9,7 @@ use std::time::Duration;
 use crate::protocol::request::{HttpMethod, Request};
 use crate::protocol::response::Response;
 use crate::routing::trie::{Router, RoutingResult};
+use crate::security::middleware::MiddlewareResult;
 use crate::security::xss::{SafeHtml, Sanitizer, UntrustedString};
 use crate::utils::dev::profile_handler;
 
@@ -110,23 +111,32 @@ fn handle_connection(mut stream: TcpStream, router: &Router) {
             println!("Request Received: {:?} {}", req.method, req.path);
             println!("body {:?}", req.body.len());
 
-            let routing_result = router.match_route(&req.method, &req.path);
+            match router.run_middlewares(&req) {
+                MiddlewareResult::Error(err_res) => {
+                    let _ = stream.write_all(&err_res.to_bytes());
+                    return;
+                }
 
-            let response = match routing_result {
-                RoutingResult::Found(handler, params) => {
-                    let body: SafeHtml = handler(params);
-                    Response::new(200, body)
-                }
-                RoutingResult::NotFound => {
-                    Response::new(404, Sanitizer::trust("<h1>404 Not Found</h1>"))
-                }
-                RoutingResult::MethodNotAllowed => {
-                    Response::new(405, Sanitizer::trust("<h1>405 Method Not Allowed</h1>"))
-                }
-            };
+                MiddlewareResult::Next => {
+                    let routing_result = router.match_route(&req.method, &req.path);
 
-            // 4. Write Secure Response
-            let _ = stream.write_all(&response.to_bytes());
+                    let response = match routing_result {
+                        RoutingResult::Found(handler, params) => {
+                            let body: SafeHtml = handler(params);
+                            Response::new(200, body)
+                        }
+                        RoutingResult::NotFound => {
+                            Response::new(404, Sanitizer::trust("<h1>404 Not Found</h1>"))
+                        }
+                        RoutingResult::MethodNotAllowed => {
+                            Response::new(405, Sanitizer::trust("<h1>405 Method Not Allowed</h1>"))
+                        }
+                    };
+
+                    // Write Secure Response
+                    let _ = stream.write_all(&response.to_bytes());
+                }
+            }
         }
 
         Err(e) => {

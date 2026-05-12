@@ -1,4 +1,5 @@
-use crate::protocol::request::HttpMethod;
+use crate::protocol::request::{HttpMethod, Request};
+use crate::security::middleware::{Middleware, MiddlewareResult};
 use crate::security::xss::{SafeHtml, UntrustedString};
 use std::collections::HashMap;
 
@@ -30,11 +31,29 @@ pub enum RoutingResult {
 
 pub struct Router {
     root: Node,
+    middlewares: Vec<Box<dyn Middleware>>, // A list of dynamic trait objects
 }
 
 impl Router {
     pub fn new() -> Self {
-        Router { root: Node::new() }
+        Router {
+            root: Node::new(),
+            middlewares: Vec::new(),
+        }
+    }
+
+    pub fn add_middleware<M: Middleware + 'static>(&mut self, middleware: M) {
+        self.middlewares.push(Box::new(middleware));
+    }
+
+    pub fn run_middlewares(&self, req: &Request) -> MiddlewareResult {
+        for middleware in &self.middlewares {
+            match middleware.execute(req) {
+                MiddlewareResult::Next => continue,
+                MiddlewareResult::Error(res) => return MiddlewareResult::Error(res),
+            }
+        }
+        MiddlewareResult::Next
     }
 
     pub fn add_route(&mut self, method: HttpMethod, path: &str, handler: Handler) {
