@@ -13,10 +13,17 @@ pub trait Middleware: Send + Sync {
 
 pub struct AuthMiddleware {
     pub jwt_handler: JwtHandler,
+    pub public_paths: Vec<String>, // List of open routes
 }
 
 impl Middleware for AuthMiddleware {
     fn execute(&self, req: &Request) -> MiddlewareResult {
+        // Check if the current path is in the whitelist
+        // We use .starts_with to handle sub-paths or exact matches
+        if self.public_paths.iter().any(|path| req.path == *path) {
+            return MiddlewareResult::Next;
+        }
+
         // Extract Header
         if let Some(auth_header) = req.headers.get("authorization") {
             if auth_header.starts_with("Bearer ") {

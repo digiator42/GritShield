@@ -3,7 +3,19 @@ use crate::security::middleware::{Middleware, MiddlewareResult};
 use crate::security::xss::{SafeHtml, UntrustedString};
 use std::collections::HashMap;
 
-pub type Handler = fn(HashMap<String, UntrustedString>) -> SafeHtml;
+pub type Handler = fn(RequestContext) -> SafeHtml;
+
+pub struct RequestContext {
+    pub params: HashMap<String, UntrustedString>,
+}
+
+impl RequestContext {
+    pub fn new() -> Self {
+        Self {
+            params: HashMap::new(),
+        }
+    }
+}
 
 pub struct Node {
     pub children: HashMap<String, Node>,
@@ -24,7 +36,7 @@ impl Node {
 }
 
 pub enum RoutingResult {
-    Found(Handler, HashMap<String, UntrustedString>),
+    Found(Handler, RequestContext),
     MethodNotAllowed,
     NotFound,
 }
@@ -80,7 +92,7 @@ impl Router {
 
     pub fn match_route(&self, method: &HttpMethod, path: &str) -> RoutingResult {
         let mut current = &self.root;
-        let mut params = HashMap::new();
+        let mut ctx = RequestContext::new();
 
         for segment in path.split('/').filter(|s| !s.is_empty()) {
             if let Some(next_node) = current.children.get(segment) {
@@ -88,7 +100,7 @@ impl Router {
             } else if let Some(param_node) = current.children.get(":param") {
                 if let Some(ref name) = param_node.parameter_name {
                     // If the segment isn't a direct match, check if this level accepts a parameter
-                    params.insert(name.clone(), UntrustedString::new(segment.to_string()));
+                    ctx.params.insert(name.clone(), UntrustedString::new(segment.to_string()));
                 }
                 current = param_node;
             } else {
@@ -97,7 +109,7 @@ impl Router {
         }
         // Check if the specific method is supported at this node
         match current.methods.get(method) {
-            Some(handler) => RoutingResult::Found(*handler, params),
+            Some(handler) => RoutingResult::Found(*handler, ctx),
             None => {
                 if !current.methods.is_empty() {
                     RoutingResult::MethodNotAllowed

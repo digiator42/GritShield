@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use crate::protocol::request::{HttpMethod, Request};
 use crate::protocol::response::Response;
-use crate::routing::trie::{Router, RoutingResult};
+use crate::routing::trie::{RequestContext, Router, RoutingResult};
 use crate::security::middleware::MiddlewareResult;
 use crate::security::xss::{SafeHtml, Sanitizer, UntrustedString};
 use crate::utils::dev::profile_handler;
@@ -117,8 +117,8 @@ fn handle_connection(mut stream: TcpStream, router: &Router) {
                     let routing_result = router.match_route(&req.method, &req.path);
 
                     let response = match routing_result {
-                        RoutingResult::Found(handler, params) => {
-                            let body: SafeHtml = handler(params);
+                        RoutingResult::Found(handler, ctx) => {
+                            let body: SafeHtml = handler(ctx);
                             Response::new(200, body)
                         }
                         RoutingResult::NotFound => {
