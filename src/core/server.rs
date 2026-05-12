@@ -1,3 +1,4 @@
+use colored::*;
 use std::io::prelude::*;
 use std::net::{Shutdown, TcpListener};
 use std::sync::{Arc, Mutex, mpsc};
@@ -64,7 +65,12 @@ pub fn run_server(host: &str, port: &str) {
     let listener = TcpListener::bind(format!("{}:{}", host, port)).unwrap();
     let pool = ThreadPool::new(4);
 
-    println!("Security Kernel Online at {}:{}", host, port);
+    println!(
+        "{} {}:{}",
+        "Security Kernel Online at".green().bold(),
+        host,
+        port
+    );
 
     for stream in listener.incoming() {
         let stream = stream.unwrap();
@@ -96,7 +102,7 @@ fn handle_connection(mut stream: std::net::TcpStream) {
         }
 
         Err(e) => {
-            eprintln!("Security Warning: {}", e);
+            eprintln!("{} {}", "Security Warning:".red().bold(), e);
 
             let response = "HTTP/1.1 400 Bad Request\r\n\r\nInvalid Syntax.";
             stream.write_all(response.as_bytes()).unwrap();
