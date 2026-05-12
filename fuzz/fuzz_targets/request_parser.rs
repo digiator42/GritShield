@@ -1,7 +1,7 @@
 #![no_main]
 
-use libfuzzer_sys::fuzz_target;
 use gritshield::protocol::request::Request;
+use libfuzzer_sys::fuzz_target;
 
 use std::io::Write;
 use std::net::{TcpListener, TcpStream};
@@ -13,10 +13,6 @@ fuzz_target!(|data: &[u8]| {
         return;
     }
 
-    // Temporary local server
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let addr = listener.local_addr().unwrap();
-
     // Send fuzzed bytes
     let input = data.to_vec();
 
@@ -27,7 +23,7 @@ fuzz_target!(|data: &[u8]| {
     });
 
     // Client side
-    if let Ok(stream) = TcpStream::connect(addr) {
+    if let Ok(stream) = TcpStream::connect("127.0.0.1:8000") {
         let _ = Request::parse(&stream);
     }
 });
