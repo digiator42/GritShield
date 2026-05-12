@@ -30,3 +30,8 @@ resilience_core/           # Your Project Root
     ├── integration_test.rs
     └── security_tests.rs  # Exploit simulations
 ``` 
+
+cmds:
+```bash
+rustup toolchain install nightly
+```
