@@ -33,10 +33,15 @@ impl Request {
 
         // "GET /index.html HTTP/1.1"
         let mut first_line = String::new();
-        reader.read_line(&mut first_line).map_err(|e| {
-            println!("{}", e);
-            "Failed to read request line"
-        })?;
+
+        if let Err(e) = reader.read_line(&mut first_line) {
+            if e.kind() == std::io::ErrorKind::WouldBlock
+                || e.kind() == std::io::ErrorKind::TimedOut
+            {
+                return Err(format!("{}", "Connection timed out".to_string()));
+            }
+            return Err(format!("I/O Error: {}", e));
+        }
 
         let parts: Vec<&str> = first_line.split_whitespace().collect();
 

@@ -2,7 +2,7 @@ use std::fmt;
 
 /// A wrapper around a String that has NOT been sanitized.
 /// It cannot be printed or converted to a byte array directly.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct UntrustedString(String);
 
 impl UntrustedString {

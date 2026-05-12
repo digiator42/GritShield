@@ -1,11 +1,16 @@
 use colored::*;
+use std::collections::HashMap;
 use std::io::prelude::*;
-use std::net::{Shutdown, TcpListener};
+use std::net::{Shutdown, TcpListener, TcpStream};
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 use std::time::Duration;
 
-use crate::protocol::request::Request;
+use crate::protocol::request::{HttpMethod, Request};
+use crate::protocol::response::Response;
+use crate::routing::trie::{Router, RoutingResult};
+use crate::security::xss::{SafeHtml, Sanitizer, UntrustedString};
+use crate::utils::dev::profile_handler;
 
 pub struct ThreadPool {
     workers: Vec<Worker>,
@@ -72,16 +77,24 @@ pub fn run_server(host: &str, port: &str) {
         port
     );
 
+    // Initialize the router once outside the loop
+    let mut router = Router::new();
+    router.add_route(HttpMethod::GET, "/profile/:name", profile_handler);
+
+    // Wrap in an Arc so multiple threads in ThreadPool can read it safely
+    let shared_router = std::sync::Arc::new(router);
+
     for stream in listener.incoming() {
         let stream = stream.unwrap();
+        let router_ptr = std::sync::Arc::clone(&shared_router);
 
-        pool.execute(|| {
-            handle_connection(stream);
+        pool.execute(move || {
+            handle_connection(stream, &router_ptr);
         });
     }
 }
 
-fn handle_connection(mut stream: std::net::TcpStream) {
+fn handle_connection(mut stream: TcpStream, router: &Router) {
     if let Err(e) = stream.set_read_timeout(Some(Duration::from_secs(5))) {
         eprintln!("Kernel Error: Failed to set read timeout: {}", e);
         return;
@@ -93,22 +106,35 @@ fn handle_connection(mut stream: std::net::TcpStream) {
     }
 
     match Request::parse(&mut stream) {
-        Ok(request) => {
-            println!("Request Received: {:?} {}", request.method, request.path);
-            println!("body {:?}", request.body.len());
+        Ok(req) => {
+            println!("Request Received: {:?} {}", req.method, req.path);
+            println!("body {:?}", req.body.len());
 
-            let response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nKernerl Verified.";
-            stream.write_all(response.as_bytes()).unwrap();
+            let routing_result = router.match_route(&req.method, &req.path);
+
+            let response = match routing_result {
+                RoutingResult::Found(handler, params) => {
+                    let body: SafeHtml = handler(params);
+                    Response::new(200, body)
+                }
+                RoutingResult::NotFound => {
+                    Response::new(404, Sanitizer::trust("<h1>404 Not Found</h1>"))
+                }
+                RoutingResult::MethodNotAllowed => {
+                    Response::new(405, Sanitizer::trust("<h1>405 Method Not Allowed</h1>"))
+                }
+            };
+
+            // 4. Write Secure Response
+            let _ = stream.write_all(&response.to_bytes());
         }
 
         Err(e) => {
             eprintln!("{} {}", "Security Warning:".red().bold(), e);
 
-            let response = "HTTP/1.1 400 Bad Request\r\n\r\nInvalid Syntax.";
-            stream.write_all(response.as_bytes()).unwrap();
-            stream.flush().unwrap();
-
-            let _ = stream.shutdown(Shutdown::Write);
+            let err_body = Sanitizer::trust("<h1>Bad Request</h1>");
+            let response = Response::new(400, err_body);
+            let _ = stream.write_all(&response.to_bytes());
         }
     }
 }
