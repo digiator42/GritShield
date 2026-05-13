@@ -1,23 +1,29 @@
 use crate::{
+    protocol::response::{Cookie, Response},
     routing::trie::RequestContext,
     security::xss::{SafeHtml, Sanitizer},
 };
 
-pub fn profile_handler(ctx: RequestContext) -> SafeHtml {
-    let name = ctx.params.get("name").cloned().unwrap();
-    let safe_name = Sanitizer::encode(name);
+pub fn profile_handler(ctx: RequestContext) -> Response {
+    let name = ctx.params.get("name").unwrap();
 
-    Sanitizer::trust(&format!(
-        "<h1>Profile Page</h1><p>Welcome, {}!</p>",
-        safe_name
-    ))
+    if name.as_str() == "logo" {
+        return Response::static_file("static/img/logo.png");
+    }
+
+    // Returns the Html variant of Response
+    let mut res = Response::new(200, Sanitizer::trust("<h1>User Profile</h1>"));
+    res.cookies.push(Cookie::new("JSESSIONID", "2024-10-01"));
+    res
 }
 
-pub fn products_handler(_: RequestContext) -> SafeHtml {
-    Sanitizer::trust(&format!("<h1>products Page</h1><p>Welcome!</p>"))
+pub fn products_handler(_: RequestContext) -> Response {
+    let body = Sanitizer::trust(&format!("<h1>products Page</h1><p>Welcome!</p>"));
+    Response::new(200, body)
 }
 
-pub fn static_handler(ctx: RequestContext) -> SafeHtml {
+pub fn static_handler(ctx: RequestContext) -> Response {
     // let path = ctx.params.get("path").unwrap();
-    Sanitizer::trust("/* Static Content Rendered */")
+    let body = Sanitizer::trust("/* Static Content Rendered */");
+    Response::new(200, body)
 }

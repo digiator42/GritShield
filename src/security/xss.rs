@@ -11,6 +11,10 @@ impl UntrustedString {
     pub fn new(s: String) -> Self {
         UntrustedString(s)
     }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
 }
 
 /// The inner safe string for HTML rendering.

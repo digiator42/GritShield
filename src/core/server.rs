@@ -1,4 +1,5 @@
 use colored::*;
+use std::collections::HashMap;
 use std::io::prelude::*;
 use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Mutex, mpsc};
@@ -6,7 +7,7 @@ use std::thread;
 use std::time::Duration;
 
 use crate::protocol::request::{HttpMethod, Request};
-use crate::protocol::response::Response;
+use crate::protocol::response::{Response, ResponseBody};
 use crate::routing::trie::{RequestContext, Router, RoutingResult};
 use crate::security::middleware::MiddlewareResult;
 use crate::security::xss::{SafeHtml, Sanitizer, UntrustedString};
@@ -102,43 +103,43 @@ fn handle_connection(mut stream: TcpStream, router: &Router) {
 
     match Request::parse(&mut stream) {
         Ok(req) => {
-            println!("Request Received: {:?} {}", req.method, req.path);
-            println!("body {:?}", req.body.len());
+            // Run Middleware Chain
+            if let MiddlewareResult::Error(err_res) = router.run_middlewares(&req) {
+                let (bytes, mime) = err_res.resolve();
+                let _ = stream.write_all(&err_res.to_bytes(&bytes, &mime));
+                return;
+            }
 
-            match router.run_middlewares(&req) {
-                MiddlewareResult::Error(err_res) => {
-                    let _ = stream.write_all(&err_res.to_bytes());
-                    return;
-                }
-
-                MiddlewareResult::Next => {
-                    let routing_result = router.match_route(&req.method, &req.path);
-
-                    let response = match routing_result {
-                        RoutingResult::Found(handler, ctx) => {
-                            let body: SafeHtml = handler(ctx);
-                            Response::new(200, body)
-                        }
-                        RoutingResult::NotFound => {
-                            Response::new(404, Sanitizer::trust("<h1>404 Not Found</h1>"))
-                        }
-                        RoutingResult::MethodNotAllowed => {
-                            Response::new(405, Sanitizer::trust("<h1>405 Method Not Allowed</h1>"))
-                        }
+            // Match Route
+            let response = match router.match_route(&req.method, &req.path) {
+                RoutingResult::Found(handler, params) => {
+                    let ctx = RequestContext {
+                        params,
+                        headers: req.headers.clone(),
+                        claims: None,
+                        query: HashMap::new(),
                     };
 
-                    // Write Secure Response
-                    let _ = stream.write_all(&response.to_bytes());
+                    handler(ctx)
                 }
-            }
+                RoutingResult::NotFound => {
+                    Response::new(404, Sanitizer::trust("<h1>404 Not Found</h1>"))
+                }
+                RoutingResult::MethodNotAllowed => {
+                    Response::new(405, Sanitizer::trust("<h1>405 Method Not Allowed</h1>"))
+                }
+            };
+
+            // Resolve and Write
+            let (bytes, mime) = response.resolve();
+            let _ = stream.write_all(&response.to_bytes(&bytes, &mime));
         }
 
         Err(e) => {
             eprintln!("{} {}", "Security Warning:".red().bold(), e);
-
-            let err_body = Sanitizer::trust("<h1>Bad Request</h1>");
-            let response = Response::new(400, err_body);
-            let _ = stream.write_all(&response.to_bytes());
+            let err_res = Response::new(400, Sanitizer::trust("<h1>Bad Request</h1>"));
+            let (bytes, mime) = err_res.resolve();
+            let _ = stream.write_all(&err_res.to_bytes(&bytes, &mime));
         }
     }
 }
