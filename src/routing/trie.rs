@@ -2,9 +2,11 @@ use crate::protocol::request::{HttpMethod, Request};
 use crate::protocol::response::Response;
 use crate::security::jwt::Claims;
 use crate::security::middleware::{Middleware, MiddlewareResult};
+use crate::security::session::Session;
 use crate::security::xss::{SafeHtml, UntrustedString};
 use std::collections::HashMap;
 use std::hash::Hash;
+use std::sync::{Arc, Mutex};
 
 pub type Handler = fn(RequestContext) -> Response;
 pub struct RequestContext {
@@ -12,6 +14,7 @@ pub struct RequestContext {
     pub headers: HashMap<String, String>,
     pub claims: Option<Claims>,
     pub query: HashMap<String, UntrustedString>,
+    pub session: Option<Arc<Mutex<Session>>>,
 }
 
 // impl RequestContext {
@@ -64,13 +67,20 @@ impl Router {
     }
 
     pub fn run_middlewares(&self, req: &Request) -> MiddlewareResult {
+        let mut session_data = None;
+
         for middleware in &self.middlewares {
             match middleware.execute(req) {
-                MiddlewareResult::Next => continue,
+                MiddlewareResult::Next(state) => {
+                    if state.is_some() {
+                        session_data = state; // Persist state across chain
+                    }
+                    continue;
+                }
                 MiddlewareResult::Error(res) => return MiddlewareResult::Error(res),
             }
         }
-        MiddlewareResult::Next
+        MiddlewareResult::Next(session_data)
     }
 
     pub fn add_route(&mut self, method: HttpMethod, path: &str, handler: Handler) {

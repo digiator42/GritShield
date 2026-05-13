@@ -1,11 +1,14 @@
+use std::sync::{Arc, Mutex};
+
 use crate::protocol::{request::Request, response::Response};
 use crate::security::jwt::JwtHandler;
+use crate::security::session::{Session, SessionStore};
 use crate::security::xss::Sanitizer;
 use colored::*;
 
 pub enum MiddlewareResult {
-    Next,            // Continue to next middleware/handler
-    Error(Response), // Stop and return error immediately
+    Next(Option<(Arc<Mutex<Session>>, bool)>), // Carry session state forward
+    Error(Response),                           // Stop and return error immediately
 }
 
 pub trait Middleware: Send + Sync {
@@ -26,7 +29,7 @@ impl Middleware for AuthMiddleware {
             .iter()
             .any(|path| req.path.starts_with(path))
         {
-            return MiddlewareResult::Next;
+            return MiddlewareResult::Next(None);
         }
 
         // Extract Header
@@ -38,7 +41,7 @@ impl Middleware for AuthMiddleware {
                 match self.jwt_handler.verify(token) {
                     Ok(claims) => {
                         println!("[AUTH] Verified user: {}", claims.sub);
-                        return MiddlewareResult::Next;
+                        return MiddlewareResult::Next(None);
                     }
                     Err(e) => {
                         println!("[AUTH] Rejected: {}", e);
@@ -62,6 +65,25 @@ impl Middleware for LoggerMiddleware {
             format!("{:?}", req.method).blue(),
             req.path.yellow()
         );
-        MiddlewareResult::Next
+        MiddlewareResult::Next(None)
+    }
+}
+pub struct SessionMiddleware {
+    pub store: Arc<SessionStore>,
+}
+
+// src/security/middleware.rs
+impl Middleware for SessionMiddleware {
+    fn execute(&self, req: &Request) -> MiddlewareResult {
+        let session_id = req
+            .headers
+            .get("cookie")
+            .and_then(|c| c.split("; ").find(|s| s.starts_with("session_id=")))
+            .map(|s| s["session_id=".len()..].to_string());
+
+        // Single lookup happens here
+        let (session, is_new) = self.store.get_or_create(session_id);
+
+        MiddlewareResult::Next(Some((session, is_new)))
     }
 }

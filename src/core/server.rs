@@ -10,6 +10,7 @@ use crate::protocol::request::{HttpMethod, Request};
 use crate::protocol::response::{Response, ResponseBody};
 use crate::routing::trie::{RequestContext, Router, RoutingResult};
 use crate::security::middleware::MiddlewareResult;
+use crate::security::session::{Session, SessionStore};
 use crate::security::xss::{SafeHtml, Sanitizer, UntrustedString};
 
 pub struct ThreadPool {
@@ -104,35 +105,58 @@ fn handle_connection(mut stream: TcpStream, router: &Router) {
     match Request::parse(&mut stream) {
         Ok(req) => {
             // Run Middleware Chain
-            if let MiddlewareResult::Error(err_res) = router.run_middlewares(&req) {
-                let (bytes, mime) = err_res.resolve();
-                let _ = stream.write_all(&err_res.to_bytes(&bytes, &mime));
-                return;
-            }
+            match router.run_middlewares(&req) {
+                MiddlewareResult::Error(err_res) => {
+                    let (bytes, mime) = err_res.resolve();
+                    let _ = stream.write_all(&err_res.to_bytes(&bytes, &mime));
+                    return;
+                }
+                MiddlewareResult::Next(session_state) => {
+                    // Capture the carried state
+                    let routing_result = router.match_route(&req.method, &req.path);
 
-            // Match Route
-            let response = match router.match_route(&req.method, &req.path) {
-                RoutingResult::Found(handler, params) => {
-                    let ctx = RequestContext {
-                        params,
-                        headers: req.headers.clone(),
-                        claims: None,
-                        query: HashMap::new(),
+                    let response = match routing_result {
+                        RoutingResult::Found(handler, params) => {
+                            // Extract session data carried from middleware
+                            let (session_ptr, is_new_session) = match session_state {
+                                Some((ptr, is_new)) => (Some(ptr), is_new),
+                                None => (None, false),
+                            };
+
+                            let ctx = RequestContext {
+                                params,
+                                headers: req.headers.clone(),
+                                claims: None,
+                                query: HashMap::new(),
+                                session: session_ptr.clone(), // No second lookup!
+                            };
+
+                            let mut res = handler(ctx);
+
+                            // Set the cookie only if the middleware flagged it as new
+                            if is_new_session {
+                                if let Some(s) = session_ptr {
+                                    let sid = s.lock().unwrap().id.clone();
+                                    res.cookies.push(crate::protocol::response::Cookie::new(
+                                        "session_id",
+                                        &sid,
+                                    ));
+                                }
+                            }
+                            res
+                        }
+                        RoutingResult::NotFound => {
+                            Response::new(404, Sanitizer::trust("<h1>404</h1>"))
+                        }
+                        RoutingResult::MethodNotAllowed => {
+                            Response::new(405, Sanitizer::trust("<h1>405</h1>"))
+                        }
                     };
 
-                    handler(ctx)
+                    let (bytes, mime) = response.resolve();
+                    let _ = stream.write_all(&response.to_bytes(&bytes, &mime));
                 }
-                RoutingResult::NotFound => {
-                    Response::new(404, Sanitizer::trust("<h1>404 Not Found</h1>"))
-                }
-                RoutingResult::MethodNotAllowed => {
-                    Response::new(405, Sanitizer::trust("<h1>405 Method Not Allowed</h1>"))
-                }
-            };
-
-            // Resolve and Write
-            let (bytes, mime) = response.resolve();
-            let _ = stream.write_all(&response.to_bytes(&bytes, &mime));
+            }
         }
 
         Err(e) => {

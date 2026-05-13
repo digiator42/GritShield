@@ -1,4 +1,7 @@
-use gritshield::security::middleware::LoggerMiddleware;
+use std::sync::Arc;
+
+use gritshield::security::middleware::{LoggerMiddleware, SessionMiddleware};
+use gritshield::security::session::SessionStore;
 use gritshield::utils::dev::*;
 use gritshield::{
     core::server::run_server,
@@ -12,12 +15,19 @@ fn main() {
 
     router.add_middleware(LoggerMiddleware);
 
+    let session_store = Arc::new(SessionStore::new());
+
+    router.add_middleware(SessionMiddleware {
+        store: Arc::clone(&session_store),
+    });
+
     // Define public routes
     let public_routes = vec![
         "/".to_string(),
         "/products".to_string(),
         "/login".to_string(),
         "/static/".to_string(),
+        "/dashboard".to_string(),
     ];
 
     let jwt_kernel = JwtHandler::new("super_secret_key_123");
@@ -31,6 +41,7 @@ fn main() {
     // Register handlers
     router.add_route(HttpMethod::GET, "/products", products_handler); // PUBLIC
     router.add_route(HttpMethod::GET, "/static/:path", static_handler); // PUBLIC
+    router.add_route(HttpMethod::GET, "/dashboard", dashboard_handler); // PUBLIC
     router.add_route(HttpMethod::GET, "/profile/:name", profile_handler); // PROTECTED
 
     run_server("127.0.0.1", "8080", router);

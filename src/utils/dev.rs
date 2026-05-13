@@ -27,3 +27,16 @@ pub fn static_handler(ctx: RequestContext) -> Response {
     let body = Sanitizer::trust("/* Static Content Rendered */");
     Response::new(200, body)
 }
+
+pub fn dashboard_handler(ctx: RequestContext) -> Response {
+    if let Some(session_ptr) = ctx.session {
+        let mut session = session_ptr.lock().unwrap();
+        session
+            .data
+            .insert("last_action".to_string(), "view_dashboard".to_string());
+
+        return Response::new(200, Sanitizer::trust("<h1>Welcome Back!</h1>"));
+    }
+
+    Response::new(401, Sanitizer::trust("<h1>Session Required</h1>"))
+}
