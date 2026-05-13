@@ -16,3 +16,8 @@ pub fn profile_handler(ctx: RequestContext) -> SafeHtml {
 pub fn products_handler(_: RequestContext) -> SafeHtml {
     Sanitizer::trust(&format!("<h1>products Page</h1><p>Welcome!</p>"))
 }
+
+pub fn static_handler(ctx: RequestContext) -> SafeHtml {
+    // let path = ctx.params.get("path").unwrap();
+    Sanitizer::trust("/* Static Content Rendered */")
+}

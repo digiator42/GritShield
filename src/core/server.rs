@@ -1,7 +1,6 @@
 use colored::*;
-use std::collections::HashMap;
 use std::io::prelude::*;
-use std::net::{Shutdown, TcpListener, TcpStream};
+use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 use std::time::Duration;
@@ -11,7 +10,6 @@ use crate::protocol::response::Response;
 use crate::routing::trie::{RequestContext, Router, RoutingResult};
 use crate::security::middleware::MiddlewareResult;
 use crate::security::xss::{SafeHtml, Sanitizer, UntrustedString};
-use crate::utils::dev::profile_handler;
 
 pub struct ThreadPool {
     workers: Vec<Worker>,

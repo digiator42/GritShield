@@ -1,4 +1,5 @@
-use gritshield::utils::dev::{products_handler, profile_handler};
+use gritshield::security::middleware::LoggerMiddleware;
+use gritshield::utils::dev::*;
 use gritshield::{
     core::server::run_server,
     protocol::request::HttpMethod,
@@ -9,11 +10,14 @@ use gritshield::{
 fn main() {
     let mut router = Router::new();
 
+    router.add_middleware(LoggerMiddleware);
+
     // Define public routes
     let public_routes = vec![
         "/".to_string(),
         "/products".to_string(),
         "/login".to_string(),
+        "/static/".to_string(),
     ];
 
     let jwt_kernel = JwtHandler::new("super_secret_key_123");
@@ -26,7 +30,7 @@ fn main() {
 
     // Register handlers
     router.add_route(HttpMethod::GET, "/products", products_handler); // PUBLIC
-    // router.add_route(HttpMethod::GET, "/products", profile_handler); // PUBLIC
+    router.add_route(HttpMethod::GET, "/static/:path", static_handler); // PUBLIC
     router.add_route(HttpMethod::GET, "/profile/:name", profile_handler); // PROTECTED
 
     run_server("127.0.0.1", "8080", router);

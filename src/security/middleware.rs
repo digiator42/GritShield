@@ -1,6 +1,7 @@
 use crate::protocol::{request::Request, response::Response};
 use crate::security::jwt::JwtHandler;
 use crate::security::xss::Sanitizer;
+use colored::*;
 
 pub enum MiddlewareResult {
     Next,            // Continue to next middleware/handler
@@ -20,7 +21,11 @@ impl Middleware for AuthMiddleware {
     fn execute(&self, req: &Request) -> MiddlewareResult {
         // Check if the current path is in the whitelist
         // We use .starts_with to handle sub-paths or exact matches
-        if self.public_paths.iter().any(|path| req.path == *path) {
+        if self
+            .public_paths
+            .iter()
+            .any(|path| req.path.starts_with(path))
+        {
             return MiddlewareResult::Next;
         }
 
@@ -45,5 +50,18 @@ impl Middleware for AuthMiddleware {
         // Fail: Short-circuit the request
         let err_body = Sanitizer::trust("<h1>401 Unauthorized</h1>");
         MiddlewareResult::Error(Response::new(401, err_body))
+    }
+}
+
+pub struct LoggerMiddleware;
+
+impl Middleware for LoggerMiddleware {
+    fn execute(&self, req: &Request) -> MiddlewareResult {
+        println!(
+            "[LOG] {} request to {}",
+            format!("{:?}", req.method).blue(),
+            req.path.yellow()
+        );
+        MiddlewareResult::Next
     }
 }
