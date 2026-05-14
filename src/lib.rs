@@ -3,3 +3,5 @@ pub mod protocol;
 pub mod routing;
 pub mod security;
 pub mod utils;
+pub mod templates;
+pub mod macros;

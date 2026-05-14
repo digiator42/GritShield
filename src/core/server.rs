@@ -127,8 +127,8 @@ fn handle_connection(mut stream: TcpStream, router: &Router) {
                                 params,
                                 headers: req.headers.clone(),
                                 claims: None,
-                                query: HashMap::new(),
-                                session: session_ptr.clone(), // No second lookup!
+                                query: req.query.clone(),
+                                session: session_ptr.clone(), // No second lookup
                             };
 
                             let mut res = handler(ctx);

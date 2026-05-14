@@ -3,6 +3,8 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
 use std::time::{Duration, Instant};
 
+use crate::security::xss::UntrustedString;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum HttpMethod {
     GET,
@@ -18,6 +20,7 @@ pub struct Request {
     pub path: String,
     pub headers: HashMap<String, String>,
     pub body: Vec<u8>,
+    pub query: HashMap<String, UntrustedString>,
 }
 
 impl Request {
@@ -58,7 +61,26 @@ impl Request {
             _ => HttpMethod::UNKNOWN,
         };
 
-        let path = parts[1].to_string();
+        let full_path = parts[1].to_string();
+
+        let mut query_params = HashMap::new();
+        
+        // SPLIT PATH AND QUERY
+        let path = if let Some((base_path, query_str)) = full_path.split_once('?') {
+            // Parse query string: k1=v1&k2=v2
+            for pair in query_str.split('&') {
+                if let Some((k, v)) = pair.split_once('=') {
+                    query_params.insert(
+                        k.to_string(), 
+                        UntrustedString::new(v.to_string())
+                    );
+                }
+            }
+            base_path.to_string()
+        } else {
+            full_path
+        };
+
         let mut headers: HashMap<String, String> = HashMap::new();
 
         loop {
@@ -105,6 +127,7 @@ impl Request {
             path,
             headers,
             body,
+            query: query_params,
         })
     }
 }

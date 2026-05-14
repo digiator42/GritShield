@@ -1,8 +1,10 @@
 use crate::{
     protocol::response::{Cookie, Response},
+    render,
     routing::trie::RequestContext,
     security::xss::{SafeHtml, Sanitizer},
 };
+use maud::html;
 
 pub fn profile_handler(ctx: RequestContext) -> Response {
     let name = ctx.params.get("name").unwrap();
@@ -23,9 +25,12 @@ pub fn products_handler(_: RequestContext) -> Response {
 }
 
 pub fn static_handler(ctx: RequestContext) -> Response {
-    // let path = ctx.params.get("path").unwrap();
-    let body = Sanitizer::trust("/* Static Content Rendered */");
-    Response::new(200, body)
+    let path = ctx.params.get("*path").unwrap();
+
+    let full_fs_path = format!("static/{}", path.as_str());
+
+    println!("Serving file: {}", full_fs_path);
+    Response::static_file(&full_fs_path)
 }
 
 pub fn dashboard_handler(ctx: RequestContext) -> Response {
@@ -39,4 +44,33 @@ pub fn dashboard_handler(ctx: RequestContext) -> Response {
     }
 
     Response::new(401, Sanitizer::trust("<h1>Session Required</h1>"))
+}
+
+pub fn home_handler(ctx: RequestContext) -> Response {
+    let user_name = ctx
+        .session
+        .map(|s| {
+            s.lock()
+                .unwrap()
+                .data
+                .get("user")
+                .cloned()
+                .unwrap_or("Guest".to_string())
+        })
+        .unwrap_or("Guest".to_string());
+
+    let search_query = ctx.query.get("p")
+        .map(|v| v.as_str())
+        .unwrap_or("No search provided");
+
+    render!(
+        "Home Page",
+        html! {
+            h1 { "Welcome to the Framework Docs" }
+            p { "Hello, " (user_name) "! ==>" (search_query) }
+            div class="card" {
+                p { "This page was rendered with no chance to xss vulnerability." }
+            }
+        }
+    )
 }

@@ -29,6 +29,7 @@ fn main() {
         "/login".to_string(),
         "/static/".to_string(),
         "/dashboard".to_string(),
+        "/home".to_string(),
     ];
 
     let jwt_kernel = JwtHandler::new("super_secret_key_123");
@@ -41,8 +42,9 @@ fn main() {
 
     // Register handlers
     router.add_route(HttpMethod::GET, "/products", products_handler); // PUBLIC
-    router.add_route(HttpMethod::GET, "/static/:path", static_handler); // PUBLIC
+    router.add_route(HttpMethod::GET, "/static/:*path", static_handler); // PUBLIC
     router.add_route(HttpMethod::GET, "/dashboard", dashboard_handler); // PUBLIC
+    router.add_route(HttpMethod::GET, "/home", home_handler); // PUBLIC
     router.add_route(HttpMethod::GET, "/profile/:name", profile_handler); // PROTECTED
 
     run_server("127.0.0.1", "8080", router);

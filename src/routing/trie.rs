@@ -107,14 +107,23 @@ impl Router {
     pub fn match_route(&self, method: &HttpMethod, path: &str) -> RoutingResult {
         let mut current = &self.root;
         let mut params = HashMap::new();
+        let segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
 
-        for segment in path.split('/').filter(|s| !s.is_empty()) {
-            if let Some(next_node) = current.children.get(segment) {
+        for (i, segment) in segments.iter().enumerate() {
+            if let Some(next_node) = current.children.get(*segment) {
                 current = next_node;
             } else if let Some(param_node) = current.children.get(":param") {
                 if let Some(ref name) = param_node.parameter_name {
-                    // If the segment isn't a direct match, check if this level accepts a parameter
-                    params.insert(name.clone(), UntrustedString::new(segment.to_string()));
+                    // Check if this is a wildcard parameter (e.g., *path)
+                    if name.starts_with('*') {
+                        // Grab all remaining segments joined by slashes
+                        let remainder = segments[i..].join("/");
+                        params.insert(name.clone(), UntrustedString::new(remainder));
+                        current = param_node;
+                        break; // Exit loop, we've consumed everything
+                    } else {
+                        params.insert(name.clone(), UntrustedString::new(segment.to_string()));
+                    }
                 }
                 current = param_node;
             } else {
