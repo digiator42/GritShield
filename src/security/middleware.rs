@@ -2,6 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::protocol::{request::Request, response::Response};
 use crate::security::jwt::JwtHandler;
+use crate::security::rate_limit::RateLimiter;
 use crate::security::session::{Session, SessionStore};
 use crate::security::xss::Sanitizer;
 use colored::*;
@@ -90,5 +91,34 @@ impl Middleware for SessionMiddleware {
 
         // No session found? Just continue without one.
         MiddlewareResult::Next(None)
+    }
+}
+
+pub struct RateLimitMiddleware {
+    pub limiter: RateLimiter,
+}
+
+impl Middleware for RateLimitMiddleware {
+    fn execute(&self, req: &Request) -> MiddlewareResult {
+        // use req.headers.get("x-forwarded-for")
+        // or the peer_addr from the TcpStream.
+        let ip = req
+            .headers
+            .get("host")
+            .unwrap_or(&"unknown".to_string())
+            .clone();
+
+        if self.limiter.is_allowed(ip) {
+            // we pass None here as Rate Limiting doesn't create a session.
+            MiddlewareResult::Next(None)
+        } else {
+            let err_body =
+                Sanitizer::trust("<h1>429 Too Many Requests</h1><p>Slow down, friend.</p>");
+            let mut res = Response::new(429, err_body);
+            res.headers
+                .push(("Retry-After".to_string(), "60".to_string()));
+
+            MiddlewareResult::Error(res)
+        }
     }
 }

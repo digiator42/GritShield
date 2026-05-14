@@ -13,7 +13,7 @@ pub fn profile_handler(ctx: RequestContext) -> Response {
 
     // Returns the Html variant of Response
     let mut res = Response::new(200, Sanitizer::trust("<h1>User Profile</h1>"));
-    res.cookies.push(Cookie::new("JSESSIONID", "2024-10-01"));
+    res.cookies.push(Cookie::new("GSESSIONID", "2024-10-01"));
     res
 }
 
