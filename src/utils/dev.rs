@@ -1,4 +1,5 @@
 use crate::{
+    model::{post, user},
     protocol::response::{Cookie, Response},
     render,
     routing::trie::RequestContext,
@@ -6,6 +7,8 @@ use crate::{
 };
 use framework_macros::{delete, get, post, put};
 use maud::html;
+use sea_orm::ColumnTrait;
+use sea_orm::{EntityTrait, ModelTrait, QueryFilter};
 
 pub fn profile_handler(ctx: RequestContext) -> Response {
     let name = ctx.params.get("name").unwrap();
@@ -136,7 +139,6 @@ pub async fn delete_item(ctx: RequestContext) -> Response {
 
 #[get("/docs/db")]
 pub async fn db_docs(ctx: RequestContext) -> Response {
-
     let status = if ctx.db.ping().await.is_ok() {
         "Connected"
     } else {
@@ -150,4 +152,25 @@ pub async fn db_docs(ctx: RequestContext) -> Response {
             p { "Database is currently: " (status) }
         }
     )
+}
+
+#[get("/profile/:username")]
+pub async fn user_profile(ctx: RequestContext) -> Response {
+    let username = ctx.params.get("username").unwrap().as_str();
+
+    let user_res = user::Entity::find()
+        .filter(user::Column::Username.eq(username))
+        .one(&*ctx.db)
+        .await;
+
+    match user_res {
+        Ok(Some(user)) => {
+            Response::new(200, Sanitizer::trust("User found"))
+        },
+        Ok(None) => Response::new(404, Sanitizer::trust("User not found")),
+        Err(e) => {
+            println!("Database Error: {:?}", e);
+            Response::new(500, Sanitizer::trust("Internal Server Error"))
+        }
+    }
 }

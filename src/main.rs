@@ -61,5 +61,5 @@ async fn main() {
     // router.add_route(HttpMethod::POST, "/upload", handle_upload); // PUBLIC
     // router.add_route(HttpMethod::GET, "/profile/:name", profile_handler); // PROTECTED
 
-    run_server("127.0.0.1", "8080", router, shared_db, true).await;
+    run_server("127.0.0.1", "8080", router, shared_db, false).await;
 }

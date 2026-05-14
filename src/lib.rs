@@ -6,3 +6,4 @@ pub mod utils;
 pub mod templates;
 pub mod macros;
 pub mod migration;
+pub mod model;
