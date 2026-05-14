@@ -2,7 +2,7 @@ use crate::protocol::request::{HttpMethod, Request};
 use crate::protocol::response::Response;
 use crate::security::jwt::Claims;
 use crate::security::middleware::{Middleware, MiddlewareResult};
-use crate::security::session::Session;
+use crate::security::session::{Session, SessionStore};
 use crate::security::xss::{SafeHtml, UntrustedString};
 use std::collections::HashMap;
 use std::hash::Hash;
@@ -17,13 +17,12 @@ pub struct RequestContext {
     pub session: Option<Arc<Mutex<Session>>>,
 }
 
-// impl RequestContext {
-//     pub fn new() -> Self {
-//         Self {
-//             params: HashMap::new(),
-//         }
-//     }
-// }
+impl RequestContext {
+    pub fn start_session(store: &SessionStore) -> Arc<Mutex<Session>> {
+        let (ptr, _) = store.get_or_create(None);
+        ptr
+    }
+}
 
 pub struct Node {
     pub children: HashMap<String, Node>,

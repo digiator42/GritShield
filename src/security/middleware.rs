@@ -72,7 +72,6 @@ pub struct SessionMiddleware {
     pub store: Arc<SessionStore>,
 }
 
-// src/security/middleware.rs
 impl Middleware for SessionMiddleware {
     fn execute(&self, req: &Request) -> MiddlewareResult {
         let session_id = req
@@ -81,9 +80,15 @@ impl Middleware for SessionMiddleware {
             .and_then(|c| c.split("; ").find(|s| s.starts_with("session_id=")))
             .map(|s| s["session_id=".len()..].to_string());
 
-        // Single lookup happens here
-        let (session, is_new) = self.store.get_or_create(session_id);
+        // We only look up. We don't 'create' yet.
+        let store = self.store.sessions.lock().unwrap();
+        if let Some(sid) = session_id {
+            if let Some(session_ptr) = store.get(&sid) {
+                return MiddlewareResult::Next(Some((Arc::clone(session_ptr), false)));
+            }
+        }
 
-        MiddlewareResult::Next(Some((session, is_new)))
+        // No session found? Just continue without one.
+        MiddlewareResult::Next(None)
     }
 }

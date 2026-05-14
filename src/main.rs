@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use gritshield::routing::trie::RequestContext;
 use gritshield::security::middleware::{LoggerMiddleware, SessionMiddleware};
 use gritshield::security::session::SessionStore;
 use gritshield::utils::dev::*;
