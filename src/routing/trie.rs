@@ -1,3 +1,6 @@
+use futures::future::BoxFuture;
+use sea_orm::DatabaseConnection;
+
 use crate::protocol::form::FormData;
 use crate::protocol::request::{HttpMethod, Request};
 use crate::protocol::response::Response;
@@ -8,7 +11,7 @@ use crate::security::xss::{SafeHtml, UntrustedString};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-pub type Handler = fn(RequestContext) -> Response;
+pub type Handler = fn(RequestContext) -> BoxFuture<'static, Response>;
 pub struct RequestContext {
     pub params: HashMap<String, UntrustedString>,
     pub headers: HashMap<String, String>,
@@ -16,6 +19,7 @@ pub struct RequestContext {
     pub query: HashMap<String, UntrustedString>,
     pub session: Option<Arc<Mutex<Session>>>,
     pub form: FormData,
+    pub db: Arc<DatabaseConnection>,
 }
 
 impl RequestContext {

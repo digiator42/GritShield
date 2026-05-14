@@ -25,4 +25,5 @@ target
 
 /target
 /uploads
+*.db
 *.exe

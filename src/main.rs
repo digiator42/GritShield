@@ -1,18 +1,25 @@
 use std::sync::Arc;
 
-use gritshield::routing::trie::RequestContext;
 use gritshield::security::middleware::{LoggerMiddleware, SessionMiddleware};
 use gritshield::security::session::SessionStore;
-use gritshield::utils::dev::*;
 use gritshield::{
     core::server::run_server,
     protocol::request::HttpMethod,
     routing::trie::Router,
     security::{jwt::JwtHandler, middleware::AuthMiddleware},
 };
+use sea_orm::{Database, DatabaseConnection};
 
-fn main() {
+#[tokio::main]
+async fn main() {
+    // Connect to the database (creates gritshield.db if it doesn't exist)
+    let db: DatabaseConnection = Database::connect("sqlite://gritshield.db?mode=rwc")
+        .await
+        .expect("Failed to connect to database");
+
     let mut router = Router::new();
+
+    let shared_db = std::sync::Arc::new(db);
 
     router.add_middleware(LoggerMiddleware);
 
@@ -49,5 +56,5 @@ fn main() {
     // router.add_route(HttpMethod::POST, "/upload", handle_upload); // PUBLIC
     // router.add_route(HttpMethod::GET, "/profile/:name", profile_handler); // PROTECTED
 
-    run_server("127.0.0.1", "8080", router, true);
+    run_server("127.0.0.1", "8080", router, shared_db, false).await;
 }

@@ -26,7 +26,7 @@ pub fn products_handler(_: RequestContext) -> Response {
 }
 
 #[get("/static/:*path")]
-pub fn static_handler(ctx: RequestContext) -> Response {
+pub async fn static_handler(ctx: RequestContext) -> Response {
     let path = ctx.params.get("*path").unwrap();
 
     let full_fs_path = format!("static/{}", path.as_str());
@@ -49,7 +49,7 @@ pub fn dashboard_handler(ctx: RequestContext) -> Response {
 }
 
 #[get("/")]
-pub fn home_handler(ctx: RequestContext) -> Response {
+pub async fn home_handler(ctx: RequestContext) -> Response {
     let user_name = ctx
         .session
         .map(|s| {
@@ -81,7 +81,7 @@ pub fn home_handler(ctx: RequestContext) -> Response {
 }
 
 #[post("/upload")]
-pub fn handle_upload(ctx: RequestContext) -> Response {
+pub async fn handle_upload(ctx: RequestContext) -> Response {
     // Get text fields safely
     let description = ctx
         .form
@@ -119,7 +119,7 @@ pub fn handle_upload(ctx: RequestContext) -> Response {
 }
 
 #[put("/items/update/:id")]
-pub fn update_item(ctx: RequestContext) -> Response {
+pub async fn update_item(ctx: RequestContext) -> Response {
     let item_id = ctx.params.get("id").unwrap().as_str();
     println!("Updating database item ID: {}", item_id);
 
@@ -127,9 +127,27 @@ pub fn update_item(ctx: RequestContext) -> Response {
 }
 
 #[delete("/items/delete/:id")]
-pub fn delete_item(ctx: RequestContext) -> Response {
+pub async fn delete_item(ctx: RequestContext) -> Response {
     let item_id = ctx.params.get("id").unwrap().as_str();
     println!("Purging item ID: {}", item_id);
 
     Response::new(200, Sanitizer::trust("<h1>Item Deleted</h1>"))
+}
+
+#[get("/docs/db")]
+pub async fn db_docs(ctx: RequestContext) -> Response {
+
+    let status = if ctx.db.ping().await.is_ok() {
+        "Connected"
+    } else {
+        "Offline"
+    };
+
+    render!(
+        "Database Status",
+        html! {
+            h1 { "System Check" }
+            p { "Database is currently: " (status) }
+        }
+    )
 }

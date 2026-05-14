@@ -1,4 +1,5 @@
 use colored::*;
+use sea_orm::DatabaseConnection;
 use std::collections::HashMap;
 use std::io::prelude::*;
 use std::net::{TcpListener, TcpStream};
@@ -68,7 +69,7 @@ impl Worker {
     }
 }
 
-pub fn run_server(host: &str, port: &str, router: Router, use_reloader: bool) {
+pub async fn run_server(host: &str, port: &str, router: Router, db: Arc<DatabaseConnection>, use_reloader: bool) {
     if use_reloader {
         // If we are the supervisor, this function will block and run the watcher loop.
         // If we are the child worker, it returns immediately and boots the actual TCP listener.
@@ -91,19 +92,23 @@ pub fn run_server(host: &str, port: &str, router: Router, use_reloader: bool) {
     );
 
     // Wrap in an Arc so multiple threads in ThreadPool can read it safely
-    let shared_router = std::sync::Arc::new(router);
+    let router = Arc::new(router);
 
     for stream in listener.incoming() {
         let stream = stream.unwrap();
-        let router_ptr = std::sync::Arc::clone(&shared_router);
+        let router = Arc::clone(&router);
+        let db = Arc::clone(&db);
 
         pool.execute(move || {
-            handle_connection(stream, &router_ptr);
+            // We use a block_on to bridge the Synchronous ThreadPool with our Async DB calls
+            tokio::runtime::Runtime::new().unwrap().block_on(async {
+                handle_connection(stream, router, db).await;
+            });
         });
     }
 }
 
-fn handle_connection(mut stream: TcpStream, router: &Router) {
+async fn handle_connection(mut stream: TcpStream, router: Arc<Router>, db: Arc<DatabaseConnection>) {
     if let Err(e) = stream.set_read_timeout(Some(Duration::from_secs(5))) {
         eprintln!("Kernel Error: Failed to set read timeout: {}", e);
         return;
@@ -144,9 +149,10 @@ fn handle_connection(mut stream: TcpStream, router: &Router) {
                                 query: req.query.clone(),
                                 session: session_ptr.clone(),
                                 form,
+                                db: Arc::clone(&db),
                             };
 
-                            let mut res = handler(ctx);
+                            let mut res = handler(ctx).await;
 
                             // Set the cookie only if the middleware flagged it as new
                             if is_new_session {

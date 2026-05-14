@@ -9,14 +9,24 @@ pub fn get(attr: TokenStream, item: TokenStream) -> TokenStream {
     let path = parse_macro_input!(attr as LitStr);
     let input_fn = parse_macro_input!(item as ItemFn);
     let fn_name = &input_fn.sig.ident;
+    let vis = &input_fn.vis;
+
+    let wrapper_name = syn::Ident::new(&format!("{}_wrapper", fn_name), fn_name.span());
 
     let expanded = quote! {
+        // The original async function from the developer
         #input_fn
+
+        // The wrapper that matches the 'Handler' type signature
+        #vis fn #wrapper_name(ctx: RequestContext) -> futures::future::BoxFuture<'static, Response> {
+            Box::pin(#fn_name(ctx))
+        }
+
         inventory::submit! {
             crate::routing::trie::AutoRoute {
                 path: #path,
                 method: crate::protocol::request::HttpMethod::GET,
-                handler: #fn_name
+                handler: #wrapper_name // Register the wrapper
             }
         }
     };
@@ -30,13 +40,23 @@ pub fn post(attr: TokenStream, item: TokenStream) -> TokenStream {
     let input_fn = parse_macro_input!(item as ItemFn);
     let fn_name = &input_fn.sig.ident;
 
+    let vis = &input_fn.vis;
+
+    let wrapper_name = syn::Ident::new(&format!("{}_wrapper", fn_name), fn_name.span());
+
     let expanded = quote! {
         #input_fn
+
+                // The wrapper that matches the 'Handler' type signature
+        #vis fn #wrapper_name(ctx: RequestContext) -> futures::future::BoxFuture<'static, Response> {
+            Box::pin(#fn_name(ctx))
+        }
+
         inventory::submit! {
             crate::routing::trie::AutoRoute {
                 path: #path,
                 method: crate::protocol::request::HttpMethod::POST,
-                handler: #fn_name
+                handler: #wrapper_name // Register the wrapper
             }
         }
     };
@@ -50,13 +70,23 @@ pub fn put(attr: TokenStream, item: TokenStream) -> TokenStream {
     let input_fn = parse_macro_input!(item as ItemFn);
     let fn_name = &input_fn.sig.ident;
 
+    let vis = &input_fn.vis;
+
+    let wrapper_name = syn::Ident::new(&format!("{}_wrapper", fn_name), fn_name.span());
+
     let expanded = quote! {
         #input_fn
+
+                // The wrapper that matches the 'Handler' type signature
+        #vis fn #wrapper_name(ctx: RequestContext) -> futures::future::BoxFuture<'static, Response> {
+            Box::pin(#fn_name(ctx))
+        }
+
         inventory::submit! {
             crate::routing::trie::AutoRoute {
                 path: #path,
                 method: crate::protocol::request::HttpMethod::PUT,
-                handler: #fn_name
+                handler: #wrapper_name // Register the wrapper
             }
         }
     };
@@ -70,13 +100,23 @@ pub fn patch(attr: TokenStream, item: TokenStream) -> TokenStream {
     let input_fn = parse_macro_input!(item as ItemFn);
     let fn_name = &input_fn.sig.ident;
 
+        let vis = &input_fn.vis;
+
+    let wrapper_name = syn::Ident::new(&format!("{}_wrapper", fn_name), fn_name.span());
+
     let expanded = quote! {
         #input_fn
+
+                // The wrapper that matches the 'Handler' type signature
+        #vis fn #wrapper_name(ctx: RequestContext) -> futures::future::BoxFuture<'static, Response> {
+            Box::pin(#fn_name(ctx))
+        }
+
         inventory::submit! {
             crate::routing::trie::AutoRoute {
                 path: #path,
                 method: crate::protocol::request::HttpMethod::PATCH,
-                handler: #fn_name
+                handler: #wrapper_name // Register the wrapper
             }
         }
     };
@@ -89,14 +129,24 @@ pub fn delete(attr: TokenStream, item: TokenStream) -> TokenStream {
     let path = parse_macro_input!(attr as LitStr);
     let input_fn = parse_macro_input!(item as ItemFn);
     let fn_name = &input_fn.sig.ident;
+    
+        let vis = &input_fn.vis;
+
+    let wrapper_name = syn::Ident::new(&format!("{}_wrapper", fn_name), fn_name.span());
 
     let expanded = quote! {
         #input_fn
+
+                // The wrapper that matches the 'Handler' type signature
+        #vis fn #wrapper_name(ctx: RequestContext) -> futures::future::BoxFuture<'static, Response> {
+            Box::pin(#fn_name(ctx))
+        }
+
         inventory::submit! {
             crate::routing::trie::AutoRoute {
                 path: #path,
                 method: crate::protocol::request::HttpMethod::DELETE,
-                handler: #fn_name
+                handler: #wrapper_name // Register the wrapper
             }
         }
     };
