@@ -59,7 +59,9 @@ pub fn home_handler(ctx: RequestContext) -> Response {
         })
         .unwrap_or("Guest".to_string());
 
-    let search_query = ctx.query.get("p")
+    let search_query = ctx
+        .query
+        .get("p")
         .map(|v| v.as_str())
         .unwrap_or("No search provided");
 
@@ -72,5 +74,42 @@ pub fn home_handler(ctx: RequestContext) -> Response {
                 p { "This page was rendered with no chance to xss vulnerability." }
             }
         }
+    )
+}
+
+pub fn handle_upload(ctx: RequestContext) -> Response {
+    // Get text fields safely
+    let description = ctx
+        .form
+        .fields
+        .get("description")
+        .map(|v| v.as_str())
+        .unwrap_or("No description");
+
+    // Extract an uploaded document or image
+    if let Some(file) = ctx.form.files.get("doc_file") {
+        println!(
+            "Received file: {} (Mime: {})",
+            file.filename, file.content_type
+        );
+
+        // Securely write file to the local directory
+        // Enforce file checks here (e.g., checking file extension or max length)
+        let save_path = format!("uploads/{}", file.filename);
+        if std::fs::write(&save_path, &file.data).is_ok() {
+            return render!(
+                "Upload Success",
+                html! {
+                    h1 { "File Uploaded Successfully!" }
+                    p { "Description: " (description) }
+                    p { "Saved file to: " (save_path) }
+                }
+            );
+        }
+    }
+
+    Response::new(
+        400,
+        crate::security::xss::Sanitizer::trust("<h1>File upload failed</h1>"),
     )
 }

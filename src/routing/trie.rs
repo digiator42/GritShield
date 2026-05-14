@@ -1,3 +1,4 @@
+use crate::protocol::form::FormData;
 use crate::protocol::request::{HttpMethod, Request};
 use crate::protocol::response::Response;
 use crate::security::jwt::Claims;
@@ -5,7 +6,6 @@ use crate::security::middleware::{Middleware, MiddlewareResult};
 use crate::security::session::{Session, SessionStore};
 use crate::security::xss::{SafeHtml, UntrustedString};
 use std::collections::HashMap;
-use std::hash::Hash;
 use std::sync::{Arc, Mutex};
 
 pub type Handler = fn(RequestContext) -> Response;
@@ -15,6 +15,7 @@ pub struct RequestContext {
     pub claims: Option<Claims>,
     pub query: HashMap<String, UntrustedString>,
     pub session: Option<Arc<Mutex<Session>>>,
+    pub form: FormData,
 }
 
 impl RequestContext {

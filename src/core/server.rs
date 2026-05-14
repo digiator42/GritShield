@@ -123,12 +123,15 @@ fn handle_connection(mut stream: TcpStream, router: &Router) {
                                 None => (None, false),
                             };
 
+                            let form = req.parse_form_body();
+
                             let ctx = RequestContext {
                                 params,
                                 headers: req.headers.clone(),
                                 claims: None,
                                 query: req.query.clone(),
-                                session: session_ptr.clone(), // No second lookup
+                                session: session_ptr.clone(),
+                                form,
                             };
 
                             let mut res = handler(ctx);
