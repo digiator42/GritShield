@@ -25,6 +25,16 @@ impl RequestContext {
     }
 }
 
+// The struct that will be globally collected from any file
+pub struct AutoRoute {
+    pub path: &'static str,
+    pub method: HttpMethod,
+    pub handler: Handler,
+}
+
+// Tell the compiler to create a tracking registry for AutoRoute elements
+inventory::collect!(AutoRoute);
+
 pub struct Node {
     pub children: HashMap<String, Node>,
     pub is_end: bool,
@@ -56,10 +66,24 @@ pub struct Router {
 
 impl Router {
     pub fn new() -> Self {
-        Router {
+        let mut router = Router {
             root: Node::new(),
             middlewares: Vec::new(),
+        };
+
+        for route in inventory::iter::<AutoRoute> {
+            println!(
+                "[AUTO-DISCOVERY] Registering {} {:?}",
+                route.path, route.method
+            );
+            router.add_route(route.method, route.path, route.handler);
         }
+
+        router
+    }
+
+    pub fn mount(&mut self, route_info: (&str, HttpMethod, Handler)) {
+        self.add_route(route_info.1, route_info.0, route_info.2);
     }
 
     pub fn add_middleware<M: Middleware + 'static>(&mut self, middleware: M) {

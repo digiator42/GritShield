@@ -1,0 +1,12 @@
+[package]
+name = "framework_macros"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+proc-macro = true # tells Rust this crate manipulates syntax trees
+
+[dependencies]
+syn = { version = "2.0", features = ["full"] }
+quote = "1.0"
+inventory = "0.3"

@@ -4,6 +4,7 @@ use crate::{
     routing::trie::RequestContext,
     security::xss::{SafeHtml, Sanitizer},
 };
+use framework_macros::{delete, get, post, put};
 use maud::html;
 
 pub fn profile_handler(ctx: RequestContext) -> Response {
@@ -24,6 +25,7 @@ pub fn products_handler(_: RequestContext) -> Response {
     Response::new(200, body)
 }
 
+#[get("/static/:*path")]
 pub fn static_handler(ctx: RequestContext) -> Response {
     let path = ctx.params.get("*path").unwrap();
 
@@ -46,6 +48,7 @@ pub fn dashboard_handler(ctx: RequestContext) -> Response {
     Response::new(401, Sanitizer::trust("<h1>Session Required</h1>"))
 }
 
+#[get("/")]
 pub fn home_handler(ctx: RequestContext) -> Response {
     let user_name = ctx
         .session
@@ -57,7 +60,7 @@ pub fn home_handler(ctx: RequestContext) -> Response {
                 .cloned()
                 .unwrap_or("Guest".to_string())
         })
-        .unwrap_or("Guest".to_string());
+        .unwrap_or("GUEST".to_string());
 
     let search_query = ctx
         .query
@@ -77,6 +80,7 @@ pub fn home_handler(ctx: RequestContext) -> Response {
     )
 }
 
+#[post("/upload")]
 pub fn handle_upload(ctx: RequestContext) -> Response {
     // Get text fields safely
     let description = ctx
@@ -112,4 +116,20 @@ pub fn handle_upload(ctx: RequestContext) -> Response {
         400,
         crate::security::xss::Sanitizer::trust("<h1>File upload failed</h1>"),
     )
+}
+
+#[put("/items/update/:id")]
+pub fn update_item(ctx: RequestContext) -> Response {
+    let item_id = ctx.params.get("id").unwrap().as_str();
+    println!("Updating database item ID: {}", item_id);
+
+    Response::new(200, Sanitizer::trust("<h1>Item Updated</h1>"))
+}
+
+#[delete("/items/delete/:id")]
+pub fn delete_item(ctx: RequestContext) -> Response {
+    let item_id = ctx.params.get("id").unwrap().as_str();
+    println!("Purging item ID: {}", item_id);
+
+    Response::new(200, Sanitizer::trust("<h1>Item Deleted</h1>"))
 }

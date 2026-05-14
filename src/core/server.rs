@@ -12,6 +12,7 @@ use crate::routing::trie::{RequestContext, Router, RoutingResult};
 use crate::security::middleware::MiddlewareResult;
 use crate::security::session::{Session, SessionStore};
 use crate::security::xss::{SafeHtml, Sanitizer, UntrustedString};
+use crate::utils::reloader::HotReloader;
 
 pub struct ThreadPool {
     workers: Vec<Worker>,
@@ -67,7 +68,18 @@ impl Worker {
     }
 }
 
-pub fn run_server(host: &str, port: &str, router: Router) {
+pub fn run_server(host: &str, port: &str, router: Router, use_reloader: bool) {
+    if use_reloader {
+        // If we are the supervisor, this function will block and run the watcher loop.
+        // If we are the child worker, it returns immediately and boots the actual TCP listener.
+        HotReloader::start();
+
+        if std::env::var("RUNNING_UNDER_RELOADER").is_err() {
+            // The supervisor exits here once the main watcher loop closes
+            std::process::exit(0);
+        }
+    }
+
     let listener = TcpListener::bind(format!("{}:{}", host, port)).unwrap();
     let pool = ThreadPool::new(4);
 
