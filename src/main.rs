@@ -1,10 +1,11 @@
 use std::sync::Arc;
 
+use gritshield::migration::src::lib::Migrator;
+use gritshield::migration::src::lib::MigratorTrait;
 use gritshield::security::middleware::{LoggerMiddleware, SessionMiddleware};
 use gritshield::security::session::SessionStore;
 use gritshield::{
     core::server::run_server,
-    protocol::request::HttpMethod,
     routing::trie::Router,
     security::{jwt::JwtHandler, middleware::AuthMiddleware},
 };
@@ -20,6 +21,10 @@ async fn main() {
     let mut router = Router::new();
 
     let shared_db = std::sync::Arc::new(db);
+
+    Migrator::up(&*shared_db, None)
+        .await
+        .expect("Migration failed!");
 
     router.add_middleware(LoggerMiddleware);
 
@@ -56,5 +61,5 @@ async fn main() {
     // router.add_route(HttpMethod::POST, "/upload", handle_upload); // PUBLIC
     // router.add_route(HttpMethod::GET, "/profile/:name", profile_handler); // PROTECTED
 
-    run_server("127.0.0.1", "8080", router, shared_db, false).await;
+    run_server("127.0.0.1", "8080", router, shared_db, true).await;
 }
