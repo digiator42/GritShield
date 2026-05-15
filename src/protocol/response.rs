@@ -45,7 +45,7 @@ impl Response {
         Response {
             status,
             headers: vec![
-                ("Content-Type".to_string(), "text/html".to_string()),
+                ("Content-Type".to_string(), "text/html; charset=utf-8".to_string()),
                 ("X-Content-Type-Options".to_string(), "nosniff".to_string()),
                 ("X-Frame-Options".to_string(), "DENY".to_string()),
             ],

@@ -63,8 +63,9 @@ pub fn main_layout(title: &str, content: maud::Markup) -> maud::Markup {
         (maud::DOCTYPE)
         html {
             head {
+                meta charset="utf-8";
                 title { (title) }
-                link rel="stylesheet" href="/static/style.css";
+                link rel="stylesheet" href="/static/css/style.css";
             }
             body {
                 nav {
@@ -75,7 +76,7 @@ pub fn main_layout(title: &str, content: maud::Markup) -> maud::Markup {
                     (content)
                 }
                 footer {
-                    p { "Crafted safely with Gritshield Web Engine Engine" }
+                    p { "Gritshield Web Engine" }
                 }
             }
         }
@@ -103,7 +104,10 @@ async fn index(_ctx: RequestContext) -> Response {
 #[get("/static/:*path")]
 async fn static_assets(ctx: RequestContext) -> Response {
     let path = ctx.params.get("*path").unwrap().as_str();
-    Response::static_file(path)
+
+    let full_fs_path = format!("static/{}", path);
+
+    Response::static_file(&full_fs_path)
 }
 
 #[tokio::main]
@@ -120,7 +124,7 @@ async fn main() {
 "#;
     write_file(&base_path.join("src/main.rs"), main_rs);
 
-    // 6. Write a boilerplate static/style.css file
+    // Write a boilerplate static/css/style.css file
     let style_css = r#"body {
     font-family: system-ui, -apple-system, sans-serif;
     background: #0f172a;
@@ -138,13 +142,32 @@ async fn main() {
 }
 nav {
     display: flex;
-    justify-content: space-between;
-    margin-bottom: 2rem;
+    align-items: center;
+    max-width: 90%;
+    margin: auto;
+    margin-bottom: 10px;
+    padding: 1rem 1.5rem;
+    background: linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%);
+    border-radius: 8px;
+    gap: 1.5rem;
 }
-a { color: #38bdf8; text-decoration: none; }
+.nav-links {
+    display: flex;
+    gap: 1rem;
+    margin-left: auto;
+}
+nav a {
+    color: #ffffff;
+    font-weight: 500;
+    transition: opacity 0.2s;
+}
+nav a:hover {
+    opacity: 0.8;
+}
+
 footer { margin-top: 2rem; text-align: center; color: #64748b; font-size: 0.875rem; }
 "#;
-    write_file(&base_path.join("static/style.css"), style_css);
+    write_file(&base_path.join("static/css/style.css"), style_css);
 
     println!("✨ Project setup complete! Run the following to start cooking:\n");
     println!("   cd {}", name);
