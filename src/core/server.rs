@@ -143,9 +143,9 @@ async fn handle_connection(mut stream: TcpStream, router: Arc<Router>) {
                     let response = match routing_result {
                         RoutingResult::Found(handler, params) => {
                             // Extract session data carried from middleware
-                            let (session_ptr, is_new_session) = match session_state {
-                                Some((ptr, is_new)) => (Some(ptr), is_new),
-                                None => (None, false),
+                            let (session_ptr, claims_ptr, is_new_session) = match session_state {
+                                Some(s) => (s.session, s.claims, false),
+                                None => (None, None, false),
                             };
 
                             let form = req.parse_form_body();
@@ -153,7 +153,7 @@ async fn handle_connection(mut stream: TcpStream, router: Arc<Router>) {
                             let ctx = RequestContext {
                                 params,
                                 headers: req.headers.clone(),
-                                claims: None,
+                                claims: claims_ptr,
                                 query: req.query.clone(),
                                 session: session_ptr.clone(),
                                 form,

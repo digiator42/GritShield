@@ -1,15 +1,21 @@
 use std::sync::{Arc, Mutex};
 
 use crate::protocol::{request::Request, response::Response};
-use crate::security::jwt::JwtHandler;
+use crate::security::jwt::{Claims, JwtHandler};
 use crate::security::rate_limit::RateLimiter;
 use crate::security::session::{Session, SessionStore};
 use crate::security::xss::Sanitizer;
 use colored::*;
 
 pub enum MiddlewareResult {
-    Next(Option<(Arc<Mutex<Session>>, bool)>), // Carry session state forward
-    Error(Response),                           // Stop and return error immediately
+    Next(Option<MiddlewareState>), // State can hold session data, claims, or both
+    Error(Response),               // Stop and return error immediately
+}
+
+// A state packer to carry data down the pipe safely
+pub struct MiddlewareState {
+    pub session: Option<Arc<Mutex<Session>>>,
+    pub claims: Option<Claims>,
 }
 
 pub trait Middleware: Send + Sync {
@@ -42,7 +48,14 @@ impl Middleware for AuthMiddleware {
                 match self.jwt_handler.verify(token) {
                     Ok(claims) => {
                         println!("[AUTH] Verified user: {}", claims.sub);
-                        return MiddlewareResult::Next(None);
+
+                        // Pass the verified claims into the pipeline state instead of dropping them
+                        let forward_state = MiddlewareState {
+                            session: None, // No session, stateless
+                            claims: Some(claims),
+                        };
+
+                        return MiddlewareResult::Next(Some(forward_state));
                     }
                     Err(e) => {
                         println!("[AUTH] Rejected: {}", e);
@@ -85,7 +98,10 @@ impl Middleware for SessionMiddleware {
         let store = self.store.sessions.lock().unwrap();
         if let Some(sid) = session_id {
             if let Some(session_ptr) = store.get(&sid) {
-                return MiddlewareResult::Next(Some((Arc::clone(session_ptr), false)));
+                return MiddlewareResult::Next(Some(MiddlewareState {
+                    session: Some(Arc::clone(session_ptr)),
+                    claims: None, // No JWT claims here
+                }));
             }
         }
 
