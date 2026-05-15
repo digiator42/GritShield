@@ -653,15 +653,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "framework_macros"
-version = "0.1.0"
-dependencies = [
- "inventory",
- "quote",
- "syn 2.0.117",
-]
-
-[[package]]
 name = "fsevent"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -856,8 +847,8 @@ version = "0.1.0"
 dependencies = [
  "base64 0.21.7",
  "colored",
- "framework_macros",
  "futures",
+ "gritshield_macros",
  "hmac",
  "inventory",
  "maud",
@@ -871,6 +862,15 @@ dependencies = [
  "sha2",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "gritshield_macros"
+version = "0.1.0"
+dependencies = [
+ "inventory",
+ "quote",
+ "syn 2.0.117",
 ]
 
 [[package]]

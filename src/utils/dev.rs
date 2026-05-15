@@ -5,7 +5,7 @@ use crate::{
     routing::trie::RequestContext,
     security::xss::{SafeHtml, Sanitizer},
 };
-use framework_macros::{delete, get, post, put};
+use gritshield_macros::{delete, get, post, put};
 use maud::html;
 use sea_orm::ColumnTrait;
 use sea_orm::{EntityTrait, ModelTrait, QueryFilter};
@@ -164,9 +164,7 @@ pub async fn user_profile(ctx: RequestContext) -> Response {
         .await;
 
     match user_res {
-        Ok(Some(user)) => {
-            Response::new(200, Sanitizer::trust("User found"))
-        },
+        Ok(Some(user)) => Response::new(200, Sanitizer::trust("User found")),
         Ok(None) => Response::new(404, Sanitizer::trust("User not found")),
         Err(e) => {
             println!("Database Error: {:?}", e);
