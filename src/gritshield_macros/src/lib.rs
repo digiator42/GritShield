@@ -18,14 +18,14 @@ pub fn get(attr: TokenStream, item: TokenStream) -> TokenStream {
         #input_fn
 
         // The wrapper that matches the 'Handler' type signature
-        #vis fn #wrapper_name(ctx: RequestContext) -> futures::future::BoxFuture<'static, Response> {
-            Box::pin(#fn_name(ctx))
-        }
+        #vis fn #wrapper_name(ctx: gritshield::routing::trie::RequestContext) -> gritshield::futures::future::BoxFuture<'static, gritshield::protocol::response::Response> {
+        Box::pin(#fn_name(ctx))
+    }
 
-        inventory::submit! {
-            crate::routing::trie::AutoRoute {
+        gritshield::inventory::submit! {
+            gritshield::routing::trie::AutoRoute {
                 path: #path,
-                method: crate::protocol::request::HttpMethod::GET,
+                method: gritshield::protocol::request::HttpMethod::GET,
                 handler: #wrapper_name // Register the wrapper
             }
         }
@@ -48,14 +48,14 @@ pub fn post(attr: TokenStream, item: TokenStream) -> TokenStream {
         #input_fn
 
                 // The wrapper that matches the 'Handler' type signature
-        #vis fn #wrapper_name(ctx: RequestContext) -> futures::future::BoxFuture<'static, Response> {
-            Box::pin(#fn_name(ctx))
-        }
+        #vis fn #wrapper_name(ctx: gritshield::routing::trie::RequestContext) -> gritshield::futures::future::BoxFuture<'static, gritshield::protocol::response::Response> {
+        Box::pin(#fn_name(ctx))
+    }
 
-        inventory::submit! {
-            crate::routing::trie::AutoRoute {
+        gritshield::inventory::submit! {
+            gritshield::routing::trie::AutoRoute {
                 path: #path,
-                method: crate::protocol::request::HttpMethod::POST,
+                method: gritshield::protocol::request::HttpMethod::POST,
                 handler: #wrapper_name // Register the wrapper
             }
         }
@@ -78,14 +78,13 @@ pub fn put(attr: TokenStream, item: TokenStream) -> TokenStream {
         #input_fn
 
                 // The wrapper that matches the 'Handler' type signature
-        #vis fn #wrapper_name(ctx: RequestContext) -> futures::future::BoxFuture<'static, Response> {
-            Box::pin(#fn_name(ctx))
-        }
-
-        inventory::submit! {
-            crate::routing::trie::AutoRoute {
+        #vis fn #wrapper_name(ctx: gritshield::routing::trie::RequestContext) -> gritshield::futures::future::BoxFuture<'static, gritshield::protocol::response::Response> {
+        Box::pin(#fn_name(ctx))
+    }
+        gritshield::inventory::submit! {
+            gritshield::routing::trie::AutoRoute {
                 path: #path,
-                method: crate::protocol::request::HttpMethod::PUT,
+                method: gritshield::protocol::request::HttpMethod::PUT,
                 handler: #wrapper_name // Register the wrapper
             }
         }
@@ -100,7 +99,7 @@ pub fn patch(attr: TokenStream, item: TokenStream) -> TokenStream {
     let input_fn = parse_macro_input!(item as ItemFn);
     let fn_name = &input_fn.sig.ident;
 
-        let vis = &input_fn.vis;
+    let vis = &input_fn.vis;
 
     let wrapper_name = syn::Ident::new(&format!("{}_wrapper", fn_name), fn_name.span());
 
@@ -108,14 +107,14 @@ pub fn patch(attr: TokenStream, item: TokenStream) -> TokenStream {
         #input_fn
 
                 // The wrapper that matches the 'Handler' type signature
-        #vis fn #wrapper_name(ctx: RequestContext) -> futures::future::BoxFuture<'static, Response> {
-            Box::pin(#fn_name(ctx))
-        }
+        #vis fn #wrapper_name(ctx: gritshield::routing::trie::RequestContext) -> gritshield::futures::future::BoxFuture<'static, gritshield::protocol::response::Response> {
+        Box::pin(#fn_name(ctx))
+    }
 
-        inventory::submit! {
-            crate::routing::trie::AutoRoute {
+        gritshield::inventory::submit! {
+            gritshield::routing::trie::AutoRoute {
                 path: #path,
-                method: crate::protocol::request::HttpMethod::PATCH,
+                method: gritshield::protocol::request::HttpMethod::PATCH,
                 handler: #wrapper_name // Register the wrapper
             }
         }
@@ -129,8 +128,8 @@ pub fn delete(attr: TokenStream, item: TokenStream) -> TokenStream {
     let path = parse_macro_input!(attr as LitStr);
     let input_fn = parse_macro_input!(item as ItemFn);
     let fn_name = &input_fn.sig.ident;
-    
-        let vis = &input_fn.vis;
+
+    let vis = &input_fn.vis;
 
     let wrapper_name = syn::Ident::new(&format!("{}_wrapper", fn_name), fn_name.span());
 
@@ -138,14 +137,14 @@ pub fn delete(attr: TokenStream, item: TokenStream) -> TokenStream {
         #input_fn
 
                 // The wrapper that matches the 'Handler' type signature
-        #vis fn #wrapper_name(ctx: RequestContext) -> futures::future::BoxFuture<'static, Response> {
-            Box::pin(#fn_name(ctx))
-        }
+        #vis fn #wrapper_name(ctx: gritshield::routing::trie::RequestContext) -> gritshield::futures::future::BoxFuture<'static, gritshield::protocol::response::Response> {
+        Box::pin(#fn_name(ctx))
+    }
 
-        inventory::submit! {
-            crate::routing::trie::AutoRoute {
+        gritshield::inventory::submit! {
+            gritshield::routing::trie::AutoRoute {
                 path: #path,
-                method: crate::protocol::request::HttpMethod::DELETE,
+                method: gritshield::protocol::request::HttpMethod::DELETE,
                 handler: #wrapper_name // Register the wrapper
             }
         }

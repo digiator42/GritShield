@@ -1,3 +1,5 @@
+pub use futures;
+pub use inventory;
 pub mod core;
 pub mod protocol {
     pub mod form;

@@ -2,7 +2,7 @@
 name = "gritshield"
 version = "0.1.0"
 authors = ["Ahmed Hassan <digiator2020@gmail.com>"]
-edition = "2026"
+edition = "2024"
 description = "A security-first, high-performance micro-framework."
 license = "Apache-2.0"
 repository = "https://github.com/digiator42/Gritshield"
@@ -13,7 +13,7 @@ categories = ["web-programming::http-server"]
 [dependencies]
 colored = "2.1"
 regex = "1"
-hmac = "0.12.1"
+hmac = "0.13.0"
 sha2 = "0.10.6"
 base64 = "0.21.0"
 serde = { version = "1.0", features = ["derive"] }

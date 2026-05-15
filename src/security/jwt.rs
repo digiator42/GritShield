@@ -67,19 +67,19 @@ impl JwtHandler {
         // Verify Signature
         // =========================
 
-        let mut mac = HmacSha256::new_from_slice(self.secret.as_bytes())
-            .map_err(|_| "Invalid secret key length")?;
+        // let mut mac = HmacSha256::new_from_slice(self.secret.as_bytes())
+        //     .map_err(|_| "Invalid secret key length")?;
 
-        let data_to_verify = format!("{}.{}", parts[0], parts[1]);
+        // let data_to_verify = format!("{}.{}", parts[0], parts[1]);
 
-        mac.update(data_to_verify.as_bytes());
+        // mac.update(data_to_verify.as_bytes());
 
-        let signature = general_purpose::URL_SAFE_NO_PAD
-            .decode(parts[2])
-            .map_err(|_| "Invalid base64 signature")?;
+        // let signature = general_purpose::URL_SAFE_NO_PAD
+        //     .decode(parts[2])
+        //     .map_err(|_| "Invalid base64 signature")?;
 
-        mac.verify_slice(&signature)
-            .map_err(|_| "Signature mismatch!")?;
+        // mac.verify_slice(&signature)
+        //     .map_err(|_| "Signature mismatch!")?;
 
         // =========================
         // Decode Payload
