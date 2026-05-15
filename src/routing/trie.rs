@@ -79,6 +79,7 @@ pub struct Router {
     root: Node,
     middlewares: Vec<Box<dyn Middleware>>, // A list of dynamic trait objects
     pub db: Option<Arc<DatabaseConnection>>, // An optional database connection
+    pub use_logger: bool,
 }
 
 impl Router {
@@ -87,11 +88,12 @@ impl Router {
             root: Node::new(),
             middlewares: Vec::new(),
             db: None,
+            use_logger: false,
         };
 
         for route in inventory::iter::<AutoRoute> {
             println!(
-                "[AUTO-DISCOVERY] Registering {} {:?}",
+                "[AUTO-ROUTING] Registering {} {:?}",
                 route.path, route.method
             );
             router.add_route(route.method, route.path, route.handler);
@@ -102,6 +104,12 @@ impl Router {
 
     pub fn mound_db(mut self, db: Arc<DatabaseConnection>) -> Self {
         self.db = Some(db);
+        self
+    }
+
+    /// Premium builder to switch on detailed diagnostic server logs
+    pub fn mount_logger(mut self) -> Self {
+        self.use_logger = true;
         self
     }
 

@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 use std::time::Duration;
 
+use crate::core::logger::log_request_summary;
 use crate::protocol::request::{HttpMethod, Request};
 use crate::protocol::response::{Response, ResponseBody};
 use crate::routing::trie::{RequestContext, Router, RoutingResult};
@@ -69,12 +70,7 @@ impl Worker {
     }
 }
 
-pub async fn run_server(
-    host: &str,
-    port: &str,
-    router: Router,
-    use_reloader: bool,
-) {
+pub async fn run_server(host: &str, port: &str, router: Router, use_reloader: bool) {
     if use_reloader {
         // If we are the supervisor, this function will block and run the watcher loop.
         // If we are the child worker, it returns immediately and boots the actual TCP listener.
@@ -127,6 +123,8 @@ async fn handle_connection(mut stream: TcpStream, router: Arc<Router>) {
         return;
     }
 
+    let start_time = std::time::Instant::now();
+
     match Request::parse(&mut stream) {
         Ok(req) => {
             // Run Middleware Chain
@@ -134,6 +132,11 @@ async fn handle_connection(mut stream: TcpStream, router: Arc<Router>) {
                 MiddlewareResult::Error(err_res) => {
                     let (bytes, mime) = err_res.resolve();
                     let _ = stream.write_all(&err_res.to_bytes(&bytes, &mime));
+
+                    if router.use_logger {
+                        log_request_summary(&req, err_res.status, start_time.elapsed(), None, None);
+                    }
+
                     return;
                 }
                 MiddlewareResult::Next(session_state) => {
@@ -144,11 +147,18 @@ async fn handle_connection(mut stream: TcpStream, router: Arc<Router>) {
                         RoutingResult::Found(handler, params) => {
                             // Extract session data carried from middleware
                             let (session_ptr, claims_ptr, is_new_session) = match session_state {
-                                Some(s) => (s.session, s.claims, false),
+                                Some(state) => (state.session, state.claims, false),
                                 None => (None, None, false),
                             };
 
                             let form = req.parse_form_body();
+
+                            // Extract the session ID by safely borrowing the extracted pointer
+                            let session_id_log =
+                                session_ptr.as_ref().map(|s| s.lock().unwrap().id.clone());
+
+                            // Extract the JWT Subject by safely borrowing the extracted claims
+                            let jwt_sub_log = claims_ptr.as_ref().map(|c| c.sub.clone());
 
                             let ctx = RequestContext {
                                 params,
@@ -159,22 +169,34 @@ async fn handle_connection(mut stream: TcpStream, router: Arc<Router>) {
                                 form,
                                 db: router.db.clone(),
                                 raw_body: req.body.clone(),
-                                content_type: req.headers.get("content-type").cloned()
+                                content_type: req.headers.get("content-type").cloned(),
                             };
 
-                            let mut res = handler(ctx).await;
+                            let mut response: Response = handler(ctx).await;
+
+                            if router.use_logger {
+                                log_request_summary(
+                                    &req,
+                                    response.status,
+                                    start_time.elapsed(),
+                                    session_id_log,
+                                    jwt_sub_log,
+                                );
+                            }
 
                             // Set the cookie only if the middleware flagged it as new
                             if is_new_session {
                                 if let Some(s) = session_ptr {
                                     let sid = s.lock().unwrap().id.clone();
-                                    res.cookies.push(crate::protocol::response::Cookie::new(
-                                        "session_id",
-                                        &sid,
-                                    ));
+                                    response
+                                        .cookies
+                                        .push(crate::protocol::response::Cookie::new(
+                                            "session_id",
+                                            &sid,
+                                        ));
                                 }
                             }
-                            res
+                            response
                         }
                         RoutingResult::NotFound => {
                             Response::new(404, Sanitizer::trust("<h1>404</h1>"))
