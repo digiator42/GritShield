@@ -50,7 +50,7 @@ fn colorize_status(status: u16) -> String {
     match status {
         200..=299 => format!("{}", status).green().bold().to_string(), // Green
         300..=399 => format!("{}", status).cyan().to_string(),         // Cyan
-        400..=499 => format!("{}", status).yellow().to_string(),       // Yellow
-        _ => format!("{}", status).red().to_string(),                  // Red
+        400..=499 => format!("{}", status).red().to_string(),       // Red
+        _ => format!("{}", status).yellow().to_string(),                  // yellow
     }
 }

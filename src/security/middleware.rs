@@ -27,32 +27,74 @@ pub struct AuthMiddleware {
     pub public_paths: Vec<String>, // List of open routes
 }
 
+impl AuthMiddleware {
+    /// Internal helper to evaluate whether a path matches a whitelisted path rule
+    fn is_public(&self, incoming_path: &str) -> bool {
+        let incoming_segments: Vec<&str> =
+            incoming_path.split('/').filter(|s| !s.is_empty()).collect();
+
+        for rule in &self.public_paths {
+            let rule_segments: Vec<&str> = rule.split('/').filter(|s| !s.is_empty()).collect();
+
+            // Handle explicit root match ("/")
+            if rule == "/" && incoming_path == "/" {
+                return true;
+            }
+
+            let mut matches = true;
+            for (i, rule_seg) in rule_segments.iter().enumerate() {
+                // If we hit your wildcard token variant, everything past this point matches!
+                if *rule_seg == "*" || rule_seg.starts_with(':') && rule_seg.contains('*') {
+                    return true;
+                }
+
+                // If the incoming path is shorter than the rule segment check, it's not a match
+                if i >= incoming_segments.len() {
+                    matches = false;
+                    break;
+                }
+
+                // Standard exact segment match evaluation
+                if rule_seg != &incoming_segments[i] {
+                    matches = false;
+                    break;
+                }
+            }
+
+            // If we checked all rule segments perfectly and length matches, it's a valid match
+            if matches && incoming_segments.len() == rule_segments.len() {
+                return true;
+            }
+        }
+
+        false
+    }
+}
+
 impl Middleware for AuthMiddleware {
     fn execute(&self, req: &Request) -> MiddlewareResult {
-        // Check if the current path is in the whitelist
-        // We use .starts_with to handle sub-paths or exact matches
-        if self
-            .public_paths
-            .iter()
-            .any(|path| req.path.starts_with(path))
-        {
+        // Smart match calculation using exact segment-by-segment mapping
+        if self.is_public(&req.path) {
+            //
             return MiddlewareResult::Next(None);
         }
 
         // Extract Header
         if let Some(auth_header) = req.headers.get("authorization") {
+            //
             if auth_header.starts_with("Bearer ") {
                 let token = &auth_header[7..];
 
                 // Verify Token
                 match self.jwt_handler.verify(token) {
+                    //
                     Ok(claims) => {
-                        println!("[AUTH] Verified user: {}", claims.sub);
+                        //
+                        println!("[AUTH] Verified user: {}", claims.sub); //
 
-                        // Pass the verified claims into the pipeline state instead of dropping them
                         let forward_state = MiddlewareState {
-                            session: None, // No session, stateless
-                            claims: Some(claims),
+                            session: None,
+                            claims: Some(claims), //
                         };
 
                         return MiddlewareResult::Next(Some(forward_state));
@@ -64,9 +106,9 @@ impl Middleware for AuthMiddleware {
             }
         }
 
-        // Fail: Short-circuit the request
-        let err_body = Sanitizer::trust("<h1>401 Unauthorized</h1>");
-        MiddlewareResult::Error(Response::new(401, err_body))
+        // Fail: Short-circuit the request safely
+        let err_body = Sanitizer::trust("<h1>401 Unauthorized</h1>"); //
+        MiddlewareResult::Error(Response::new(401, err_body)) //
     }
 }
 
