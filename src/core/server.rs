@@ -69,7 +69,12 @@ impl Worker {
     }
 }
 
-pub async fn run_server(host: &str, port: &str, router: Router, db: Arc<DatabaseConnection>, use_reloader: bool) {
+pub async fn run_server(
+    host: &str,
+    port: &str,
+    router: Router,
+    use_reloader: bool,
+) {
     if use_reloader {
         // If we are the supervisor, this function will block and run the watcher loop.
         // If we are the child worker, it returns immediately and boots the actual TCP listener.
@@ -86,7 +91,7 @@ pub async fn run_server(host: &str, port: &str, router: Router, db: Arc<Database
 
     println!(
         "{} {}:{}",
-        "Security Kernel Online at".green().bold(),
+        "[GRITSHIELD] Server Online at".green().bold(),
         host,
         port
     );
@@ -97,18 +102,21 @@ pub async fn run_server(host: &str, port: &str, router: Router, db: Arc<Database
     for stream in listener.incoming() {
         let stream = stream.unwrap();
         let router = Arc::clone(&router);
-        let db = Arc::clone(&db);
 
         pool.execute(move || {
             // We use a block_on to bridge the Synchronous ThreadPool with our Async DB calls
-            tokio::runtime::Runtime::new().unwrap().block_on(async {
-                handle_connection(stream, router, db).await;
-            });
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(async {
+                    handle_connection(stream, router).await;
+                });
         });
     }
 }
 
-async fn handle_connection(mut stream: TcpStream, router: Arc<Router>, db: Arc<DatabaseConnection>) {
+async fn handle_connection(mut stream: TcpStream, router: Arc<Router>) {
     if let Err(e) = stream.set_read_timeout(Some(Duration::from_secs(5))) {
         eprintln!("Kernel Error: Failed to set read timeout: {}", e);
         return;
@@ -149,7 +157,7 @@ async fn handle_connection(mut stream: TcpStream, router: Arc<Router>, db: Arc<D
                                 query: req.query.clone(),
                                 session: session_ptr.clone(),
                                 form,
-                                db: Arc::clone(&db),
+                                db: router.db.clone(),
                             };
 
                             let mut res = handler(ctx).await;

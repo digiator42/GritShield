@@ -19,7 +19,7 @@ pub struct RequestContext {
     pub query: HashMap<String, UntrustedString>,
     pub session: Option<Arc<Mutex<Session>>>,
     pub form: FormData,
-    pub db: Arc<DatabaseConnection>,
+    pub db: Option<Arc<DatabaseConnection>>,
 }
 
 impl RequestContext {
@@ -66,6 +66,7 @@ pub enum RoutingResult {
 pub struct Router {
     root: Node,
     middlewares: Vec<Box<dyn Middleware>>, // A list of dynamic trait objects
+    pub db: Option<Arc<DatabaseConnection>>, // An optional database connection
 }
 
 impl Router {
@@ -73,6 +74,7 @@ impl Router {
         let mut router = Router {
             root: Node::new(),
             middlewares: Vec::new(),
+            db: None,
         };
 
         for route in inventory::iter::<AutoRoute> {
@@ -84,6 +86,11 @@ impl Router {
         }
 
         router
+    }
+
+    pub fn mound_db(mut self, db: Arc<DatabaseConnection>) -> Self {
+        self.db = Some(db);
+        self
     }
 
     pub fn mount(&mut self, route_info: (&str, HttpMethod, Handler)) {
