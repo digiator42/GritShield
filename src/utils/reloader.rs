@@ -85,7 +85,7 @@ impl HotReloader {
         Command::new("cargo")
             .arg("run")
             .current_dir(current_dir) 
-            .env("CARGO_TARGET_DIR", current_dir.join("target/reloader"))
+            .env("CARGO_TARGET_DIR", current_dir.join("target/reloader")) // Private target folder inside developer app
             .env("RUNNING_UNDER_RELOADER", "1")
             .spawn()
             .expect("Failed to execute application process")
