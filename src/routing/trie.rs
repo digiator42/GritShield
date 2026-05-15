@@ -20,12 +20,24 @@ pub struct RequestContext {
     pub session: Option<Arc<Mutex<Session>>>,
     pub form: FormData,
     pub db: Option<Arc<DatabaseConnection>>,
+    pub raw_body: Vec<u8>,
+    pub content_type: Option<String>,
 }
 
 impl RequestContext {
     pub fn start_session(store: &SessionStore) -> Arc<Mutex<Session>> {
         let (ptr, _) = store.get_or_create(None);
         ptr
+    }
+
+    /// A helper method allowing handlers to cleanly extract JSON data structures
+    pub fn json<T: serde::de::DeserializeOwned>(&self) -> Result<T, String> {
+        let content_type = self.content_type.as_deref().unwrap_or("");
+        if !content_type.starts_with("application/json") {
+            return Err("Content-Type must be application/json".to_string());
+        }
+        serde_json::from_slice(&self.raw_body)
+            .map_err(|e| format!("Failed to parse JSON body: {}", e))
     }
 }
 

@@ -1,4 +1,7 @@
-use crate::{security::xss::{SafeHtml, Sanitizer}, utils::fs};
+use crate::{
+    security::xss::{SafeHtml, Sanitizer},
+    utils::fs,
+};
 
 pub enum SameSite {
     Strict,
@@ -31,6 +34,7 @@ impl Cookie {
 pub enum ResponseBody {
     Html(SafeHtml),
     StaticFile(String),
+    Json(String),
 }
 
 pub struct Response {
@@ -45,7 +49,10 @@ impl Response {
         Response {
             status,
             headers: vec![
-                ("Content-Type".to_string(), "text/html; charset=utf-8".to_string()),
+                (
+                    "Content-Type".to_string(),
+                    "text/html; charset=utf-8".to_string(),
+                ),
                 ("X-Content-Type-Options".to_string(), "nosniff".to_string()),
                 ("X-Frame-Options".to_string(), "DENY".to_string()),
             ],
@@ -108,21 +115,40 @@ impl Response {
         raw
     }
 
-    /// The Kernel Resolver: Converts the abstract body into raw bytes and a MIME type
+    /// A premium API helper that serializes data structure payloads automatically
+    pub fn json<T: serde::Serialize>(status: u16, data: &T) -> Self {
+        let json_string = serde_json::to_string(data)
+            .unwrap_or_else(|_| r#"{"error": "Internal Server Serialization Error"}"#.to_string());
+
+        Response {
+            status,
+            headers: vec![
+                (
+                    "Content-Type".to_string(),
+                    "application/json; charset=utf-8".to_string(),
+                ),
+                ("X-Content-Type-Options".to_string(), "nosniff".to_string()),
+            ],
+            cookies: Vec::new(),
+            body: ResponseBody::Json(json_string),
+        }
+    }
+
+    /// Kernel Resolver modification to emit bytes
     pub fn resolve(&self) -> (Vec<u8>, String) {
         match &self.body {
             ResponseBody::Html(html) => (html.as_bytes().to_vec(), "text/html".to_string()),
-            ResponseBody::StaticFile(path) => {
-                // Use our secure fs utility to fetch file data
-                fs::serve_static(path).unwrap_or_else(|_| {
-                    (
-                        Sanitizer::trust("<h1>404 File Not Found</h1>")
-                            .as_bytes()
-                            .to_vec(),
-                        "text/html".to_string(),
-                    )
-                })
+            ResponseBody::Json(json_str) => {
+                (json_str.as_bytes().to_vec(), "application/json".to_string())
             }
+            ResponseBody::StaticFile(path) => fs::serve_static(path).unwrap_or_else(|_| {
+                (
+                    Sanitizer::trust("<h1>404 File Not Found</h1>")
+                        .as_bytes()
+                        .to_vec(),
+                    "text/html".to_string(),
+                )
+            }),
         }
     }
 }

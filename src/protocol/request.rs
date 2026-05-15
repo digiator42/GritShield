@@ -129,6 +129,28 @@ impl Request {
         })
     }
 
+    /// Extracts and parses a JSON payload into a developer-defined Rust struct.
+    /// Implements strong validation against invalid content types.
+    pub fn parse_json_body<T: serde::de::DeserializeOwned>(&self) -> Result<T, String> {
+        // Validation: Ensure the request claims to be JSON
+        let content_type = self
+            .headers
+            .get("content-type")
+            .ok_or_else(|| "Missing Content-Type header".to_string())?;
+
+        if !content_type.starts_with("application/json") {
+            return Err("Unsupported Media Type: Expected application/json".to_string());
+        }
+
+        if self.body.is_empty() {
+            return Err("Empty request body".to_string());
+        }
+
+        // Deserialize the raw bytes into the struct
+        serde_json::from_slice(&self.body)
+            .map_err(|e| format!("JSON Malformed Payload Error: {}", e))
+    }
+
     pub fn parse_form_body(&self) -> FormData {
         let mut form_data = FormData::new();
         let content_type = match self.headers.get("content-type") {

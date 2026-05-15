@@ -158,6 +158,8 @@ async fn handle_connection(mut stream: TcpStream, router: Arc<Router>) {
                                 session: session_ptr.clone(),
                                 form,
                                 db: router.db.clone(),
+                                raw_body: req.body.clone(),
+                                content_type: req.headers.get("content-type").cloned()
                             };
 
                             let mut res = handler(ctx).await;
