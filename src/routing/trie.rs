@@ -6,13 +6,17 @@ use crate::protocol::form::FormData;
 use crate::protocol::request::{HttpMethod, Request};
 use crate::protocol::response::Response;
 use crate::security::jwt::Claims;
-use crate::security::middleware::{Middleware, MiddlewareResult, MiddlewareState};
+use crate::security::middleware::{
+    AfterRequestHook, Middleware, MiddlewareResult, MiddlewareState,
+};
 use crate::security::session::{Session, SessionStore};
 use crate::security::xss::{SafeHtml, UntrustedString};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 pub type Handler = fn(RequestContext) -> BoxFuture<'static, Response>;
+
 #[derive(Clone)]
 pub struct RequestContext {
     pub req: Request,
@@ -83,6 +87,7 @@ pub struct Router {
     root: Node,
     pub middlewares: Vec<Box<dyn Middleware>>, // A list of dynamic trait objects
     pub db: Option<Arc<DatabaseConnection>>,   // An optional database connection
+    pub after_hooks: Vec<Box<dyn AfterRequestHook>>,
     pub use_logger: bool,
 }
 
@@ -93,6 +98,7 @@ impl Router {
             middlewares: Vec::new(),
             db: None,
             use_logger: false,
+            after_hooks: Vec::new(),
         };
 
         for route in inventory::iter::<AutoRoute> {
@@ -121,8 +127,15 @@ impl Router {
         self.add_route(route_info.1, route_info.0, route_info.2);
     }
 
-    pub fn add_middleware<M: Middleware + 'static>(&mut self, middleware: M) {
+    pub fn add_middleware<M: Middleware + 'static>(&mut self, middleware: M) -> &Self {
         self.middlewares.push(Box::new(middleware));
+        self
+    }
+
+    pub fn run_after_hooks(&self, ctx: RequestContext, status: u16, duration: Duration) {
+        for hook in &self.after_hooks {
+            hook.call(&ctx, status, duration);
+        }
     }
 
     pub fn run_middlewares(&self, ctx: &mut RequestContext) -> MiddlewareResult {
@@ -213,6 +226,12 @@ impl Router {
                 }
             }
         }
+    }
+
+    /// Builder to mount custom post-execution lifecycle hooks
+    pub fn add_after_hook(mut self, hook: Box<dyn AfterRequestHook>) -> Self {
+        self.after_hooks.push(hook);
+        self
     }
 
     /// A framework-level diagnostic utility that prints highly optimized operational logs.

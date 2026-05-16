@@ -183,6 +183,9 @@ async fn handle_connection(mut stream: TcpStream, router: Arc<Router>) {
             if router.use_logger {
                 router.log_lifecycle(&ctx, err_res.status, start_time.elapsed());
             }
+
+            router.run_after_hook(ctx, err_res.status, start_time.elapsed());
+
             return;
         }
     }
@@ -196,6 +199,9 @@ async fn handle_connection(mut stream: TcpStream, router: Arc<Router>) {
             if router.use_logger {
                 router.log_lifecycle(&ctx, response.status, start_time.elapsed());
             }
+
+            router.run_after_hooks(ctx, response.status, start_time.elapsed());
+
             response
         }
         RoutingResult::NotFound => Response::new(404, Sanitizer::trust("<h1>404</h1>")),

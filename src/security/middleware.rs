@@ -23,6 +23,10 @@ pub trait Middleware: Send + Sync {
     fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult;
 }
 
+pub trait AfterRequestHook: Send + Sync {
+    fn call(&self, ctx: &RequestContext, status: u16, duration: std::time::Duration);
+}
+
 pub struct AuthMiddleware {
     pub jwt_handler: JwtHandler,
     pub public_paths: Vec<String>, // List of open routes
@@ -182,6 +186,24 @@ impl Middleware for RateLimitMiddleware {
                 .push(("Retry-After".to_string(), "60".to_string()));
 
             MiddlewareResult::Error(res)
+        }
+    }
+}
+
+pub struct MetricsTracker;
+
+impl AfterRequestHook for MetricsTracker {
+    fn call(&self, ctx: &RequestContext, status: u16, _: std::time::Duration) {
+        if status >= 500 {
+            eprintln!(
+                "🚨 [ALERT] Critical server failure detected on path: {}",
+                ctx.req.path
+            );
+        } else if status >= 400 {
+            eprintln!(
+                "🚨 [ALERT] server failure detected on path: {}",
+                ctx.req.path
+            );
         }
     }
 }
