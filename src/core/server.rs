@@ -184,7 +184,7 @@ async fn handle_connection(mut stream: TcpStream, router: Arc<Router>) {
                 router.log_lifecycle(&ctx, err_res.status, start_time.elapsed());
             }
 
-            router.run_after_hook(ctx, err_res.status, start_time.elapsed());
+            router.run_after_hooks(ctx, err_res.status, start_time.elapsed());
 
             return;
         }
