@@ -9,9 +9,10 @@ pub struct Session {
     pub data: HashMap<String, String>,
     pub last_accessed: Instant,
 }
+use dashmap::DashMap;
 
 pub struct SessionStore {
-    pub sessions: Arc<Mutex<HashMap<String, Arc<Mutex<Session>>>>>,
+    pub sessions: Arc<Mutex<DashMap<String, Arc<Mutex<Session>>>>>,
 }
 
 impl SessionStore {
