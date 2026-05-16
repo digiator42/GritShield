@@ -1,7 +1,9 @@
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Read, Write};
-use std::net::TcpStream;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+
+use tokio::io::AsyncReadExt;
+use tokio::net::TcpStream;
+use tokio::time::timeout;
 
 use crate::protocol::form::{FormData, UploadedFile};
 use crate::security::xss::UntrustedString;
@@ -25,29 +27,39 @@ pub struct Request {
 }
 
 impl Request {
-    pub fn parse(stream: &TcpStream) -> Result<Self, String> {
-        let start_time = Instant::now();
-        let global_timeout = Duration::from_secs(10);
+    pub async fn parse(stream: &mut TcpStream) -> Result<Self, String> {
+        const MAX_REQUEST_SIZE: usize = 1024 * 1024; // 1MB
 
-        let mut reader = BufReader::new(stream);
+        let mut buffer = vec![0; MAX_REQUEST_SIZE];
 
-        if start_time.elapsed() > global_timeout {
-            return Err("Total request time exceeded limit".to_string());
+        let bytes_read = match timeout(Duration::from_secs(5), stream.read(&mut buffer)).await {
+            Ok(Ok(n)) => n,
+            Ok(Err(e)) => return Err(format!("I/O Error: {}", e)),
+            Err(_) => return Err("Request timeout exceeded".to_string()),
+        };
+
+        if bytes_read == 0 {
+            return Err("Empty request".to_string());
         }
 
-        // "GET /index.html HTTP/1.1"
-        let mut first_line = String::new();
+        let request_raw = String::from_utf8_lossy(&buffer[..bytes_read]);
 
-        if let Err(e) = reader.read_line(&mut first_line) {
-            if e.kind() == std::io::ErrorKind::WouldBlock
-                || e.kind() == std::io::ErrorKind::TimedOut
-            {
-                return Err(format!("{}", "Connection timed out".to_string()));
-            }
-            return Err(format!("I/O Error: {}", e));
-        }
+        let mut sections = request_raw.split("\r\n\r\n");
 
-        let parts: Vec<&str> = first_line.split_whitespace().collect();
+        let header_section = sections
+            .next()
+            .ok_or_else(|| "Malformed request".to_string())?;
+
+        let body_section = sections.next().unwrap_or("");
+
+        let mut lines = header_section.lines();
+
+        // Parse request line
+        let request_line = lines
+            .next()
+            .ok_or_else(|| "Missing request line".to_string())?;
+
+        let parts: Vec<&str> = request_line.split_whitespace().collect();
 
         if parts.len() < 3 {
             return Err("Malformed request line".to_string());
@@ -66,59 +78,29 @@ impl Request {
 
         let mut query_params = HashMap::new();
 
-        // SPLIT PATH AND QUERY
         let path = if let Some((base_path, query_str)) = full_path.split_once('?') {
-            // Parse query string: k1=v1&k2=v2
             for pair in query_str.split('&') {
                 if let Some((k, v)) = pair.split_once('=') {
                     query_params.insert(k.to_string(), UntrustedString::new(v.to_string()));
                 }
             }
+
             base_path.to_string()
         } else {
             full_path
         };
 
-        let mut headers: HashMap<String, String> = HashMap::new();
+        // Parse headers
+        let mut headers = HashMap::new();
 
-        loop {
-            let mut line = String::new();
-            reader
-                .read_line(&mut line)
-                .map_err(|_| "Error reading header")?;
-
-            if line == "\r\n" || line == "\n" || line.is_empty() {
-                break;
-            }
-
-            if let Some((k, v)) = line.split_once(":") {
+        for line in lines {
+            if let Some((k, v)) = line.split_once(':') {
                 headers.insert(k.trim().to_lowercase(), v.trim().to_string());
             }
         }
 
-        // Security Check: Content-Length Limit
-        let mut body = Vec::new();
-        if let Some(str_len) = headers.get("content-length") {
-            let len: usize = str_len
-                .trim()
-                .parse()
-                .map_err(|_| "Invalid Content-Length")?;
-
-            if len > 1024 * 1024 {
-                // 1MB Limit
-                return Err("Request body too large".to_string());
-            }
-
-            body.resize(len, 0);
-
-            reader
-                .read_exact(&mut body)
-                .map_err(|_| "Failed to read body")?;
-
-            if start_time.elapsed() > global_timeout {
-                return Err("Timeout: Total request time exceeded".into());
-            }
-        }
+        // Parse body
+        let body = body_section.as_bytes().to_vec();
 
         Ok(Request {
             method,
@@ -129,10 +111,7 @@ impl Request {
         })
     }
 
-    /// Extracts and parses a JSON payload into a developer-defined Rust struct.
-    /// Implements strong validation against invalid content types.
     pub fn parse_json_body<T: serde::de::DeserializeOwned>(&self) -> Result<T, String> {
-        // Validation: Ensure the request claims to be JSON
         let content_type = self
             .headers
             .get("content-type")
@@ -146,24 +125,22 @@ impl Request {
             return Err("Empty request body".to_string());
         }
 
-        // Deserialize the raw bytes into the struct
         serde_json::from_slice(&self.body)
             .map_err(|e| format!("JSON Malformed Payload Error: {}", e))
     }
 
     pub fn parse_form_body(&self) -> FormData {
         let mut form_data = FormData::new();
+
         let content_type = match self.headers.get("content-type") {
             Some(ct) => ct,
             None => return form_data,
         };
 
-        // Case A: Standard application/x-www-form-urlencoded (No files, text only)
         if content_type.starts_with("application/x-www-form-urlencoded") {
             if let Ok(body_str) = std::str::from_utf8(&self.body) {
                 for pair in body_str.split('&') {
                     if let Some((k, v)) = pair.split_once('=') {
-                        // In a production engine, you'd apply URL decoding here
                         form_data
                             .fields
                             .insert(k.to_string(), UntrustedString::new(v.to_string()));
