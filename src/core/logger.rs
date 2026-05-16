@@ -35,7 +35,7 @@ pub fn log_request_summary(
 
     // Print a luxury, standardized log block
     println!(
-        "🗲  [{}] {} {} ➔ Size: {} | Time: {} | Auth: {}",
+        "🗲  [{}] {} {} ➔  Size: {} | Time: {} | Auth: {}",
         status_str,
         method_str,
         req.path, //

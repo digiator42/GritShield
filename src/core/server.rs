@@ -181,13 +181,7 @@ async fn handle_connection(mut stream: TcpStream, router: Arc<Router>) {
             let _ = stream.write_all(&err_res.to_bytes(&bytes, &mime)).await;
 
             if router.use_logger {
-                log_request_summary(
-                    &ctx.req,
-                    err_res.status,
-                    ctx.start_time.elapsed(),
-                    None,
-                    None,
-                );
+                router.log_lifecycle(&ctx, err_res.status, start_time.elapsed());
             }
             return;
         }
@@ -196,22 +190,11 @@ async fn handle_connection(mut stream: TcpStream, router: Arc<Router>) {
     // Route Execution
     let response = match routing_result {
         RoutingResult::Found(handler, _) => {
-            let session_id_log = ctx.session.as_ref().map(|s| s.lock().unwrap().id.clone());
-            let jwt_sub_log = ctx.claims.as_ref().map(|c| c.sub.clone());
-
-            let log_req = ctx.req.clone();
-
             // Process handler with our loaded and mutated context manager
-            let response: Response = handler(ctx).await;
+            let response: Response = handler(ctx.clone()).await;
 
             if router.use_logger {
-                log_request_summary(
-                    &log_req,
-                    response.status,
-                    start_time.elapsed(),
-                    session_id_log,
-                    jwt_sub_log,
-                );
+                router.log_lifecycle(&ctx, response.status, start_time.elapsed());
             }
             response
         }

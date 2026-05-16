@@ -1,6 +1,7 @@
 use futures::future::BoxFuture;
 use sea_orm::DatabaseConnection;
 
+use crate::core::logger::log_request_summary;
 use crate::protocol::form::FormData;
 use crate::protocol::request::{HttpMethod, Request};
 use crate::protocol::response::Response;
@@ -12,6 +13,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 pub type Handler = fn(RequestContext) -> BoxFuture<'static, Response>;
+#[derive(Clone)]
 pub struct RequestContext {
     pub req: Request,
     pub params: HashMap<String, UntrustedString>,
@@ -211,5 +213,13 @@ impl Router {
                 }
             }
         }
+    }
+
+    /// A framework-level diagnostic utility that prints highly optimized operational logs.
+    pub fn log_lifecycle(&self, ctx: &RequestContext, status: u16, duration: std::time::Duration) {
+        let session_id_log = ctx.session.as_ref().map(|s| s.lock().unwrap().id.clone());
+        let jwt_sub_log = ctx.claims.as_ref().map(|c| c.sub.clone());
+
+        log_request_summary(&ctx.req, status, duration, session_id_log, jwt_sub_log);
     }
 }
