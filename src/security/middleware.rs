@@ -1,6 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use crate::protocol::{request::Request, response::Response};
+use crate::routing::trie::RequestContext;
 use crate::security::jwt::{Claims, JwtHandler};
 use crate::security::rate_limit::RateLimiter;
 use crate::security::session::{Session, SessionStore};
@@ -19,7 +20,7 @@ pub struct MiddlewareState {
 }
 
 pub trait Middleware: Send + Sync {
-    fn execute(&self, req: &Request) -> MiddlewareResult;
+    fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult;
 }
 
 pub struct AuthMiddleware {
@@ -72,15 +73,15 @@ impl AuthMiddleware {
 }
 
 impl Middleware for AuthMiddleware {
-    fn execute(&self, req: &Request) -> MiddlewareResult {
+    fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult {
         // Smart match calculation using exact segment-by-segment mapping
-        if self.is_public(&req.path) {
+        if self.is_public(&ctx.req.path) {
             //
             return MiddlewareResult::Next(None);
         }
 
         // Extract Header
-        if let Some(auth_header) = req.headers.get("authorization") {
+        if let Some(auth_header) = ctx.headers.get("authorization") {
             //
             if auth_header.starts_with("Bearer ") {
                 let token = &auth_header[7..];
@@ -90,11 +91,13 @@ impl Middleware for AuthMiddleware {
                     //
                     Ok(claims) => {
                         //
-                        println!("[AUTH] Verified user: {}", claims.sub); //
+                        println!("[AUTH] Verified user: {}", claims.sub);
+
+                        ctx.claims = Some(claims);
 
                         let forward_state = MiddlewareState {
                             session: None,
-                            claims: Some(claims), //
+                            claims: ctx.claims.clone(),
                         };
 
                         return MiddlewareResult::Next(Some(forward_state));
@@ -115,11 +118,11 @@ impl Middleware for AuthMiddleware {
 pub struct LoggerMiddleware;
 
 impl Middleware for LoggerMiddleware {
-    fn execute(&self, req: &Request) -> MiddlewareResult {
+    fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult {
         println!(
             "[LOG] {} request to {}",
-            format!("{:?}", req.method).blue(),
-            req.path.yellow()
+            format!("{:?}", ctx.req.method).blue(),
+            ctx.req.path.yellow()
         );
         MiddlewareResult::Next(None)
     }
@@ -129,8 +132,8 @@ pub struct SessionMiddleware {
 }
 
 impl Middleware for SessionMiddleware {
-    fn execute(&self, req: &Request) -> MiddlewareResult {
-        let session_id = req
+    fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult {
+        let session_id = ctx
             .headers
             .get("cookie")
             .and_then(|c| c.split("; ").find(|s| s.starts_with("session_id=")))
@@ -140,6 +143,7 @@ impl Middleware for SessionMiddleware {
         let store = self.store.sessions.lock().unwrap();
         if let Some(sid) = session_id {
             if let Some(session_ptr) = store.get(&sid) {
+                ctx.session = Some(Arc::clone(session_ptr));
                 return MiddlewareResult::Next(Some(MiddlewareState {
                     session: Some(Arc::clone(session_ptr)),
                     claims: None, // No JWT claims here
@@ -157,10 +161,11 @@ pub struct RateLimitMiddleware {
 }
 
 impl Middleware for RateLimitMiddleware {
-    fn execute(&self, req: &Request) -> MiddlewareResult {
+    fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult {
         // use req.headers.get("x-forwarded-for")
         // or the peer_addr from the TcpStream.
-        let ip = req
+        let ip = ctx
+            .req
             .headers
             .get("host")
             .unwrap_or(&"unknown".to_string())

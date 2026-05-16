@@ -5,7 +5,7 @@ use crate::protocol::form::FormData;
 use crate::protocol::request::{HttpMethod, Request};
 use crate::protocol::response::Response;
 use crate::security::jwt::Claims;
-use crate::security::middleware::{Middleware, MiddlewareResult};
+use crate::security::middleware::{Middleware, MiddlewareResult, MiddlewareState};
 use crate::security::session::{Session, SessionStore};
 use crate::security::xss::{SafeHtml, UntrustedString};
 use std::collections::HashMap;
@@ -13,6 +13,7 @@ use std::sync::{Arc, Mutex};
 
 pub type Handler = fn(RequestContext) -> BoxFuture<'static, Response>;
 pub struct RequestContext {
+    pub req: Request,
     pub params: HashMap<String, UntrustedString>,
     pub headers: HashMap<String, String>,
     pub claims: Option<Claims>,
@@ -22,6 +23,7 @@ pub struct RequestContext {
     pub db: Option<Arc<DatabaseConnection>>,
     pub raw_body: Vec<u8>,
     pub content_type: Option<String>,
+    pub start_time: std::time::Instant,
 }
 
 impl RequestContext {
@@ -77,8 +79,8 @@ pub enum RoutingResult {
 
 pub struct Router {
     root: Node,
-    middlewares: Vec<Box<dyn Middleware>>, // A list of dynamic trait objects
-    pub db: Option<Arc<DatabaseConnection>>, // An optional database connection
+    pub middlewares: Vec<Box<dyn Middleware>>, // A list of dynamic trait objects
+    pub db: Option<Arc<DatabaseConnection>>,   // An optional database connection
     pub use_logger: bool,
 }
 
@@ -121,21 +123,33 @@ impl Router {
         self.middlewares.push(Box::new(middleware));
     }
 
-    pub fn run_middlewares(&self, req: &Request) -> MiddlewareResult {
-        let mut session_data = None;
+    pub fn run_middlewares(&self, ctx: &mut RequestContext) -> MiddlewareResult {
+        // Initialize an empty accumulator state packer
+        let mut accumulated_state = MiddlewareState {
+            session: None,
+            claims: None,
+        };
 
         for middleware in &self.middlewares {
-            match middleware.execute(req) {
-                MiddlewareResult::Next(state) => {
-                    if state.is_some() {
-                        session_data = state; // Persist state across chain
+            match middleware.execute(ctx) {
+                MiddlewareResult::Next(maybe_state) => {
+                    if let Some(state) = maybe_state {
+                        // Merge fields dynamically without overwriting existing ones with None
+                        if state.session.is_some() {
+                            accumulated_state.session = state.session;
+                        }
+                        if state.claims.is_some() {
+                            accumulated_state.claims = state.claims;
+                        }
                     }
                     continue;
                 }
                 MiddlewareResult::Error(res) => return MiddlewareResult::Error(res),
             }
         }
-        MiddlewareResult::Next(session_data)
+
+        // Return the perfectly merged collection of sessions and claims
+        MiddlewareResult::Next(Some(accumulated_state))
     }
 
     pub fn add_route(&mut self, method: HttpMethod, path: &str, handler: Handler) {

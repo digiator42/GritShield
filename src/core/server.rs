@@ -1,13 +1,16 @@
 use colored::*;
 
-use std::sync::{
-    Arc,
-    atomic::{AtomicUsize, Ordering},
+use std::{
+    collections::HashMap,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
 };
 use tokio::io::AsyncWriteExt;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::broadcast;
-use tokio::time::{sleep, Duration};
+use tokio::time::{Duration, sleep};
 
 use crate::core::logger::log_request_summary;
 use crate::protocol::request::Request;
@@ -124,98 +127,99 @@ pub async fn run_server(host: &str, port: &str, router: Router, use_reloader: bo
 async fn handle_connection(mut stream: TcpStream, router: Arc<Router>) {
     let start_time = std::time::Instant::now();
 
-    match Request::parse(&mut stream).await {
-        Ok(req) => match router.run_middlewares(&req) {
-            MiddlewareResult::Error(err_res) => {
-                let (bytes, mime) = err_res.resolve();
-
-                let _ = stream.write_all(&err_res.to_bytes(&bytes, &mime)).await;
-
-                if router.use_logger {
-                    log_request_summary(&req, err_res.status, start_time.elapsed(), None, None);
-                }
-
-                return;
-            }
-
-            MiddlewareResult::Next(session_state) => {
-                let routing_result = router.match_route(&req.method, &req.path);
-
-                let response = match routing_result {
-                    RoutingResult::Found(handler, params) => {
-                        let (session_ptr, claims_ptr, is_new_session) = match session_state {
-                            Some(state) => (state.session, state.claims, false),
-                            None => (None, None, false),
-                        };
-
-                        let form = req.parse_form_body();
-
-                        let session_id_log =
-                            session_ptr.as_ref().map(|s| s.lock().unwrap().id.clone());
-
-                        let jwt_sub_log = claims_ptr.as_ref().map(|c| c.sub.clone());
-
-                        let ctx = RequestContext {
-                            params,
-                            headers: req.headers.clone(),
-                            claims: claims_ptr,
-                            query: req.query.clone(),
-                            session: session_ptr.clone(),
-                            form,
-                            db: router.db.clone(),
-                            raw_body: req.body.clone(),
-                            content_type: req.headers.get("content-type").cloned(),
-                        };
-
-                        let mut response: Response = handler(ctx).await;
-
-                        if router.use_logger {
-                            log_request_summary(
-                                &req,
-                                response.status,
-                                start_time.elapsed(),
-                                session_id_log,
-                                jwt_sub_log,
-                            );
-                        }
-
-                        if is_new_session {
-                            if let Some(s) = session_ptr {
-                                let sid = s.lock().unwrap().id.clone();
-
-                                response
-                                    .cookies
-                                    .push(crate::protocol::response::Cookie::new(
-                                        "session_id",
-                                        &sid,
-                                    ));
-                            }
-                        }
-
-                        response
-                    }
-
-                    RoutingResult::NotFound => Response::new(404, Sanitizer::trust("<h1>404</h1>")),
-
-                    RoutingResult::MethodNotAllowed => {
-                        Response::new(405, Sanitizer::trust("<h1>405</h1>"))
-                    }
-                };
-
-                let (bytes, mime) = response.resolve();
-
-                let _ = stream.write_all(&response.to_bytes(&bytes, &mime)).await;
-            }
-        },
-
+    // Parse raw request wire components
+    let req = match Request::parse(&mut stream).await {
+        Ok(parsed_req) => parsed_req,
         Err(e) => {
             eprintln!("{} {}", "Security Warning:".red().bold(), e);
-
             let err_res = Response::new(400, Sanitizer::trust("<h1>Bad Request</h1>"));
-
             let (bytes, mime) = err_res.resolve();
-
             let _ = stream.write_all(&err_res.to_bytes(&bytes, &mime)).await;
+            return;
+        }
+    };
+
+    // Pre-build our core Context Manager object
+    let routing_result = router.match_route(&req.method, &req.path);
+
+    let params = match &routing_result {
+        RoutingResult::Found(_, dynamic_params) => dynamic_params.clone(),
+        _ => HashMap::new(),
+    };
+
+    let form = req.parse_form_body();
+
+    let mut ctx = RequestContext {
+        params,
+        headers: req.headers.clone(),
+        claims: None,
+        query: req.query.clone(),
+        session: None,
+        form,
+        db: router.db.clone(),
+        raw_body: req.body.clone(),
+        content_type: req.headers.get("content-type").cloned(),
+        start_time,
+        req,
+    };
+
+    // Process Middleware Stack sequentially
+    match router.run_middlewares(&mut ctx) {
+        MiddlewareResult::Next(maybe_state) => {
+            // Unpack the final accumulated values directly into your request context
+            if let Some(state) = maybe_state {
+                if state.session.is_some() {
+                    ctx.session = state.session;
+                }
+                if state.claims.is_some() {
+                    ctx.claims = state.claims;
+                }
+            }
+        }
+        MiddlewareResult::Error(err_res) => {
+            let (bytes, mime) = err_res.resolve();
+            let _ = stream.write_all(&err_res.to_bytes(&bytes, &mime)).await;
+
+            if router.use_logger {
+                log_request_summary(
+                    &ctx.req,
+                    err_res.status,
+                    ctx.start_time.elapsed(),
+                    None,
+                    None,
+                );
+            }
+            return;
         }
     }
+
+    // Route Execution
+    let response = match routing_result {
+        RoutingResult::Found(handler, _) => {
+            let session_id_log = ctx.session.as_ref().map(|s| s.lock().unwrap().id.clone());
+            let jwt_sub_log = ctx.claims.as_ref().map(|c| c.sub.clone());
+
+            let log_req = ctx.req.clone();
+
+            // Process handler with our loaded and mutated context manager
+            let response: Response = handler(ctx).await;
+
+            if router.use_logger {
+                log_request_summary(
+                    &log_req,
+                    response.status,
+                    start_time.elapsed(),
+                    session_id_log,
+                    jwt_sub_log,
+                );
+            }
+            response
+        }
+        RoutingResult::NotFound => Response::new(404, Sanitizer::trust("<h1>404</h1>")),
+        RoutingResult::MethodNotAllowed => Response::new(405, Sanitizer::trust("<h1>405</h1>")),
+    };
+
+    // Send output back over socket wire
+    let (bytes, mime) = response.resolve();
+    let _ = stream.write_all(&response.to_bytes(&bytes, &mime)).await;
 }
