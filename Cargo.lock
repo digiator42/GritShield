@@ -847,6 +847,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.21.7",
  "colored",
+ "dotenvy",
  "futures",
  "gritshield_macros",
  "hmac",
