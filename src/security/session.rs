@@ -18,7 +18,7 @@ pub struct SessionStore {
 impl SessionStore {
     pub fn new() -> Self {
         Self {
-            sessions: Arc::new(Mutex::new(HashMap::new())),
+            sessions: Arc::new(Mutex::new(DashMap::new())),
         }
     }
 
@@ -29,7 +29,7 @@ impl SessionStore {
             if let Some(session) = sessions.get(&sid) {
                 // Update last_accessed so the reaper doesn't kill an active user
                 session.lock().unwrap().last_accessed = Instant::now();
-                return (Arc::clone(session), false);
+                return (Arc::clone(&session), false);
             }
         }
 

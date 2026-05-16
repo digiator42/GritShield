@@ -147,9 +147,9 @@ impl Middleware for SessionMiddleware {
         let store = self.store.sessions.lock().unwrap();
         if let Some(sid) = session_id {
             if let Some(session_ptr) = store.get(&sid) {
-                ctx.session = Some(Arc::clone(session_ptr));
+                ctx.session = Some(Arc::clone(&session_ptr));
                 return MiddlewareResult::Next(Some(MiddlewareState {
-                    session: Some(Arc::clone(session_ptr)),
+                    session: Some(Arc::clone(&session_ptr)),
                     claims: None, // No JWT claims here
                 }));
             }
