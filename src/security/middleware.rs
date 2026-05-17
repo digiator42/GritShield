@@ -197,6 +197,31 @@ impl Middleware for SessionMiddleware {
     }
 }
 
+pub struct AuthGuardMiddleware;
+impl Middleware for AuthGuardMiddleware {
+    fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult {
+        if ctx.req.path == "/auth/login"
+            || ctx.req.path == "/auth/register"
+            || ctx.req.path.starts_with("/static/")
+        {
+            return MiddlewareResult::Next(None);
+        }
+
+        // Lock the shared atomic pointer
+        if let Some(_user_id) = ctx.get_signed_cookie("session_token") {
+            MiddlewareResult::Next(None)
+        } else {
+            // Shred it instantly without fighting mutexes
+            ctx.remove_cookie("session_token");
+
+            MiddlewareResult::Error(Response::new(
+                401,
+                Sanitizer::trust("<h1>401 Unauthorized</h1>"),
+            ))
+        }
+    }
+}
+
 pub struct RateLimitMiddleware {
     pub limiter: RateLimiter,
 }
