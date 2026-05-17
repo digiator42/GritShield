@@ -28,12 +28,6 @@ async fn main() {
 
     router.add_middleware(LoggerMiddleware);
 
-    let session_store = SessionStore::new();
-
-    router.add_middleware(SessionMiddleware {
-        store: session_store,
-    });
-
     // Define public routes
     let public_routes = vec![
         "/".to_string(),
@@ -47,11 +41,10 @@ async fn main() {
 
     let jwt_kernel = JwtHandler::new("super_secret_key_123");
 
+    let security_middleware = AuthMiddleware::new_session(public_routes);
+
     // Initialize Auth with the whitelist
-    router.add_middleware(AuthMiddleware {
-        jwt_handler: jwt_kernel,
-        public_paths: public_routes,
-    });
+    router.add_middleware(security_middleware);
 
     // Register handlers
     // router.add_route(HttpMethod::GET, "/products", products_handler); // PUBLIC

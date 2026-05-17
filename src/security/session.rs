@@ -1,3 +1,4 @@
+use dashmap::DashMap;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -10,7 +11,13 @@ pub struct Session {
     pub user_id: Option<String>,
     pub last_accessed: Instant,
 }
-use dashmap::DashMap;
+
+impl Session {
+    /// Expose a proxy get method to read directly from the data hashmap
+    pub fn get(&self, key: &str) -> Option<&String> {
+        self.data.get(key)
+    }
+}
 
 pub struct SessionStore {
     pub sessions: Arc<Mutex<DashMap<String, Arc<Mutex<Session>>>>>,

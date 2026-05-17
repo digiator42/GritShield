@@ -31,11 +31,32 @@ pub trait AfterRequestHook: Send + Sync {
 }
 
 pub struct AuthMiddleware {
-    pub jwt_handler: JwtHandler,
+    pub store: Arc<SessionStore>,
+    pub jwt_handler: Option<JwtHandler>,
     pub public_paths: Vec<String>, // List of open routes
 }
 
 impl AuthMiddleware {
+    /// Pure Stateful Session Architecture (No JWTs)
+    pub fn new_session(public_paths: Vec<String>) -> Self {
+        let session_store = Arc::new(SessionStore::new());
+
+        Self {
+            store: session_store,
+            jwt_handler: None,
+            public_paths,
+        }
+    }
+
+    /// Pure Stateless JWT Architecture (Dummy empty session store bypassed)
+    pub fn new_jwt(jwt_handler: JwtHandler, public_paths: Vec<String>) -> Self {
+        Self {
+            store: Arc::new(SessionStore::new()),
+            jwt_handler: Some(jwt_handler),
+            public_paths,
+        }
+    }
+
     /// Internal helper to evaluate whether a path matches a whitelisted path rule
     fn is_public(&self, incoming_path: &str) -> bool {
         let incoming_segments: Vec<&str> =
@@ -81,44 +102,115 @@ impl AuthMiddleware {
 
 impl Middleware for AuthMiddleware {
     fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult {
-        // Smart match calculation using exact segment-by-segment mapping
-        if self.is_public(&ctx.req.path) {
-            //
-            return MiddlewareResult::Next(None);
+        let is_public_route = self.is_public(&ctx.req.path);
+        let mut active_session = None;
+
+        // --- STEP 1: CONDITIONAL SESSION LIEFOCYCLE ---
+        // Only run session logic if we are NOT in exclusive JWT stateless mode
+        let running_sessions =
+            self.jwt_handler.is_none() || ctx.get_signed_cookie("GSESSION_ID").is_some();
+
+        if running_sessions {
+            let session_id = ctx.get_signed_cookie("GSESSION_ID");
+
+            let store_guard = match self.store.sessions.lock() {
+                Ok(guard) => guard,
+                Err(_) => {
+                    return MiddlewareResult::Error(Response::new(
+                        500,
+                        Sanitizer::trust(
+                            "<h1>500 Internal Server Error: Session Pool Poisoned</h1>",
+                        ),
+                    ));
+                }
+            };
+
+            if let Some(ref sid) = session_id {
+                if let Some(session_ptr) = store_guard.get(sid) {
+                    ctx.session = Some(Arc::clone(&session_ptr));
+                    active_session = Some(Arc::clone(&session_ptr));
+                }
+            }
+
+            // Mint a session on-the-fly only if sessions are the primary auth method
+            if active_session.is_none() && self.jwt_handler.is_none() {
+                let new_sid = uuid::Uuid::new_v4().to_string();
+                let new_session = Arc::new(Mutex::new(Session {
+                    id: new_sid.clone(),
+                    data: std::collections::HashMap::new(),
+                    user_id: None,
+                    last_accessed: std::time::Instant::now(),
+                }));
+
+                store_guard.insert(new_sid.clone(), Arc::clone(&new_session));
+
+                let is_production =
+                    crate::core::env::get_env("APP_ENV", "development") == "production";
+                let session_cookie = Cookie::new("GSESSION_ID", &new_sid)
+                    .set_secure(is_production)
+                    .set_same_site(SameSite::Lax);
+
+                if session_id.is_none() {
+                    ctx.set_signed_cookie(session_cookie);
+                }
+
+                ctx.session = Some(Arc::clone(&new_session));
+                active_session = Some(new_session);
+            }
+
+            drop(store_guard); // Release lock cleanly
         }
 
-        // Extract Header
-        if let Some(auth_header) = ctx.headers.get("authorization") {
-            //
-            if auth_header.starts_with("Bearer ") {
-                let token = &auth_header[7..];
+        // --- STEP 2: BYPASS GATEKEEPING FOR PUBLIC ROUTES ---
+        if is_public_route {
+            return MiddlewareResult::Next(Some(MiddlewareState {
+                session: active_session.clone(), // Use clone to preserve variable
+                claims: None,
+            }));
+        }
 
-                // Verify Token
-                match self.jwt_handler.verify(token) {
-                    //
-                    Ok(claims) => {
-                        //
-                        println!("[AUTH] Verified user: {}", claims.sub);
+        // --- STEP 3: PRIVATE ROUTE AUTHENTICATION EVALUATION ---
 
-                        ctx.claims = Some(claims);
+        // Strategy A: Session Check
+        if let Some(ref session_arc) = active_session {
+            let session = session_arc.lock().unwrap();
+            if session.data.get("user_id").is_some() {
+                drop(session);
+                return MiddlewareResult::Next(Some(MiddlewareState {
+                    session: active_session.clone(), // Cloned safely
+                    claims: None,
+                }));
+            }
+        }
 
-                        let forward_state = MiddlewareState {
-                            session: None,
-                            claims: ctx.claims.clone(),
-                        };
+        // Strategy B: Fallback check against incoming JWT Bearer tokens
+        if let Some(jwt_handler) = &self.jwt_handler {
+            if let Some(auth_header) = ctx.headers.get("authorization") {
+                if auth_header.starts_with("Bearer ") {
+                    let token = &auth_header[7..];
 
-                        return MiddlewareResult::Next(Some(forward_state));
-                    }
-                    Err(e) => {
-                        println!("[AUTH] Rejected: {}", e);
+                    match jwt_handler.verify(token) {
+                        Ok(claims) => {
+                            println!("[AUTH] Verified user token: {}", claims.sub);
+                            ctx.claims = Some(claims.clone());
+
+                            return MiddlewareResult::Next(Some(MiddlewareState {
+                                session: active_session.clone(), // Cloned safely
+                                claims: Some(claims),
+                            }));
+                        }
+                        Err(e) => {
+                            println!("[AUTH] Token validation rejected: {}", e);
+                        }
                     }
                 }
             }
         }
 
-        // Fail: Short-circuit the request safely
-        let err_body = Sanitizer::trust("<h1>401 Unauthorized</h1>"); //
-        MiddlewareResult::Error(Response::new(401, err_body)) //
+        // --- STEP 4: AUTHENTICATION FAILURE ---
+        let err_body =
+            Sanitizer::trust("<h1>401 Unauthorized</h1><p>Access Denied by GritShield Core.</p>");
+        MiddlewareResult::Error(Response::new(401, err_body))
     }
 }
 
@@ -135,7 +227,7 @@ impl Middleware for LoggerMiddleware {
     }
 }
 pub struct SessionMiddleware {
-    pub store: SessionStore,
+    pub store: Arc<SessionStore>,
 }
 
 impl Middleware for SessionMiddleware {
@@ -197,31 +289,6 @@ impl Middleware for SessionMiddleware {
     }
 }
 
-pub struct AuthGuardMiddleware;
-impl Middleware for AuthGuardMiddleware {
-    fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult {
-        if ctx.req.path == "/auth/login"
-            || ctx.req.path == "/auth/register"
-            || ctx.req.path.starts_with("/static/")
-        {
-            return MiddlewareResult::Next(None);
-        }
-
-        // Lock the shared atomic pointer
-        if let Some(_user_id) = ctx.get_signed_cookie("session_token") {
-            MiddlewareResult::Next(None)
-        } else {
-            // Shred it instantly without fighting mutexes
-            ctx.remove_cookie("session_token");
-
-            MiddlewareResult::Error(Response::new(
-                401,
-                Sanitizer::trust("<h1>401 Unauthorized</h1>"),
-            ))
-        }
-    }
-}
-
 pub struct RateLimitMiddleware {
     pub limiter: RateLimiter,
 }
@@ -259,11 +326,6 @@ impl AfterRequestHook for MetricsTracker {
         if status >= 500 {
             eprintln!(
                 "🚨 [ALERT] Critical server failure detected on path: {}",
-                ctx.req.path
-            );
-        } else if status >= 400 {
-            eprintln!(
-                "🚨 [ALERT] server failure detected on path: {}",
                 ctx.req.path
             );
         }
