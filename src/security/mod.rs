@@ -4,3 +4,4 @@ pub mod xss;
 pub mod session;
 pub mod rate_limit;
 pub mod db;
+pub mod cookies;

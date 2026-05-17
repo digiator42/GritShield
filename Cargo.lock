@@ -865,6 +865,7 @@ dependencies = [
  "dotenvy",
  "futures",
  "gritshield_macros",
+ "hex",
  "hmac",
  "inventory",
  "maud",

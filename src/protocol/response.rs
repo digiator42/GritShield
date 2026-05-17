@@ -3,12 +3,14 @@ use crate::{
     utils::fs,
 };
 
+#[derive(Debug, Clone)]
 pub enum SameSite {
     Strict,
     Lax,
     None,
 }
 
+#[derive(Debug, Clone)]
 pub struct Cookie {
     pub name: String,
     pub value: String,
@@ -28,6 +30,18 @@ impl Cookie {
             secure: true,                // Default to True
             same_site: SameSite::Strict, // Default to Strict
         }
+    }
+
+    /// Allows disabling the HTTPS requirement for local development testing
+    pub fn set_secure(mut self, secure: bool) -> Self {
+        self.secure = secure;
+        self
+    }
+
+    /// Allows changing SameSite restrictions (e.g., Lax for easier local redirection testing)
+    pub fn set_same_site(mut self, same_site: SameSite) -> Self {
+        self.same_site = same_site;
+        self
     }
 }
 
@@ -61,6 +75,12 @@ impl Response {
         }
     }
 
+    /// Luxury modifier to attach a dynamic cookie wrapper directly to the response state
+    pub fn with_cookie(mut self, cookie: Cookie) -> Self {
+        self.cookies.push(cookie);
+        self
+    }
+
     pub fn static_file(path: &str) -> Self {
         Response {
             status: 200,
@@ -92,7 +112,7 @@ impl Response {
             };
 
             let mut cookie_str = format!(
-                "Set-Cookie: {}={}; Max-Age={}; SameSite={}",
+                "Set-Cookie: {}={}; Max-Age={}; SameSite={}; Path=/",
                 cookie.name, cookie.value, cookie.max_age, same_site_str
             );
 

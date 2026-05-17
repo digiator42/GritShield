@@ -28,10 +28,10 @@ async fn main() {
 
     router.add_middleware(LoggerMiddleware);
 
-    let session_store = Arc::new(SessionStore::new());
+    let session_store = SessionStore::new();
 
     router.add_middleware(SessionMiddleware {
-        store: Arc::clone(&session_store),
+        store: session_store,
     });
 
     // Define public routes

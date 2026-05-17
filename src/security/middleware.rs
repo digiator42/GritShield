@@ -1,5 +1,7 @@
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
+use crate::protocol::response::{Cookie, SameSite};
 use crate::protocol::{request::Request, response::Response};
 use crate::routing::trie::RequestContext;
 use crate::security::jwt::{Claims, JwtHandler};
@@ -7,6 +9,7 @@ use crate::security::rate_limit::RateLimiter;
 use crate::security::session::{Session, SessionStore};
 use crate::security::xss::Sanitizer;
 use colored::*;
+use uuid::Uuid;
 
 pub enum MiddlewareResult {
     Next(Option<MiddlewareState>), // State can hold session data, claims, or both
@@ -132,31 +135,65 @@ impl Middleware for LoggerMiddleware {
     }
 }
 pub struct SessionMiddleware {
-    pub store: Arc<SessionStore>,
+    pub store: SessionStore,
 }
 
 impl Middleware for SessionMiddleware {
     fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult {
-        let session_id = ctx
-            .headers
-            .get("cookie")
-            .and_then(|c| c.split("; ").find(|s| s.starts_with("session_id=")))
-            .map(|s| s["session_id=".len()..].to_string());
+        // pull the cryptographically signed cookie (Tamper-proof!)
+        let session_id = ctx.get_signed_cookie("session_id");
 
-        // We only look up. We don't 'create' yet.
-        let store = self.store.sessions.lock().unwrap();
-        if let Some(sid) = session_id {
-            if let Some(session_ptr) = store.get(&sid) {
+        let store = match self.store.sessions.lock() {
+            Ok(guard) => guard,
+            Err(_) => {
+                return MiddlewareResult::Error(Response::new(
+                    500,
+                    Sanitizer::trust("<h1>500 Internal Server Error: Session Pool Poisoned</h1>"),
+                ));
+            }
+        };
+
+        // Try to look up an existing valid session in our memory map
+        if let Some(ref sid) = session_id {
+            if let Some(session_ptr) = store.get(sid) {
+                // Attach the pointer copy directly to the active request context
                 ctx.session = Some(Arc::clone(&session_ptr));
                 return MiddlewareResult::Next(Some(MiddlewareState {
                     session: Some(Arc::clone(&session_ptr)),
-                    claims: None, // No JWT claims here
+                    claims: None,
                 }));
             }
         }
 
-        // No session found? Just continue without one.
-        MiddlewareResult::Next(None)
+        // No session found or it expired? Create one on the fly!
+        let new_sid = Uuid::new_v4().to_string();
+        let new_session = Arc::new(Mutex::new(Session {
+            id: new_sid.clone(),
+            data: std::collections::HashMap::new(),
+            user_id: None,
+            last_accessed: Instant::now(),
+        }));
+
+        // Insert into master framework memory tracking pool
+        store.insert(new_sid.clone(), Arc::clone(&new_session));
+
+        // Drop the secure signed cookie straight back into the browser's CookieJar
+        let is_production = crate::core::env::get_env("APP_ENV", "development") == "production";
+        let session_cookie = Cookie::new("session_id", &new_sid)
+            .set_secure(is_production) // Automatically true on prod, false on localhost HTTP
+            .set_same_site(SameSite::Lax);
+
+        if session_id == None {
+            ctx.set_signed_cookie(session_cookie);
+        }
+
+        // Bind the freshly minted session into the current request flow
+        ctx.session = Some(Arc::clone(&new_session));
+
+        MiddlewareResult::Next(Some(MiddlewareState {
+            session: Some(new_session),
+            claims: None,
+        }))
     }
 }
 

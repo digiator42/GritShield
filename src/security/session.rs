@@ -7,6 +7,7 @@ use uuid::{Timestamp, Uuid};
 pub struct Session {
     pub id: String,
     pub data: HashMap<String, String>,
+    pub user_id: Option<String>,
     pub last_accessed: Instant,
 }
 use dashmap::DashMap;
@@ -23,7 +24,7 @@ impl SessionStore {
     }
 
     pub fn get_or_create(&self, id: Option<String>) -> (Arc<Mutex<Session>>, bool) {
-        let mut sessions = self.sessions.lock().unwrap();
+        let sessions = self.sessions.lock().unwrap();
 
         if let Some(sid) = id {
             if let Some(session) = sessions.get(&sid) {
@@ -37,6 +38,7 @@ impl SessionStore {
         let new_session = Arc::new(Mutex::new(Session {
             id: new_id.clone(),
             data: HashMap::new(),
+            user_id: None,
             last_accessed: Instant::now(),
         }));
 

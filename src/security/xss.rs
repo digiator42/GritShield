@@ -62,7 +62,7 @@ impl Sanitizer {
     }
 
     /// Allow developers to trust hardcoded strings
-    /// e.g., Sanitizer::trust("<h1>Welcome</h1>")
+    /// e.g., Sanitizer::trust("\<h1>Welcome\</h1>")
     pub fn trust(safe_str: &str) -> SafeHtml {
         SafeHtml(safe_str.to_string())
     }

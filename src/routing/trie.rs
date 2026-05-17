@@ -5,6 +5,7 @@ use crate::core::logger::log_request_summary;
 use crate::protocol::form::FormData;
 use crate::protocol::request::{HttpMethod, Request};
 use crate::protocol::response::Response;
+use crate::security::cookies::CookieJar;
 use crate::security::jwt::Claims;
 use crate::security::middleware::{
     AfterRequestHook, Middleware, MiddlewareResult, MiddlewareState,
@@ -29,6 +30,7 @@ pub struct RequestContext {
     pub db: Option<Arc<DatabaseConnection>>,
     pub raw_body: Vec<u8>,
     pub content_type: Option<String>,
+    pub cookies: Arc<Mutex<CookieJar>>,
     pub start_time: std::time::Instant,
 }
 
@@ -46,6 +48,65 @@ impl RequestContext {
         }
         serde_json::from_slice(&self.raw_body)
             .map_err(|e| format!("Failed to parse JSON body: {}", e))
+    }
+
+    /// Zero-boilerplate helper to read a standard, unsigned cookie
+    pub fn get_cookie(&self, name: &str) -> Option<String> {
+        self.cookies.lock().ok()?.get(name).cloned()
+    }
+
+    /// Handles the Mutex lock internally and yields an immediate Option<String>.
+    pub fn get_signed_cookie(&self, name: &str) -> Option<String> {
+        // Lock the internal mutex safely. If it fails, return None.
+        let jar = self.cookies.lock().ok()?;
+        // Call the inner CookieJar method
+        jar.get_signed(name)
+    }
+
+    /// Premium helper to inject or update a cookie directly without manual locking
+    pub fn set_cookie(&self, cookie: crate::protocol::response::Cookie) {
+        if let Ok(mut jar) = self.cookies.lock() {
+            jar.add(cookie);
+        }
+    }
+
+    /// Premium helper to inject a secure, cryptographically signed cookie
+    pub fn set_signed_cookie(&self, cookie: crate::protocol::response::Cookie) {
+        if let Ok(mut jar) = self.cookies.lock() {
+            jar.add_signed(cookie);
+        }
+    }
+
+    /// Premium helper to instruct the browser to instantly shred a cookie
+    pub fn remove_cookie(&self, name: &str) {
+        if let Ok(mut jar) = self.cookies.lock() {
+            jar.remove(name);
+        }
+    }
+
+    /// Write a key-value attribute directly into the active session instance
+    pub fn set_session_data(&self, key: &str, value: &str) {
+        if let Some(ref session_arc) = self.session {
+            if let Ok(mut session) = session_arc.lock() {
+                session.data.insert(key.to_string(), value.to_string());
+            }
+        }
+    }
+
+    /// Read an attribute value out of the active session instance
+    pub fn get_session_data(&self, key: &str) -> Option<String> {
+        let session_arc = self.session.as_ref()?;
+        let session = session_arc.lock().ok()?;
+        session.data.get(key).cloned()
+    }
+
+    /// Explicitly tag the session as authenticated to a specific User Entity ID
+    pub fn login_user_id(&self, user_id: &str) {
+        if let Some(ref session_arc) = self.session {
+            if let Ok(mut session) = session_arc.lock() {
+                session.user_id = Some(user_id.to_string());
+            }
+        }
     }
 }
 
