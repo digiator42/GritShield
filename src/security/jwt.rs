@@ -2,7 +2,7 @@ use base64::{Engine as _, engine::general_purpose};
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -10,6 +10,23 @@ type HmacSha256 = Hmac<Sha256>;
 pub struct Claims {
     pub sub: String, // Subject (User ID)
     pub exp: usize,  // Expiration time
+}
+
+impl Claims {
+    pub fn new(sub: String, duration: u64) -> Self {
+        let now = SystemTime::now();
+        let exp = now
+            .checked_add(Duration::from_secs(duration))
+            .unwrap()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        Claims {
+            sub: sub,
+            exp: exp as usize,
+        }
+    }
 }
 
 #[derive(Deserialize, Serialize)]
