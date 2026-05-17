@@ -1,6 +1,7 @@
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
+use crate::protocol::request::HttpMethod;
 use crate::protocol::response::{Cookie, SameSite};
 use crate::protocol::{request::Request, response::Response};
 use crate::routing::trie::RequestContext;
@@ -34,6 +35,7 @@ pub struct AuthMiddleware {
     pub store: Arc<SessionStore>,
     pub jwt_handler: Option<JwtHandler>,
     pub public_paths: Vec<String>, // List of open routes
+    pub enable_csrf: bool,
 }
 
 impl AuthMiddleware {
@@ -45,6 +47,7 @@ impl AuthMiddleware {
             store: session_store,
             jwt_handler: None,
             public_paths,
+            enable_csrf: true,
         }
     }
 
@@ -54,6 +57,7 @@ impl AuthMiddleware {
             store: Arc::new(SessionStore::new()),
             jwt_handler: Some(jwt_handler),
             public_paths,
+            enable_csrf: false,
         }
     }
 
@@ -159,6 +163,16 @@ impl Middleware for AuthMiddleware {
             }
 
             drop(store_guard); // Release lock cleanly
+
+            // REFRESH TOKEN ROTATION INJECTOR
+            // Whenever a user requests or refreshes a page (GET), generate a new CSRF token immediately.
+            if ctx.req.method == HttpMethod::GET {
+                if let Some(ref session_arc) = active_session {
+                    let mut session = session_arc.lock().unwrap();
+                    let fresh_token = uuid::Uuid::new_v4().to_string();
+                    session.data.insert("csrf_token".to_string(), fresh_token);
+                }
+            }
         }
 
         // --- STEP 2: BYPASS GATEKEEPING FOR PUBLIC ROUTES ---
@@ -167,6 +181,50 @@ impl Middleware for AuthMiddleware {
                 session: active_session.clone(), // Use clone to preserve variable
                 claims: None,
             }));
+        }
+
+        // --- STEP 2.5: CSRF STATEFUL PROTECTION GUARD ---
+        if self.enable_csrf && self.jwt_handler.is_none() {
+            let method = ctx.req.method; // HttpMethod enum
+
+            // CSRF only attacks state-changing operations
+            if method == HttpMethod::POST
+                || method == HttpMethod::PUT
+                || method == HttpMethod::PATCH
+                || method == HttpMethod::DELETE
+            {
+                let mut csrf_verified = false;
+
+                // 1. Extract form payload body
+                let form_data = ctx.req.parse_form_body();
+
+                // 2. Fetch token from user's authenticated session state
+                if let Some(ref session_arc) = active_session {
+                    let session = session_arc.lock().unwrap();
+
+                    if let Some(session_token) = session.data.get("csrf_token") {
+                        // Look for the incoming hidden token field inside URL-encoded or Multipart text fields
+                        if let Some(incoming_untrusted) = form_data.fields.get("csrf_token") {
+                            // Use a constant-time comparison helper if available, or a strict equality match
+                            // Since it's an UntrustedString wrapper, unpack its inner reference safely
+                            if session_token == incoming_untrusted.as_str() {
+                                csrf_verified = true;
+                            }
+                        }
+                    }
+                }
+
+                if !csrf_verified {
+                    println!(
+                        "\x1b[31m[SECURITY ALERT] CSRF Validation Failed for Route: {}\x1b[0m",
+                        ctx.req.path
+                    );
+                    let err_body = Sanitizer::trust(
+                        "<h1>403 Forbidden</h1><p>GritShield: CSRF Token Invalid or Missing.</p>",
+                    );
+                    return MiddlewareResult::Error(Response::new(403, err_body));
+                }
+            }
         }
 
         // --- STEP 3: PRIVATE ROUTE AUTHENTICATION EVALUATION ---

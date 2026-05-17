@@ -108,6 +108,17 @@ impl RequestContext {
             }
         }
     }
+
+    /// Generates or retrieves an existing CSRF token for the active session context
+    pub fn get_csrf_token(&self) -> String {
+        if let Some(ref session_arc) = self.session {
+            let session = session_arc.lock().unwrap();
+            if let Some(token) = session.data.get("csrf_token") {
+                return token.clone();
+            }
+        }
+        String::new()
+    }
 }
 
 // The struct that will be globally collected from any file
