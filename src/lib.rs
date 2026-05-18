@@ -26,6 +26,7 @@ pub mod prelude {
     pub use crate::protocol::response::Response;
     pub use crate::render;
     pub use crate::routing::trie::{RequestContext, Router};
+    pub use crate::routing::templates::TemplateEngine;
     pub use crate::security::xss::Sanitizer;
 
     // Re-export macros for the prelude

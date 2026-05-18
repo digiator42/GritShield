@@ -473,7 +473,7 @@ impl Router {
             url_route = url_route.replace("_", ":*");
         }
 
-        // 3. Extract the handler out of our pre-compiled global registry map safely
+        // Extract the handler out of our pre-compiled global registry map safely
         if let Ok(registry) = FILE_ROUTING_REGISTRY.lock() {
             if let Some(registered) = registry.get(&file_key) {
                 println!(
