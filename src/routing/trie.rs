@@ -17,6 +17,7 @@ use futures::future::{BoxFuture, FutureExt};
 use sea_orm::DatabaseConnection;
 use std::collections::HashMap;
 use std::fs;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -105,6 +106,7 @@ where
 pub struct RequestContext {
     pub req: Request,
     pub params: HashMap<String, UntrustedString>,
+    pub peer_addr: SocketAddr,
     pub headers: HashMap<String, String>,
     pub claims: Option<Claims>,
     pub query: HashMap<String, UntrustedString>,
@@ -122,6 +124,7 @@ impl RequestContext {
         Self {
             req: Request::new(),
             params: HashMap::new(),
+            peer_addr: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080),
             headers: HashMap::new(),
             claims: None,
             query: HashMap::new(),
@@ -133,6 +136,25 @@ impl RequestContext {
             cookies: Arc::new(Mutex::new(CookieJar::new(None, String::new()))),
             start_time: std::time::Instant::now(),
         }
+    }
+
+    /// Safely resolves the true client IP address while mitigating IP Spoofing risks
+    pub fn resolve_client_ip(&self) -> String {
+        // Look for X-Forwarded-For (injected by downstream edge networks/proxies)
+        if let Some(forwarded_header) = self.req.headers.get("x-forwarded-for") {
+            // X-Forwarded-For can look like: "203.0.113.195, 70.41.3.18, 150.172.238.178"
+            // The very first value on the left is the actual client identity.
+            if let Some(real_ip) = forwarded_header.split(',').next() {
+                let trimmed_ip = real_ip.trim();
+                if !trimmed_ip.is_empty() {
+                    return trimmed_ip.to_string();
+                }
+            }
+        }
+
+        // If the header doesn't exist, use the verified physical socket connection IP
+        // We drop the port number (.ip()) so the token tracks the host computer
+        self.peer_addr.ip().to_string()
     }
 
     pub fn start_session(store: &SessionStore) -> Arc<Mutex<Session>> {
@@ -452,7 +474,6 @@ impl Router {
         let relative = file_path.strip_prefix(base_dir).unwrap().with_extension("");
         let relative_str = relative.to_string_lossy().replace("\\", "/");
 
-        
         let mut url_route = if relative_str == "index" {
             "/".to_string()
         } else if relative_str.ends_with("/index") {

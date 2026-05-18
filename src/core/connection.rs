@@ -7,7 +7,7 @@ use crate::{
 };
 use colored::Colorize;
 use futures::future::{self, BoxFuture, FutureExt};
-use std::panic::AssertUnwindSafe;
+use std::{net::SocketAddr, panic::AssertUnwindSafe};
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
@@ -15,7 +15,7 @@ use std::{
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 
-pub async fn handle_connection(mut stream: TcpStream, router: Arc<Router>) {
+pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, router: Arc<Router>) {
     let start_time = std::time::Instant::now();
 
     // Parse raw request wire components
@@ -44,6 +44,7 @@ pub async fn handle_connection(mut stream: TcpStream, router: Arc<Router>) {
     let mut ctx = RequestContext {
         params,
         headers: req.headers.clone(),
+        peer_addr: peer_addr,
         claims: None,
         query: req.query.clone(),
         session: None,

@@ -58,7 +58,8 @@ pub async fn run_server(host: &str, port: &str, router: Router, use_reloader: bo
 
             accept_result = listener.accept() => {
                 match accept_result {
-                    Ok((stream, _)) => {
+                    // Bind the second element to `peer_addr` instead of throwing it away with `_`
+                    Ok((stream, peer_addr)) => {
 
                         active_connections
                             .fetch_add(1, Ordering::SeqCst);
@@ -72,16 +73,18 @@ pub async fn run_server(host: &str, port: &str, router: Router, use_reloader: bo
                         let mut shutdown_rx =
                             shutdown_tx.subscribe();
 
+                        // `peer_addr` is moved cleanly into the async task block here
                         tokio::spawn(async move {
 
                             tokio::select! {
-
                                 _ = shutdown_rx.recv() => {
                                     // server shutting down
                                 }
 
+                                // Pass `peer_addr` directly into your handler function
                                 _ = handle_connection(
                                     stream,
+                                    peer_addr,
                                     router
                                 ) => {
                                     // request completed

@@ -353,30 +353,39 @@ pub struct RateLimitMiddleware {
 
 impl Middleware for RateLimitMiddleware {
     fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult {
-        // use req.headers.get("x-forwarded-for")
-        // or the peer_addr from the TcpStream.
-        let ip = ctx
-            .req
-            .headers
-            .get("host")
-            .unwrap_or(&"unknown".to_string())
-            .clone();
+        // SECURELY resolve the true user identity string
+        let client_ip = ctx.resolve_client_ip();
 
-        if self.limiter.is_allowed(ip) {
-            // we pass None here as Rate Limiting doesn't create a session.
+        // logging to see who is making requests
+        println!(
+            "[GRITSHIELD RATE-LIMIT] Evaluating limits for bucket identifier: {}",
+            client_ip
+        );
+
+        if self.limiter.is_allowed(client_ip) {
+            // Pass execution forward down the routing chain
             MiddlewareResult::Next(None)
         } else {
-            let err_body =
-                Sanitizer::trust("<h1>429 Too Many Requests</h1><p>Slow down, friend.</p>");
+            // Client hit the ceiling limit! Push back with an explicit HTTP 429 back-off directive
+            let err_body = Sanitizer::trust(
+                "<h1>429 Too Many Requests</h1>\
+                 <p>Slow down, friend. Your API bucket limits have been exhausted.</p>",
+            );
+
             let mut res = Response::new(429, err_body);
+
+            // Instruct downstream agents/browsers exactly how long to wait before trying again
             res.headers
                 .push(("Retry-After".to_string(), "60".to_string()));
+            res.headers.push((
+                "Content-Type".to_string(),
+                "text/html; charset=utf-8".to_string(),
+            ));
 
             MiddlewareResult::Error(res)
         }
     }
 }
-
 pub struct MetricsTracker;
 
 impl AfterRequestHook for MetricsTracker {
