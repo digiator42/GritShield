@@ -27,6 +27,16 @@ pub struct Request {
 }
 
 impl Request {
+    pub fn new() -> Self {
+        Request {
+            method: HttpMethod::GET,
+            path: String::new(),
+            headers: HashMap::new(),
+            body: Vec::new(),
+            query: HashMap::new(),
+        }
+    }
+
     pub async fn parse(stream: &mut TcpStream) -> Result<Self, String> {
         const MAX_REQUEST_SIZE: usize = 1024 * 1024; // 1MB
 

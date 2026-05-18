@@ -27,3 +27,4 @@ target
 /uploads
 *.db
 *.exe
+*.txt

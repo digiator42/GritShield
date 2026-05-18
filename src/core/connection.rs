@@ -1,9 +1,13 @@
 use crate::{
     protocol::{request::Request, response::Response},
     routing::trie::{RequestContext, Router, RoutingResult},
-    security::{cookies::CookieJar, middleware::MiddlewareResult, xss::Sanitizer},
+    security::{
+        cookies::CookieJar, errors::FrameworkError, middleware::MiddlewareResult, xss::Sanitizer,
+    },
 };
 use colored::Colorize;
+use futures::future::{self, BoxFuture, FutureExt};
+use std::panic::AssertUnwindSafe;
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
@@ -88,22 +92,51 @@ pub async fn handle_connection(mut stream: TcpStream, router: Arc<Router>) {
         }
     }
 
+    let error_handler_ptr = router.global_error_handler.handler;
     // Route Execution
-    let mut response = match routing_result {
-        RoutingResult::Found(handler, _) => {
-            // Process handler with our loaded and mutated context manager
-            let response: Response = handler(ctx.clone()).await;
+    let response_future = async move {
+        match routing_result {
+            RoutingResult::Found(handler, _) => {
+                // Process handler with our loaded and mutated context manager
+                let response: Response = handler(ctx.clone()).await;
 
-            if router.use_logger {
-                router.log_lifecycle(&ctx, response.status, start_time.elapsed());
+                if router.use_logger {
+                    router.log_lifecycle(&ctx, response.status, start_time.elapsed());
+                }
+
+                router.run_after_hooks(ctx.clone(), response.status, start_time.elapsed());
+
+                response
             }
-
-            router.run_after_hooks(ctx.clone(), response.status, start_time.elapsed());
-
-            response
+            RoutingResult::NotFound => Response::new(404, Sanitizer::trust("<h1>404</h1>")),
+            RoutingResult::MethodNotAllowed => Response::new(405, Sanitizer::trust("<h1>405</h1>")),
         }
-        RoutingResult::NotFound => Response::new(404, Sanitizer::trust("<h1>404</h1>")),
-        RoutingResult::MethodNotAllowed => Response::new(405, Sanitizer::trust("<h1>405</h1>")),
+    };
+
+    // This ensures catch_unwind monitors the execution of the async block
+    let mut response = match std::panic::AssertUnwindSafe(response_future)
+        .catch_unwind()
+        .await
+    {
+        Ok(normal_response) => normal_response,
+        Err(panic_payload) => {
+            let panic_msg = if let Some(s) = panic_payload.downcast_ref::<&str>() {
+                s.to_string()
+            } else if let Some(s) = panic_payload.downcast_ref::<String>() {
+                s.clone()
+            } else {
+                "Unknown framework thread panic occurred.".to_string()
+            };
+
+            eprintln!("[PANIC INFRASTRUCTURE SHIELD] Caught: {}", panic_msg);
+
+            if let Some(custom_err_hook) = error_handler_ptr {
+                let fallback_ctx = RequestContext::new();
+                custom_err_hook(fallback_ctx, FrameworkError::Panic(panic_msg)).await
+            } else {
+                Response::new(500, Sanitizer::trust("<h1>500 Internal Server Error</h1>"))
+            }
+        }
     };
 
     // This drains all staged/mutated cookies out of the jar right into the response header queue

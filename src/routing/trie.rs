@@ -6,6 +6,7 @@ use crate::protocol::form::FormData;
 use crate::protocol::request::{HttpMethod, Request};
 use crate::protocol::response::Response;
 use crate::security::cookies::CookieJar;
+use crate::security::errors::{GlobalErrorHandler, default_framework_error_handler};
 use crate::security::jwt::Claims;
 use crate::security::middleware::{
     AfterRequestHook, Middleware, MiddlewareResult, MiddlewareState,
@@ -35,6 +36,23 @@ pub struct RequestContext {
 }
 
 impl RequestContext {
+    pub fn new() -> Self {
+        Self {
+            req: Request::new(),
+            params: HashMap::new(),
+            headers: HashMap::new(),
+            claims: None,
+            query: HashMap::new(),
+            session: None,
+            form: FormData::new(),
+            db: None,
+            raw_body: Vec::new(),
+            content_type: None,
+            cookies: Arc::new(Mutex::new(CookieJar::new(None, String::new()))),
+            start_time: std::time::Instant::now(),
+        }
+    }
+    
     pub fn start_session(store: &SessionStore) -> Arc<Mutex<Session>> {
         let (ptr, _) = store.get_or_create(None);
         ptr
@@ -161,6 +179,7 @@ pub struct Router {
     pub db: Option<Arc<DatabaseConnection>>,   // An optional database connection
     pub after_hooks: Vec<Box<dyn AfterRequestHook>>,
     pub use_logger: bool,
+    pub global_error_handler: GlobalErrorHandler,
 }
 
 impl Router {
@@ -171,6 +190,9 @@ impl Router {
             db: None,
             use_logger: false,
             after_hooks: Vec::new(),
+            global_error_handler: GlobalErrorHandler {
+                handler: Some(default_framework_error_handler),
+            },
         };
 
         for route in inventory::iter::<AutoRoute> {
