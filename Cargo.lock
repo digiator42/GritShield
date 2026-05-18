@@ -452,6 +452,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ctor"
+version = "1.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6d765eb1c0bda10d31e0ea185f5ee15da532d60b0912d2bd1441783439e749c5"
+dependencies = [
+ "link-section",
+ "linktime-proc-macro",
+]
+
+[[package]]
 name = "darling"
 version = "0.20.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -861,6 +871,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.21.7",
  "colored",
+ "ctor",
  "dashmap",
  "dotenvy",
  "futures",
@@ -870,6 +881,7 @@ dependencies = [
  "inventory",
  "maud",
  "notify",
+ "once_cell",
  "pulldown-cmark",
  "regex",
  "sea-orm",
@@ -1265,6 +1277,18 @@ dependencies = [
  "pkg-config",
  "vcpkg",
 ]
+
+[[package]]
+name = "link-section"
+version = "0.17.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0de704e04b8fdab2a6a633e7e9298211da1d6c73334fed54665559909064e58f"
+
+[[package]]
+name = "linktime-proc-macro"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a44cd706ff0d503ee32b2071166510ca27e281228de10cd3aa8d35ff94560f81"
 
 [[package]]
 name = "litemap"

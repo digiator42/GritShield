@@ -13,6 +13,7 @@ pub mod render;
 pub mod security;
 pub mod templates;
 pub mod utils;
+pub use ctor;
 
 pub use gritshield_macros::*;
 
@@ -31,7 +32,7 @@ pub mod prelude {
     pub use crate::{delete, get, patch, post, put};
 
     // External essentials the developer will always need
-    pub use maud::html;
+    pub use maud::{html, Markup, Render};
     pub use sea_orm::DatabaseConnection;
     pub use std::sync::Arc;
 }

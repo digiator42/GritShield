@@ -2,6 +2,7 @@ use crate::core::logger::log_request_summary;
 use crate::protocol::form::FormData;
 use crate::protocol::request::{HttpMethod, Request};
 use crate::protocol::response::Response;
+use crate::routing::file_system::FILE_ROUTING_REGISTRY;
 use crate::security::cookies::CookieJar;
 use crate::security::errors::{
     FrameworkError, GlobalErrorHandler, default_framework_error_handler,
@@ -15,6 +16,8 @@ use crate::security::xss::{SafeHtml, Sanitizer, UntrustedString};
 use futures::future::{BoxFuture, FutureExt};
 use sea_orm::DatabaseConnection;
 use std::collections::HashMap;
+use std::fs;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -31,6 +34,14 @@ pub trait IntoResponse {
 impl IntoResponse for Response {
     fn into_response(self) -> Response {
         self
+    }
+}
+
+// Add this blanket implementation to allow pre-boxed trait objects
+impl IntoHandler for Box<dyn IntoHandler> {
+    fn call(&self, ctx: RequestContext) -> BoxedResponse {
+        // Delegate straight down to the inner trait object inside the box!
+        self.as_ref().call(ctx)
     }
 }
 
@@ -403,6 +414,79 @@ impl Router {
                 } else {
                     RoutingResult::NotFound
                 }
+            }
+        }
+    }
+
+    /// Seamlessly crawls a filesystem folder, computes URL paths,
+    /// and mounts handlers dynamically.
+    pub fn mount_file_routes<P: AsRef<Path>>(&mut self, folder_path: P) -> std::io::Result<()> {
+        let base_path = folder_path.as_ref().to_path_buf();
+        self.crawl_directory(&base_path, &base_path)?;
+        Ok(())
+    }
+
+    fn crawl_directory(&mut self, current_dir: &Path, base_dir: &Path) -> std::io::Result<()> {
+        if current_dir.is_dir() {
+            for entry in fs::read_dir(current_dir)? {
+                let entry = entry?;
+                let path = entry.path();
+
+                if path.is_dir() {
+                    // Recursively crawl nested folders (e.g., pages/api)
+                    self.crawl_directory(&path, &base_dir)?;
+                } else if path.is_file() && path.extension().map_or(false, |ext| ext == "rs") {
+                    self.process_page_file(&path, base_dir);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn process_page_file(&mut self, file_path: &Path, base_dir: &Path) {
+        // 1. Convert filesystem paths to absolute lookup keys
+        // Example: "src/pages/api/users.rs"
+        let file_key = file_path.to_string_lossy().replace("\\", "/");
+
+        // 2. Compute the dynamic URL Route path
+        let relative = file_path.strip_prefix(base_dir).unwrap().with_extension("");
+        let relative_str = relative.to_string_lossy().replace("\\", "/");
+
+        
+        let mut url_route = if relative_str == "index" {
+            "/".to_string()
+        } else if relative_str.ends_with("/index") {
+            format!("/{}", relative_str.trim_end_matches("/index"))
+        } else {
+            format!("/{}", relative_str)
+        };
+        // Converts "docs/[..path]" -> "docs/:*path"
+        if url_route.contains('[') && url_route.contains(']') {
+            url_route = url_route
+                .replace("[..", ":*") // Handles the Next.js catch-all style
+                .replace("[", ":*") // Fallback for standard dynamic brackets
+                .replace("]", "");
+        }
+
+        // Converts folder/foo/_path_ to folder/foo/:*path (Alternative layout)
+        if url_route.contains('_') {
+            url_route = url_route.replace("_", ":*");
+        }
+
+        // 3. Extract the handler out of our pre-compiled global registry map safely
+        if let Ok(registry) = FILE_ROUTING_REGISTRY.lock() {
+            if let Some(registered) = registry.get(&file_key) {
+                println!(
+                    "[GRITSHIELD FS-ROUTER] Mapping File System Asset: {} ➡️  Route: [{:?}] {}",
+                    file_key, registered.method, url_route
+                );
+                let handler_instance = (registered.handler_factory)();
+                self.add_route(registered.method, &url_route, handler_instance);
+            } else {
+                eprintln!(
+                    "[WARN] Discovered file '{}', but no `register_page!` statement was found inside it.",
+                    file_key
+                );
             }
         }
     }
