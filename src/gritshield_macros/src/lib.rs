@@ -13,19 +13,20 @@ macro_rules! generate_route_macro {
             let fn_name = &input_fn.sig.ident;
             let vis = &input_fn.vis;
 
-            // Generate a unique wrapper identifier matching your 'Handler' type signature
             let wrapper_name = syn::Ident::new(&format!("{}_wrapper", fn_name), fn_name.span());
 
             let expanded = quote! {
-                // Keep the original developer async function intact in the AST
                 #input_fn
 
-                // Define the pin wrapper that converts regular async fn into static BoxFutures
+                // 🎯 Pure Expression mapping using .map() to avoid 'let' namespace leaks
                 #vis fn #wrapper_name(ctx: gritshield::routing::trie::RequestContext) -> gritshield::futures::future::BoxFuture<'static, gritshield::protocol::response::Response> {
-                    Box::pin(#fn_name(ctx))
+                    use gritshield::routing::trie::IntoResponse;
+                    use gritshield::futures::future::FutureExt;
+
+                    // maps the result via trait, and boxes it instantly
+                    #fn_name(ctx).map(|res| res.into_response()).boxed()
                 }
 
-                // Automatically submit the route metadata into the compile-time inventory registry
                 gritshield::inventory::submit! {
                     gritshield::routing::trie::AutoRoute {
                         path: #path,
@@ -39,8 +40,9 @@ macro_rules! generate_route_macro {
     };
 }
 
-generate_route_macro!(get, GET); //
-generate_route_macro!(post, POST); //
-generate_route_macro!(put, PUT); //
-generate_route_macro!(patch, PATCH); //
-generate_route_macro!(delete, DELETE); //
+// Now these will expand flawlessly without any redefinition errors!
+generate_route_macro!(get, GET);
+generate_route_macro!(post, POST);
+generate_route_macro!(put, PUT);
+generate_route_macro!(patch, PATCH);
+generate_route_macro!(delete, DELETE);

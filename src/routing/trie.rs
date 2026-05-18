@@ -1,23 +1,94 @@
-use futures::future::BoxFuture;
-use sea_orm::DatabaseConnection;
-
 use crate::core::logger::log_request_summary;
 use crate::protocol::form::FormData;
 use crate::protocol::request::{HttpMethod, Request};
 use crate::protocol::response::Response;
 use crate::security::cookies::CookieJar;
-use crate::security::errors::{GlobalErrorHandler, default_framework_error_handler};
+use crate::security::errors::{
+    FrameworkError, GlobalErrorHandler, default_framework_error_handler,
+};
 use crate::security::jwt::Claims;
 use crate::security::middleware::{
     AfterRequestHook, Middleware, MiddlewareResult, MiddlewareState,
 };
 use crate::security::session::{Session, SessionStore};
-use crate::security::xss::{SafeHtml, UntrustedString};
+use crate::security::xss::{SafeHtml, Sanitizer, UntrustedString};
+use futures::future::{BoxFuture, FutureExt};
+use sea_orm::DatabaseConnection;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-pub type Handler = fn(RequestContext) -> BoxFuture<'static, Response>;
+pub type BoxedResponse = BoxFuture<'static, Response>;
+pub type Handler = fn(RequestContext) -> BoxedResponse;
+/// Short representation for handlers that can fail safely with an explicit framework error
+pub type ShieldResult<T> = Result<T, FrameworkError>;
+
+pub trait IntoResponse {
+    fn into_response(self) -> Response;
+}
+
+// A standard Response trivially turns into a Response
+impl IntoResponse for Response {
+    fn into_response(self) -> Response {
+        self
+    }
+}
+
+// A ShieldResult turns into a Response by catching errors and invoking a fallback
+impl IntoResponse for ShieldResult<Response> {
+    fn into_response(self) -> Response {
+        match self {
+            Ok(res) => res,
+            Err(err) => {
+                // Return a clean default security/error dashboard layout
+                println!(
+                    "[SECURITY AUDIT] Handler caught an explicit framework error: {:?}",
+                    err
+                );
+                Response::new(
+                    500,
+                    Sanitizer::trust("<h1>500 Internal Security Error</h1>"),
+                )
+            }
+        }
+    }
+}
+
+// Support raw static string slices: &'static str
+impl IntoResponse for &'static str {
+    fn into_response(self) -> Response {
+        // Automatically wraps the text as an HTML response with a 200 OK status
+        Response::new(200, Sanitizer::trust(self))
+    }
+}
+
+// Support dynamic heap strings: String
+impl IntoResponse for String {
+    fn into_response(self) -> Response {
+        Response::new(200, Sanitizer::trust(&self))
+    }
+}
+
+pub trait IntoHandler: Send + Sync + 'static {
+    fn call(&self, ctx: RequestContext) -> BoxedResponse;
+}
+
+impl<F, Fut, R> IntoHandler for F
+where
+    F: Fn(RequestContext) -> Fut + Send + Sync + 'static,
+    Fut: std::future::Future<Output = R> + Send + 'static,
+    R: IntoResponse + 'static,
+{
+    fn call(&self, ctx: RequestContext) -> BoxedResponse {
+        let fut = (self)(ctx);
+
+        async move {
+            let res = fut.await;
+            res.into_response()
+        }
+        .boxed()
+    }
+}
 
 #[derive(Clone)]
 pub struct RequestContext {
@@ -52,7 +123,7 @@ impl RequestContext {
             start_time: std::time::Instant::now(),
         }
     }
-    
+
     pub fn start_session(store: &SessionStore) -> Arc<Mutex<Session>> {
         let (ptr, _) = store.get_or_create(None);
         ptr
@@ -152,7 +223,7 @@ inventory::collect!(AutoRoute);
 pub struct Node {
     pub children: HashMap<String, Node>,
     pub is_end: bool,
-    pub methods: HashMap<HttpMethod, Handler>,
+    pub methods: HashMap<HttpMethod, Box<dyn IntoHandler>>,
     pub parameter_name: Option<String>,
 }
 
@@ -167,8 +238,8 @@ impl Node {
     }
 }
 
-pub enum RoutingResult {
-    Found(Handler, HashMap<String, UntrustedString>),
+pub enum RoutingResult<'a> {
+    Found(&'a dyn IntoHandler, HashMap<String, UntrustedString>),
     MethodNotAllowed,
     NotFound,
 }
@@ -261,29 +332,25 @@ impl Router {
         MiddlewareResult::Next(Some(accumulated_state))
     }
 
-    pub fn add_route(&mut self, method: HttpMethod, path: &str, handler: Handler) {
+    pub fn add_route<H>(&mut self, method: HttpMethod, path: &str, handler: H)
+    where
+        H: IntoHandler,
+    {
         let mut current = &mut self.root;
 
         for segment in path.split('/').filter(|s| !s.is_empty()) {
-            if segment.starts_with(':') {
-                let param_name = segment[1..].to_string();
-                current = current
-                    .children
-                    .entry(":param".to_string())
-                    .or_insert(Node::new());
-                current.parameter_name = Some(param_name);
-            } else {
-                current = current
-                    .children
-                    .entry(segment.to_string())
-                    .or_insert(Node::new());
-            }
+            current = current
+                .children
+                .entry(segment.to_string())
+                .or_insert(Node::new());
         }
+
         current.is_end = true;
-        current.methods.insert(method, handler);
+        // Heap-allocate the handler container so it fits uniformly into the Trie matrix
+        current.methods.insert(method, Box::new(handler));
     }
 
-    pub fn match_route(&self, method: &HttpMethod, path: &str) -> RoutingResult {
+    pub fn match_route<'a>(&'a self, method: &HttpMethod, path: &str) -> RoutingResult<'a> {
         let mut current = &self.root;
         let mut params = HashMap::new();
         let segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
@@ -291,27 +358,45 @@ impl Router {
         for (i, segment) in segments.iter().enumerate() {
             if let Some(next_node) = current.children.get(*segment) {
                 current = next_node;
-            } else if let Some(param_node) = current.children.get(":param") {
-                if let Some(ref name) = param_node.parameter_name {
-                    // Check if this is a wildcard parameter (e.g., *path)
-                    if name.starts_with('*') {
-                        // Grab all remaining segments joined by slashes
-                        let remainder = segments[i..].join("/");
-                        params.insert(name.clone(), UntrustedString::new(remainder));
-                        current = param_node;
-                        break; // Exit loop, we've consumed everything
-                    } else {
-                        params.insert(name.clone(), UntrustedString::new(segment.to_string()));
-                    }
-                }
-                current = param_node;
             } else {
-                return RoutingResult::NotFound;
+                // Find any child key that signals a dynamic parameter
+                let param_match = current
+                    .children
+                    .iter()
+                    .find(|(key, _)| key.starts_with(':'));
+
+                if let Some((key, param_node)) = param_match {
+                    // 🎯 FIX: Check if either the map key OR the internal name contains the '*' wildcard flag
+                    let is_wildcard = key.contains('*')
+                        || param_node
+                            .parameter_name
+                            .as_ref()
+                            .map_or(false, |name| name.contains('*'));
+
+                    if is_wildcard {
+                        // Grab everything remaining, join it with slashes, and clean the parameter key
+                        let remainder = segments[i..].join("/");
+                        let clean_key = key.trim_start_matches(':').to_string(); // drops ':' to leave '*path'
+
+                        params.insert(clean_key, UntrustedString::new(remainder));
+                        current = param_node;
+                        break; // 🚀 Break instantly! The wildcard has devoured the rest of the URL path
+                    } else {
+                        // Standard parameter extraction (:id, etc.)
+                        if let Some(ref name) = param_node.parameter_name {
+                            let clean_key = name.trim_start_matches(':').to_string();
+                            params.insert(clean_key, UntrustedString::new(segment.to_string()));
+                        }
+                        current = param_node;
+                    }
+                } else {
+                    return RoutingResult::NotFound;
+                }
             }
         }
-        // Check if the specific method is supported at this node
+
         match current.methods.get(method) {
-            Some(handler) => RoutingResult::Found(*handler, params),
+            Some(handler) => RoutingResult::Found(&**handler, params),
             None => {
                 if !current.methods.is_empty() {
                     RoutingResult::MethodNotAllowed

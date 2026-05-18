@@ -1,6 +1,6 @@
 use crate::{
     protocol::{request::Request, response::Response},
-    routing::trie::{RequestContext, Router, RoutingResult},
+    routing::trie::{IntoHandler, RequestContext, Router, RoutingResult},
     security::{
         cookies::CookieJar, errors::FrameworkError, middleware::MiddlewareResult, xss::Sanitizer,
     },
@@ -30,21 +30,14 @@ pub async fn handle_connection(mut stream: TcpStream, router: Arc<Router>) {
         }
     };
 
-    // Pre-build our core Context Manager object
-    let routing_result = router.match_route(&req.method, &req.path);
-
-    let params = match &routing_result {
+    // This allows router to be completely unborrowed before we start middleware.
+    let params = match router.match_route(&req.method, &req.path) {
         RoutingResult::Found(_, dynamic_params) => dynamic_params.clone(),
         _ => HashMap::new(),
     };
 
     let form = req.parse_form_body();
-
-    // We look up the raw "cookie" header case-insensitively or lowercase based on your parser
-    let cookie_header = req
-        .headers
-        .get("cookie")
-        .or_else(|| req.headers.get("Cookie"));
+    let cookie_header = req.headers.get("cookie").or_else(|| req.headers.get("Cookie"));
     let secret_key = crate::core::env::get_env("JWT_SECRET", "fallback_secure_key_string");
     let jar = Arc::new(Mutex::new(CookieJar::new(cookie_header, secret_key)));
 
@@ -66,7 +59,6 @@ pub async fn handle_connection(mut stream: TcpStream, router: Arc<Router>) {
     // Process Middleware Stack sequentially
     match router.run_middlewares(&mut ctx) {
         MiddlewareResult::Next(maybe_state) => {
-            // Unpack the final accumulated values directly into your request context
             if let Some(state) = maybe_state {
                 if state.session.is_some() {
                     ctx.session = state.session;
@@ -77,39 +69,38 @@ pub async fn handle_connection(mut stream: TcpStream, router: Arc<Router>) {
             }
         }
         MiddlewareResult::Error(mut err_res) => {
-            // err_res = ctx.cookies.clone().commit(err_res);
-
             let (bytes, mime) = err_res.resolve();
             let _ = stream.write_all(&err_res.to_bytes(&bytes, &mime)).await;
 
             if router.use_logger {
                 router.log_lifecycle(&ctx, err_res.status, start_time.elapsed());
             }
-
             router.run_after_hooks(ctx, err_res.status, start_time.elapsed());
-
             return;
         }
     }
 
     let error_handler_ptr = router.global_error_handler.handler;
-    // Route Execution
+    
+    // Clone our Arc handle for the execution block
+    let router_clone = router.clone(); 
+
+    // Route Execution Future
     let response_future = async move {
-        match routing_result {
+        // router_clone is ultra short-lived and never crosses an outer function boundary.
+        match router_clone.match_route(&ctx.req.method, &ctx.req.path) {
             RoutingResult::Found(handler, _) => {
-                // Process handler with our loaded and mutated context manager
-                let response: Response = handler(ctx.clone()).await;
+                let response: Response = handler.call(ctx.clone()).await;
 
-                if router.use_logger {
-                    router.log_lifecycle(&ctx, response.status, start_time.elapsed());
+                if router_clone.use_logger {
+                    router_clone.log_lifecycle(&ctx, response.status, start_time.elapsed());
                 }
-
-                router.run_after_hooks(ctx.clone(), response.status, start_time.elapsed());
+                router_clone.run_after_hooks(ctx.clone(), response.status, start_time.elapsed());
 
                 response
             }
-            RoutingResult::NotFound => Response::new(404, Sanitizer::trust("<h1>404</h1>")),
-            RoutingResult::MethodNotAllowed => Response::new(405, Sanitizer::trust("<h1>405</h1>")),
+            RoutingResult::NotFound => Response::new(404, Sanitizer::trust("<h1>404 Not Found</h1>")),
+            RoutingResult::MethodNotAllowed => Response::new(405, Sanitizer::trust("<h1>405 Method Not Allowed</h1>")),
         }
     };
 
@@ -139,13 +130,10 @@ pub async fn handle_connection(mut stream: TcpStream, router: Arc<Router>) {
         }
     };
 
-    // This drains all staged/mutated cookies out of the jar right into the response header queue
     if let Ok(locked_jar) = jar.lock() {
-        // Moves staging cookies out of the shared pointer into the real response headers!
         response = locked_jar.clone().commit(response);
     }
 
-    // Send output back over socket wire
     let (bytes, mime) = response.resolve();
     let _ = stream.write_all(&response.to_bytes(&bytes, &mime)).await;
 }

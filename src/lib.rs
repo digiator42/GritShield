@@ -1,13 +1,11 @@
 pub use futures;
 pub use inventory;
 pub mod core;
+pub mod routing;
 pub mod protocol {
     pub mod form;
     pub mod request;
     pub mod response;
-}
-pub mod routing {
-    pub mod trie;
 }
 pub mod migration;
 pub mod model;
