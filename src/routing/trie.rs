@@ -287,6 +287,7 @@ pub struct Router {
     pub after_hooks: Vec<Box<dyn AfterRequestHook>>,
     pub use_logger: bool,
     pub global_error_handler: GlobalErrorHandler,
+    pub telemetry: SystemTelemetry,
 }
 
 impl Router {
@@ -300,6 +301,7 @@ impl Router {
             global_error_handler: GlobalErrorHandler {
                 handler: Some(default_framework_error_handler),
             },
+            telemetry: SystemTelemetry::new(),
         };
 
         for route in inventory::iter::<AutoRoute> {

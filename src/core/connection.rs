@@ -7,16 +7,21 @@ use crate::{
 };
 use colored::Colorize;
 use futures::future::{self, BoxFuture, FutureExt};
-use std::{net::SocketAddr, panic::AssertUnwindSafe};
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
 };
+use std::{net::SocketAddr, panic::AssertUnwindSafe, sync::atomic::Ordering};
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 
 pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, router: Arc<Router>) {
     let start_time = std::time::Instant::now();
+
+    router
+        .telemetry
+        .active_connections
+        .fetch_add(1, Ordering::SeqCst);
 
     // Parse raw request wire components
     let req = match Request::parse(&mut stream).await {
@@ -37,12 +42,18 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
     };
 
     let form = req.parse_form_body();
-    let cookie_header = req.headers.get("cookie").or_else(|| req.headers.get("Cookie"));
+    let cookie_header = req
+        .headers
+        .get("cookie")
+        .or_else(|| req.headers.get("Cookie"));
     let secret_key = crate::core::env::get_env("JWT_SECRET", "fallback_secure_key_string");
     let jar = Arc::new(Mutex::new(CookieJar::new(cookie_header, secret_key)));
 
+    let telemetry = router.telemetry.clone();
+
     let mut ctx = RequestContext {
         params,
+        telemetry,
         headers: req.headers.clone(),
         peer_addr: peer_addr,
         claims: None,
@@ -82,9 +93,9 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
     }
 
     let error_handler_ptr = router.global_error_handler.handler;
-    
+
     // Clone our Arc handle for the execution block
-    let router_clone = router.clone(); 
+    let router_clone = router.clone();
 
     // Route Execution Future
     let response_future = async move {
@@ -100,8 +111,12 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
 
                 response
             }
-            RoutingResult::NotFound => Response::new(404, Sanitizer::trust("<h1>404 Not Found</h1>")),
-            RoutingResult::MethodNotAllowed => Response::new(405, Sanitizer::trust("<h1>405 Method Not Allowed</h1>")),
+            RoutingResult::NotFound => {
+                Response::new(404, Sanitizer::trust("<h1>404 Not Found</h1>"))
+            }
+            RoutingResult::MethodNotAllowed => {
+                Response::new(405, Sanitizer::trust("<h1>405 Method Not Allowed</h1>"))
+            }
         }
     };
 
@@ -134,6 +149,11 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
     if let Ok(locked_jar) = jar.lock() {
         response = locked_jar.clone().commit(response);
     }
+
+    router
+        .telemetry
+        .active_connections
+        .fetch_sub(1, Ordering::SeqCst);
 
     let (bytes, mime) = response.resolve();
     let _ = stream.write_all(&response.to_bytes(&bytes, &mime)).await;
