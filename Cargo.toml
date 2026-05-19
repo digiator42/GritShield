@@ -24,7 +24,7 @@ maud = "0.25"
 gritshield_macros = { path = "./src/gritshield_macros" }
 inventory = "0.3"
 notify = "4.0"
-sea-orm = { version = "1.0", features = [ "sqlx-sqlite", "runtime-tokio-rustls", "macros" ] }
+sea-orm = { version = "1.1.20", default-features = false, features = ["macros"] }
 tokio = { version = "1.0", features = ["full"] }
 futures = "0.3"
 sea-orm-migration = "1.1.20"

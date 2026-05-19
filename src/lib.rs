@@ -7,11 +7,8 @@ pub mod protocol {
     pub mod request;
     pub mod response;
 }
-pub mod migration;
-pub mod model;
 pub mod render;
 pub mod security;
-pub mod templates;
 pub mod utils;
 pub use ctor;
 
@@ -34,6 +31,5 @@ pub mod prelude {
 
     // External essentials the developer will always need
     pub use maud::{html, Markup, Render};
-    pub use sea_orm::DatabaseConnection;
     pub use std::sync::Arc;
 }

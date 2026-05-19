@@ -330,9 +330,10 @@ impl Router {
         self.add_route(route_info.1, route_info.0, route_info.2);
     }
 
-    pub fn add_middleware<M: Middleware + 'static>(&mut self, middleware: M) -> &Self {
+    /// Register a global pipeline middleware by moving ownership
+    pub fn add_middleware(mut self, middleware: impl Middleware + 'static) -> Self {
         self.middlewares.push(Box::new(middleware));
-        self
+        self // Return ownership back out to the chain
     }
 
     pub fn run_after_hooks(&self, ctx: RequestContext, status: u16, duration: Duration) {
@@ -447,10 +448,13 @@ impl Router {
 
     /// Seamlessly crawls a filesystem folder, computes URL paths,
     /// and mounts handlers dynamically.
-    pub fn mount_file_routes<P: AsRef<Path>>(&mut self, folder_path: P) -> std::io::Result<()> {
+    pub fn mount_file_routes<P: AsRef<Path>>(
+        mut self,
+        folder_path: P,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let base_path = folder_path.as_ref().to_path_buf();
         self.crawl_directory(&base_path, &base_path)?;
-        Ok(())
+        Ok(self)
     }
 
     fn crawl_directory(&mut self, current_dir: &Path, base_dir: &Path) -> std::io::Result<()> {

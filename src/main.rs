@@ -1,9 +1,6 @@
 use std::sync::Arc;
 
-use gritshield::migration::src::lib::Migrator;
-use gritshield::migration::src::lib::MigratorTrait;
-use gritshield::security::middleware::{LoggerMiddleware, SessionMiddleware};
-use gritshield::security::session::SessionStore;
+use gritshield::security::middleware::{LoggerMiddleware};
 use gritshield::{
     core::server::run_server,
     routing::trie::Router,
@@ -13,20 +10,10 @@ use sea_orm::{Database, DatabaseConnection};
 
 #[tokio::main]
 async fn main() {
-    // Connect to the database (creates gritshield.db if it doesn't exist)
-    let db: DatabaseConnection = Database::connect("sqlite://gritshield.db?mode=rwc")
-        .await
-        .expect("Failed to connect to database");
 
     let mut router = Router::new();
 
-    let shared_db = std::sync::Arc::new(db);
-
-    Migrator::up(&*shared_db, None)
-        .await
-        .expect("Migration failed!");
-
-    router.add_middleware(LoggerMiddleware);
+    router = router.add_middleware(LoggerMiddleware);
 
     // Define public routes
     let public_routes = vec![
@@ -44,7 +31,7 @@ async fn main() {
     let security_middleware = AuthMiddleware::new_session(public_routes);
 
     // Initialize Auth with the whitelist
-    router.add_middleware(security_middleware);
+    // router.add_middleware(security_middleware);
 
     // Register handlers
     // router.add_route(HttpMethod::GET, "/products", products_handler); // PUBLIC
