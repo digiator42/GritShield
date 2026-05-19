@@ -6,3 +6,4 @@ pub mod rate_limit;
 pub mod db;
 pub mod cookies;
 pub mod errors;
+pub mod telemetry;

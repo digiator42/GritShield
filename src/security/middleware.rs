@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -417,6 +418,8 @@ impl Middleware for IPBlacklistMiddleware {
                 "[SECURITY ALERT] Blocked request attempt from blacklisted IP: {}",
                 client_ip
             );
+
+            ctx.telemetry.total_blocked_ips.fetch_add(1, Ordering::SeqCst);
 
             let err_body = Sanitizer::trust(
                 "<h1>403 Forbidden</h1>\

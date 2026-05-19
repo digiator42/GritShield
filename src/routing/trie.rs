@@ -12,6 +12,7 @@ use crate::security::middleware::{
     AfterRequestHook, Middleware, MiddlewareResult, MiddlewareState,
 };
 use crate::security::session::{Session, SessionStore};
+use crate::security::telemetry::SystemTelemetry;
 use crate::security::xss::{SafeHtml, Sanitizer, UntrustedString};
 use futures::future::{BoxFuture, FutureExt};
 use sea_orm::DatabaseConnection;
@@ -105,6 +106,7 @@ where
 #[derive(Clone)]
 pub struct RequestContext {
     pub req: Request,
+    pub telemetry: SystemTelemetry,
     pub params: HashMap<String, UntrustedString>,
     pub peer_addr: SocketAddr,
     pub headers: HashMap<String, String>,
@@ -123,6 +125,7 @@ impl RequestContext {
     pub fn new() -> Self {
         Self {
             req: Request::new(),
+            telemetry: SystemTelemetry::new(),
             params: HashMap::new(),
             peer_addr: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080),
             headers: HashMap::new(),
