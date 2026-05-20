@@ -278,11 +278,16 @@ pub struct LoggerMiddleware;
 
 impl Middleware for LoggerMiddleware {
     fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult {
+        let now = Local::now();
+        let timestamp = now.format("%Y-%m-%d %H:%M:%S").to_string();
+
         println!(
-            "[LOG] {} request to {}",
+            "[{}] {} request to {}",
+            timestamp.green(),
             format!("{:?}", ctx.req.method).blue(),
             ctx.req.path.yellow()
         );
+
         MiddlewareResult::Next(None)
     }
 }
@@ -419,7 +424,9 @@ impl Middleware for IPBlacklistMiddleware {
                 client_ip
             );
 
-            ctx.telemetry.total_blocked_ips.fetch_add(1, Ordering::SeqCst);
+            ctx.telemetry
+                .total_blocked_ips
+                .fetch_add(1, Ordering::SeqCst);
 
             let err_body = Sanitizer::trust(
                 "<h1>403 Forbidden</h1>\
