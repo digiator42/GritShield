@@ -171,4 +171,29 @@ impl Response {
             }),
         }
     }
+
+    /// Creates an HTTP redirect response (typically 302 Found or 303 See Other)
+    /// forcing the browser to seamlessly navigate to a target destination URL.
+    pub fn redirect(status: u16, location: &str) -> Self {
+        Response {
+            status,
+            headers: vec![
+                ("Location".to_string(), location.to_string()),
+                (
+                    "Content-Type".to_string(),
+                    "text/html; charset=utf-8".to_string(),
+                ),
+                ("X-Content-Type-Options".to_string(), "nosniff".to_string()),
+                ("X-Frame-Options".to_string(), "DENY".to_string()),
+            ],
+            cookies: Vec::new(),
+            body: ResponseBody::Html(Sanitizer::trust(
+                format!(
+                    "Redirecting to <a href=\"{}\">{}</a>...",
+                    location, location
+                )
+                .as_str(),
+            )),
+        }
+    }
 }

@@ -17,7 +17,7 @@ pub enum HttpMethod {
     DELETE,
     UNKNOWN,
 }
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Request {
     pub method: HttpMethod,
     pub path: String,

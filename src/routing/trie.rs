@@ -13,7 +13,7 @@ use crate::security::middleware::{
 };
 use crate::security::session::{Session, SessionStore};
 use crate::security::telemetry::SystemTelemetry;
-use crate::security::xss::{SafeHtml, Sanitizer, UntrustedString};
+use crate::security::xss::{Sanitizer, UntrustedString};
 use futures::future::{BoxFuture, FutureExt};
 use sea_orm::DatabaseConnection;
 use std::collections::HashMap;
@@ -103,7 +103,7 @@ where
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct RequestContext {
     pub req: Request,
     pub telemetry: SystemTelemetry,
@@ -405,7 +405,7 @@ impl Router {
                     .find(|(key, _)| key.starts_with(':'));
 
                 if let Some((key, param_node)) = param_match {
-                    // 🎯 FIX: Check if either the map key OR the internal name contains the '*' wildcard flag
+                    // Check if either the map key OR the internal name contains the '*' wildcard flag
                     let is_wildcard = key.contains('*')
                         || param_node
                             .parameter_name

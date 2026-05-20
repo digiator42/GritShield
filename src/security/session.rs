@@ -5,6 +5,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 use uuid::{Timestamp, Uuid};
 
+#[derive(Debug, Clone)]
 pub struct Session {
     pub id: String,
     pub data: HashMap<String, String>,
