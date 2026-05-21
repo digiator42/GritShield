@@ -28,7 +28,7 @@ async fn main() {
 
     let jwt_kernel = JwtHandler::new("super_secret_key_123");
 
-    let security_middleware = AuthMiddleware::new_session(public_routes);
+    // let security_middleware = AuthMiddleware::new_session(public_routes);
 
     // Initialize Auth with the whitelist
     // router.add_middleware(security_middleware);

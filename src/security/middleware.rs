@@ -11,9 +11,9 @@ use crate::security::jwt::{Claims, JwtHandler};
 use crate::security::rate_limit::RateLimiter;
 use crate::security::session::{Session, SessionStore};
 use crate::security::xss::Sanitizer;
+use chrono::Local;
 use colored::*;
 use uuid::Uuid;
-
 pub enum MiddlewareResult {
     Next(Option<MiddlewareState>), // State can hold session data, claims, or both
     Error(Response),               // Stop and return error immediately
@@ -23,6 +23,7 @@ pub enum MiddlewareResult {
 pub struct MiddlewareState {
     pub session: Option<Arc<Mutex<Session>>>,
     pub claims: Option<Claims>,
+    pub session_was_stale: bool,
 }
 
 pub trait Middleware: Send + Sync {
@@ -38,11 +39,12 @@ pub struct AuthMiddleware {
     pub jwt_handler: Option<JwtHandler>,
     pub public_paths: Vec<String>, // List of open routes
     pub enable_csrf: bool,
+    pub redirect: Option<String>,
 }
 
 impl AuthMiddleware {
     /// Pure Stateful Session Architecture (No JWTs)
-    pub fn new_session(public_paths: Vec<String>) -> Self {
+    pub fn new_session(public_paths: Vec<String>, redirect: Option<&str>) -> Self {
         let session_store = Arc::new(SessionStore::new());
 
         Self {
@@ -50,16 +52,22 @@ impl AuthMiddleware {
             jwt_handler: None,
             public_paths,
             enable_csrf: true,
+            redirect: redirect.map(|s| s.to_string()).or(None),
         }
     }
 
     /// Pure Stateless JWT Architecture (Dummy empty session store bypassed)
-    pub fn new_jwt(jwt_handler: JwtHandler, public_paths: Vec<String>) -> Self {
+    pub fn new_jwt(
+        jwt_handler: JwtHandler,
+        public_paths: Vec<String>,
+        redirect: Option<&str>,
+    ) -> Self {
         Self {
             store: Arc::new(SessionStore::new()),
             jwt_handler: Some(jwt_handler),
             public_paths,
             enable_csrf: false,
+            redirect: redirect.map(|s| s.to_string()).or(None),
         }
     }
 
@@ -111,13 +119,15 @@ impl Middleware for AuthMiddleware {
         let is_public_route = self.is_public(&ctx.req.path);
         let mut active_session = None;
 
-        // --- STEP 1: CONDITIONAL SESSION LIEFOCYCLE ---
+        // --- CONDITIONAL SESSION LIEFOCYCLE ---
         // Only run session logic if we are NOT in exclusive JWT stateless mode
         let running_sessions =
             self.jwt_handler.is_none() || ctx.get_signed_cookie("GSESSION_ID").is_some();
 
+        let mut cookie_was_stale = false;
+
         if running_sessions {
-            let session_id = ctx.get_signed_cookie("GSESSION_ID");
+            let session_id: Option<String> = ctx.get_signed_cookie("GSESSION_ID");
 
             let store_guard = match self.store.sessions.lock() {
                 Ok(guard) => guard,
@@ -135,6 +145,9 @@ impl Middleware for AuthMiddleware {
                 if let Some(session_ptr) = store_guard.get(sid) {
                     ctx.session = Some(Arc::clone(&session_ptr));
                     active_session = Some(Arc::clone(&session_ptr));
+                } else {
+                    // The browser sent a cookie, but it's dead on the server!
+                    cookie_was_stale = true;
                 }
             }
 
@@ -156,12 +169,16 @@ impl Middleware for AuthMiddleware {
                     .set_secure(is_production)
                     .set_same_site(SameSite::Lax);
 
-                if session_id.is_none() {
-                    ctx.set_signed_cookie(session_cookie);
-                }
-
+                ctx.set_signed_cookie(session_cookie);
                 ctx.session = Some(Arc::clone(&new_session));
                 active_session = Some(new_session);
+            }
+
+            // the browser jar to delete the cookie by setting its Max-Age to 0
+            if cookie_was_stale {
+                let mut delete_cookie = Cookie::new("GSESSION_ID", "");
+                delete_cookie.max_age = 0; // Instructs the browser to evict the key immediately
+                ctx.set_signed_cookie(delete_cookie);
             }
 
             drop(store_guard); // Release lock cleanly
@@ -177,15 +194,16 @@ impl Middleware for AuthMiddleware {
             }
         }
 
-        // --- STEP 2: BYPASS GATEKEEPING FOR PUBLIC ROUTES ---
+        // --- BYPASS GATEKEEPING FOR PUBLIC ROUTES ---
         if is_public_route {
             return MiddlewareResult::Next(Some(MiddlewareState {
                 session: active_session.clone(), // Use clone to preserve variable
                 claims: None,
+                session_was_stale: cookie_was_stale,
             }));
         }
 
-        // --- STEP 2.5: CSRF STATEFUL PROTECTION GUARD ---
+        // --- : CSRF STATEFUL PROTECTION GUARD ---
         if self.enable_csrf && self.jwt_handler.is_none() {
             let method = ctx.req.method; // HttpMethod enum
 
@@ -229,16 +247,18 @@ impl Middleware for AuthMiddleware {
             }
         }
 
-        // --- STEP 3: PRIVATE ROUTE AUTHENTICATION EVALUATION ---
-
+        // --- PRIVATE ROUTE AUTHENTICATION EVALUATION ---
+        println!("==> check session ===");
         // Strategy A: Session Check
         if let Some(ref session_arc) = active_session {
             let session = session_arc.lock().unwrap();
+            println!("==> check session === {:?}", session);
             if session.data.get("user_id").is_some() {
                 drop(session);
                 return MiddlewareResult::Next(Some(MiddlewareState {
                     session: active_session.clone(), // Cloned safely
                     claims: None,
+                    session_was_stale: false,
                 }));
             }
         }
@@ -257,6 +277,7 @@ impl Middleware for AuthMiddleware {
                             return MiddlewareResult::Next(Some(MiddlewareState {
                                 session: active_session.clone(), // Cloned safely
                                 claims: Some(claims),
+                                session_was_stale: false,
                             }));
                         }
                         Err(e) => {
@@ -267,9 +288,12 @@ impl Middleware for AuthMiddleware {
             }
         }
 
-        // --- STEP 4: AUTHENTICATION FAILURE ---
-        let err_body =
-            Sanitizer::trust("<h1>401 Unauthorized</h1><p>Access Denied by GritShield Core.</p>");
+        if let Some(ref redirect_path) = self.redirect {
+            return MiddlewareResult::Error(Response::redirect(303, redirect_path));
+        }
+
+        // // --- AUTHENTICATION FAILURE ---
+        let err_body = Sanitizer::trust("<h1>401 Unauthorized</h1><p>Access Denied.</p>");
         MiddlewareResult::Error(Response::new(401, err_body))
     }
 }
@@ -318,6 +342,7 @@ impl Middleware for SessionMiddleware {
                 return MiddlewareResult::Next(Some(MiddlewareState {
                     session: Some(Arc::clone(&session_ptr)),
                     claims: None,
+                    session_was_stale: false,
                 }));
             }
         }
@@ -350,6 +375,7 @@ impl Middleware for SessionMiddleware {
         MiddlewareResult::Next(Some(MiddlewareState {
             session: Some(new_session),
             claims: None,
+            session_was_stale: false,
         }))
     }
 }

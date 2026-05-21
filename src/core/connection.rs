@@ -80,7 +80,7 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
                 }
             }
         }
-        MiddlewareResult::Error(mut err_res) => {
+        MiddlewareResult::Error(err_res) => {
             let (bytes, mime) = err_res.resolve();
             let _ = stream.write_all(&err_res.to_bytes(&bytes, &mime)).await;
 

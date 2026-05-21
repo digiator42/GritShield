@@ -60,7 +60,7 @@ impl SessionStore {
                 // Sleep first to avoid high CPU usage
                 thread::sleep(Duration::from_secs(60));
 
-                let mut sessions = store.sessions.lock().unwrap();
+                let sessions = store.sessions.lock().unwrap();
                 let now = Instant::now();
 
                 // Retain only the sessions that haven't expired

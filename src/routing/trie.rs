@@ -165,6 +165,22 @@ impl RequestContext {
         ptr
     }
 
+    /// Returns true if the user's browser sent a session cookie but it was
+    /// rejected or evicted by the framework because it expired on the server.
+    pub fn is_session_expired(&self) -> bool {
+        // If the browser sent a cookie header, but the AuthMiddleware stripped
+        // it out and left the active context session empty, it means the session expired!
+        let had_cookie = self
+            .req
+            .headers
+            .get("cookie")
+            .or_else(|| self.req.headers.get("Cookie"))
+            .map(|val| val.contains("GSESSION_ID"))
+            .unwrap_or(false);
+
+        had_cookie && self.session.is_none()
+    }
+
     /// A helper method allowing handlers to cleanly extract JSON data structures
     pub fn json<T: serde::de::DeserializeOwned>(&self) -> Result<T, String> {
         let content_type = self.content_type.as_deref().unwrap_or("");
@@ -347,6 +363,7 @@ impl Router {
         let mut accumulated_state = MiddlewareState {
             session: None,
             claims: None,
+            session_was_stale: false,
         };
 
         for middleware in &self.middlewares {
