@@ -194,6 +194,40 @@ impl Middleware for AuthMiddleware {
             }
         }
 
+        // Absolute Clean Short-Circuit for Explicit Logout Requests
+        if ctx.req.path == "/logout" {
+            println!("[AUTH KERNEL] Intercepted explicit /logout pathway trigger.");
+
+            // If a session cookie is present, erase its record from the internal memory store
+            if let Some(session_id) = ctx.get_signed_cookie("GSESSION_ID") {
+                if let Ok(store_guard) = self.store.sessions.lock() {
+                    store_guard.remove(&session_id);
+                    println!(
+                        "[AUTH KERNEL] Successfully removed session ID {} from memory pool.",
+                        session_id
+                    );
+                }
+            }
+
+            // Erase the cookie from the browser jar immediately
+            let mut delete_cookie = Cookie::new("GSESSION_ID", "");
+            delete_cookie.max_age = 0;
+
+            let is_production = crate::core::env::get_env("APP_ENV", "development") == "production";
+            let delete_cookie = delete_cookie
+                .set_secure(is_production)
+                .set_same_site(SameSite::Lax);
+
+            ctx.set_signed_cookie(delete_cookie);
+
+            // Prevent any further execution and immediately issue a 303 browser redirect
+            if let Some(ref redirect_path) = self.redirect {
+                return MiddlewareResult::Error(Response::redirect(303, redirect_path));
+            }
+            let res = Response::redirect(303, "/");
+            return MiddlewareResult::Error(res);
+        }
+
         // --- BYPASS GATEKEEPING FOR PUBLIC ROUTES ---
         if is_public_route {
             return MiddlewareResult::Next(Some(MiddlewareState {

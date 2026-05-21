@@ -250,6 +250,11 @@ impl RequestContext {
         }
     }
 
+    /// Explicitly check if the current request context belongs to a logged-in user
+    pub fn is_user_authenticated(&self) -> bool {
+        self.get_session_data("user_id").is_some()
+    }
+
     /// Generates or retrieves an existing CSRF token for the active session context
     pub fn get_csrf_token(&self) -> String {
         if let Some(ref session_arc) = self.session {
