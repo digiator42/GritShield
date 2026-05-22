@@ -21,6 +21,34 @@ nav {
 a { color: #38bdf8; text-decoration: none; }
 footer { margin-top: 2rem; text-align: center; color: #64748b; font-size: 0.875rem; }
 
+/* Custom Scrollbar Styles */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #0f172a;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: linear-gradient(135deg, #ef4444, #dc2626);
+    border-radius: 4px;
+    transition: all 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(135deg, #f87171, #ef4444);
+    box-shadow: 0 0 5px rgba(239, 68, 68, 0.5);
+}
+
+/* Firefox scrollbar */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: #ef4444 #0f172a;
+}
+
 /* Documentation Layout - Root Level Sidebar */
 .docs-layout {
     display: flex;
@@ -37,9 +65,28 @@ footer { margin-top: 2rem; text-align: center; color: #64748b; font-size: 0.875r
     flex-shrink: 0;
     position: sticky;
     top: 5rem;
-    height: calc(100vh - 8rem);
+    height: calc(100vh - 2rem);
     overflow-y: auto;
     border-right: 1px solid rgba(51, 65, 85, 0.4);
+}
+
+/* Sidebar custom scrollbar */
+.docs-sidebar-wrapper::-webkit-scrollbar {
+    width: 4px;
+}
+
+.docs-sidebar-wrapper::-webkit-scrollbar-track {
+    background: #0f172a;
+    border-radius: 2px;
+}
+
+.docs-sidebar-wrapper::-webkit-scrollbar-thumb {
+    background: linear-gradient(135deg, #ef4444, #dc2626);
+    border-radius: 2px;
+}
+
+.docs-sidebar-wrapper::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(135deg, #f87171, #ef4444);
 }
 
 .docs-sidebar {
@@ -253,6 +300,21 @@ footer { margin-top: 2rem; text-align: center; color: #64748b; font-size: 0.875r
     overflow-x: auto;
 }
 
+/* Code block custom scrollbar */
+.code-block::-webkit-scrollbar {
+    height: 4px;
+}
+
+.code-block::-webkit-scrollbar-track {
+    background: #0f172a;
+    border-radius: 2px;
+}
+
+.code-block::-webkit-scrollbar-thumb {
+    background: linear-gradient(135deg, #ef4444, #dc2626);
+    border-radius: 2px;
+}
+
 .code-block pre {
     margin: 0;
     padding: 1rem;
@@ -328,4 +390,20 @@ footer { margin-top: 2rem; text-align: center; color: #64748b; font-size: 0.875r
     .docs-content-wrapper {
         max-width: 100%;
     }
+}
+
+/* Optional: Smooth scrolling for the entire page */
+html {
+    scroll-behavior: smooth;
+}
+
+/* Style for selection highlight */
+::selection {
+    background: rgba(239, 68, 68, 0.3);
+    color: #f1f5f9;
+}
+
+::-moz-selection {
+    background: rgba(239, 68, 68, 0.3);
+    color: #f1f5f9;
 }

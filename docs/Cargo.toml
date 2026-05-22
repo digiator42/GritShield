@@ -1,0 +1,16 @@
+[package]
+name = "docs"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+gritshield = { git = "https://github.com/digiator42/gritshield" }
+tokio = { version = "1.0", features = ["full"] }
+sqlx = { version = "0.9.0", features = [ "runtime-tokio" ] }
+maud = "0.25"
+pulldown-cmark = "0.13.4"
+ctor = "1.0.6"
+syntect = "5.3.0"
+html-escape = "0.2"
+regex = "1.10"
+lazy_static = "1.4"

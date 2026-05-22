@@ -1,9 +1,5 @@
 use gritshield::{
-    core::env::get_env,
-    futures::future::{Ready, ready},
-    prelude::*,
-    routing::trie::{BoxedResponse, IntoResponse},
-    security::errors::FrameworkError,
+    core::env::get_env, futures::future::{Ready, ready}, prelude::*, protocol::request::HttpMethod, routing::trie::{BoxedResponse, IntoResponse}, security::errors::FrameworkError
 };
 
 mod pages {
@@ -21,11 +17,13 @@ async fn static_assets(ctx: RequestContext) -> Response {
 
 #[tokio::main]
 async fn main() {
-    let router = Router::new()
+    let mut router = Router::new()
         .mount_logger()
         .mount_file_routes("src/pages")
         .expect("");
 
+    router.add_route(HttpMethod::GET, "/health", |_: RequestContext| async move { "OK" });
+
     println!("[GRITSHIELD] Booting engine cluster...");
-    gritshield::core::server::run_server("127.0.0.1", "8080", router, true).await;
+    gritshield::core::server::run_server("0.0.0.0", "8080", router, true).await;
 }

@@ -1,12 +1,19 @@
 use gritshield::prelude::*;
 use gritshield::protocol::request::HttpMethod;
+use lazy_static::lazy_static;
 use maud::{Markup, PreEscaped, html};
 use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
+use regex::Regex;
 use std::fs;
 use std::path::PathBuf;
 use syntect::highlighting::ThemeSet;
 use syntect::html::highlighted_html_for_string;
 use syntect::parsing::SyntaxSet;
+
+lazy_static! {
+    static ref NUM_PREFIX_REGEX: Regex = Regex::new(r"^\d+_").unwrap();
+    static ref CLEAN_SLUG_REGEX: Regex = Regex::new(r"^\d+_|_$").unwrap();
+}
 
 pub async fn handler(ctx: RequestContext) -> Response {
     // Extract wildcard route parameters safely
@@ -20,9 +27,12 @@ pub async fn handler(ctx: RequestContext) -> Response {
         doc_subpath
     );
 
+    // Convert clean URL path to filesystem path with numbered prefixes
+    let fs_path = clean_to_fs_path(doc_subpath);
+
     // Build file path from docs_content directory
     let mut target_file = PathBuf::from("docs_content");
-    for segment in doc_subpath.split('/') {
+    for segment in fs_path.split('/') {
         target_file.push(segment);
     }
 
@@ -37,6 +47,9 @@ pub async fn handler(ctx: RequestContext) -> Response {
     let base_path = PathBuf::from("docs_content");
     let sidebar_items = build_sidebar_tree(&base_path, &base_path, 0);
     let sidebar_html = render_sidebar(doc_subpath, &sidebar_items);
+
+    println!("Filesystem path: {}", target_file.display());
+    println!("URL slug (clean): {}", doc_subpath);
 
     // Read and render the markdown file
     let (title, content_html) = match fs::read_to_string(&target_file) {
@@ -53,8 +66,52 @@ pub async fn handler(ctx: RequestContext) -> Response {
 
     // Render the full page with root-level sidebar
     let page_content = render_documentation_layout(doc_subpath, &title, content_html, sidebar_html);
-    
+
     render!("GritShield Documentation", page_content)
+}
+
+/// Converts a clean URL path to filesystem path with numbered prefixes
+fn clean_to_fs_path(clean_path: &str) -> String {
+    if clean_path == "index" {
+        return "index".to_string();
+    }
+
+    let segments: Vec<&str> = clean_path.split('/').collect();
+    let mut fs_segments = Vec::new();
+
+    // Define mapping from clean names to numbered folder names
+    let folder_mapping = vec![
+        ("getting-started", "01_getting-started"),
+        ("security", "02_security"),
+        ("routing", "03_routing"),
+        ("architecture", "04_architecture"),
+        ("database", "05_database"),
+        ("deployment", "06_deployment"),
+    ];
+
+    for segment in segments {
+        let mapped = folder_mapping
+            .iter()
+            .find(|(clean, _)| *clean == segment)
+            .map(|(_, numbered)| *numbered)
+            .unwrap_or(segment);
+        fs_segments.push(mapped);
+    }
+
+    fs_segments.join("/")
+}
+
+/// Converts a filesystem path with numbered prefixes back to clean URL path
+fn fs_to_clean_path(fs_path: &str) -> String {
+    let segments: Vec<&str> = fs_path.split('/').collect();
+    let mut clean_segments = Vec::new();
+
+    for segment in segments {
+        let clean = NUM_PREFIX_REGEX.replace_all(segment, "");
+        clean_segments.push(clean.to_string());
+    }
+
+    clean_segments.join("/")
 }
 
 /// Extracts the first H1 from markdown to use as page title
@@ -90,17 +147,26 @@ fn build_sidebar_tree(
             }
         }
 
-        // Sort for consistent ordering
+        // Sort directories by name (which works with numbered prefixes)
         dirs.sort_by(|a, b| a.1.cmp(&b.1));
         files.sort_by(|a, b| a.1.cmp(&b.1));
 
         // Add directories first
         for (dir_path, dir_name) in dirs {
             let relative_path = dir_path.strip_prefix(base_path).unwrap();
-            let slug = relative_path.to_string_lossy().replace("\\", "/");
-            let display_name = dir_name.replace('_', " ").replace('-', " ");
+            let fs_slug = relative_path.to_string_lossy().replace("\\", "/");
 
-            items.push((slug.clone(), display_name, indent));
+            // Convert filesystem path to clean URL slug
+            let clean_slug = fs_to_clean_path(&fs_slug);
+
+            // Remove numeric prefix from display name
+            let display_name = NUM_PREFIX_REGEX
+                .replace_all(&dir_name, "")
+                .replace('_', " ")
+                .replace('-', " ");
+            let display_name = display_name.trim().to_string();
+
+            items.push((clean_slug, display_name, indent));
 
             // Recursively add children
             let children = build_sidebar_tree(&dir_path, base_path, indent + 1);
@@ -110,16 +176,22 @@ fn build_sidebar_tree(
         // Add markdown files (excluding index.md which is handled by the directory)
         for (file_path, file_name) in files {
             let relative_path = file_path.strip_prefix(base_path).unwrap();
-            let slug = relative_path
+            let fs_slug = relative_path
                 .to_string_lossy()
                 .replace("\\", "/")
                 .replace(".md", "");
-            let display_name = file_name
-                .replace(".md", "")
+
+            // Convert filesystem path to clean URL slug
+            let clean_slug = fs_to_clean_path(&fs_slug);
+
+            // Remove numeric prefix from display name
+            let display_name = NUM_PREFIX_REGEX
+                .replace_all(&file_name.replace(".md", ""), "")
                 .replace('_', " ")
                 .replace('-', " ");
+            let display_name = display_name.trim().to_string();
 
-            items.push((slug, display_name, indent));
+            items.push((clean_slug, display_name, indent));
         }
     }
 
@@ -142,11 +214,11 @@ fn render_sidebar(active_slug: &str, items: &[(String, String, usize)]) -> Marku
                         span { "Home" }
                     }
                 }
-                
+
                 @for (slug, label, indent) in items {
                     @let is_active = active_slug == slug;
                     @let padding_style = format!("padding-left: {}rem;", (*indent as f64 * 1.2) + 0.5);
-                    
+
                     li class="nav-item" style=(padding_style) {
                         a href={ "/docs/" (slug) } class={ "nav-link" (if is_active { " active" } else { "" }) } {
                             svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" {
@@ -245,13 +317,18 @@ fn compile_markdown_to_html(markdown_input: &str) -> String {
 }
 
 /// Renders the complete documentation layout with root-level sidebar
-fn render_documentation_layout(active_slug: &str, title: &str, content_html: String, sidebar_html: Markup) -> Markup {
+fn render_documentation_layout(
+    active_slug: &str,
+    title: &str,
+    content_html: String,
+    sidebar_html: Markup,
+) -> Markup {
     html! {
         div class="docs-layout" {
             aside class="docs-sidebar-wrapper" {
                 (sidebar_html)
             }
-            
+
             main class="docs-content-wrapper" {
                 article class="docs-article" {
                     header class="docs-header" {
@@ -268,7 +345,7 @@ fn render_documentation_layout(active_slug: &str, title: &str, content_html: Str
                         }
                         h1 { (title) }
                     }
-                    
+
                     div class="markdown-body" {
                         (PreEscaped(content_html))
                     }
@@ -281,22 +358,33 @@ fn render_documentation_layout(active_slug: &str, title: &str, content_html: Str
 /// Renders the 404 content when documentation is not found
 fn render_not_found_content(slug: &str, sidebar_items: &[(String, String, usize)]) -> String {
     let available_docs: Vec<String> = sidebar_items.iter().map(|(s, _, _)| s.clone()).collect();
-    
-    let mut html_content = String::from(r#"<div class="not-found"><h1>Documentation Not Found</h1>"#);
-    html_content.push_str(&format!(r#"<p>The requested documentation page could not be found.</p>"#));
-    html_content.push_str(&format!(r#"<div class="not-found-path">Requested: docs_content/{}.md</div>"#, slug));
-    
+
+    let mut html_content =
+        String::from(r#"<div class="not-found"><h1>Documentation Not Found</h1>"#);
+    html_content.push_str(&format!(
+        r#"<p>The requested documentation page could not be found.</p>"#
+    ));
+    html_content.push_str(&format!(
+        r#"<div class="not-found-path">Requested: docs_content/{}.md</div>"#,
+        slug
+    ));
+
     if !available_docs.is_empty() {
-        html_content.push_str(r#"<div class="available-docs"><h3>Available Documentation:</h3><ul>"#);
+        html_content
+            .push_str(r#"<div class="available-docs"><h3>Available Documentation:</h3><ul>"#);
         for doc_slug in available_docs {
             if doc_slug != "index" {
-                html_content.push_str(&format!(r#"<li><a href="/docs/{}">{}</a></li>"#, doc_slug, doc_slug));
+                html_content.push_str(&format!(
+                    r#"<li><a href="/docs/{}">{}</a></li>"#,
+                    doc_slug, doc_slug
+                ));
             }
         }
         html_content.push_str(r#"</ul></div>"#);
     }
-    
-    html_content.push_str(r#"<a href="/docs" class="back-link">Return to Documentation Home</a></div>"#);
+
+    html_content
+        .push_str(r#"<a href="/docs" class="back-link">Return to Documentation Home</a></div>"#);
     html_content
 }
 
