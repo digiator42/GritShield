@@ -619,6 +619,7 @@ dependencies = [
  "hex",
  "hmac",
  "inventory",
+ "lazy_static",
  "maud",
  "notify",
  "once_cell",

@@ -112,7 +112,22 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
                 response
             }
             RoutingResult::NotFound => {
-                Response::new(404, Sanitizer::trust("<h1>404 Not Found</h1>"))
+                // Look up the global macro-registered fallback state
+                let fallback_opt = if let Ok(guard) = crate::routing::trie::GLOBAL_FALLBACK.lock() {
+                    guard.clone()
+                } else {
+                    None
+                };
+
+                if let Some(custom_fallback) = fallback_opt {
+                    // Call the function pointer and .await the returned async execution stream!
+                    custom_fallback(ctx).await
+                } else {
+                    Response::new(
+                        404,
+                        crate::security::xss::Sanitizer::trust("<h1>404 Not Found</h1>"),
+                    )
+                }
             }
             RoutingResult::MethodNotAllowed => {
                 Response::new(405, Sanitizer::trust("<h1>405 Method Not Allowed</h1>"))

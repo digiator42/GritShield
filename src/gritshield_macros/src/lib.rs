@@ -18,7 +18,7 @@ macro_rules! generate_route_macro {
             let expanded = quote! {
                 #input_fn
 
-                // 🎯 Pure Expression mapping using .map() to avoid 'let' namespace leaks
+                // Pure Expression mapping using .map() to avoid 'let' namespace leaks
                 #vis fn #wrapper_name(ctx: gritshield::routing::trie::RequestContext) -> gritshield::futures::future::BoxFuture<'static, gritshield::protocol::response::Response> {
                     use gritshield::routing::trie::IntoResponse;
                     use gritshield::futures::future::FutureExt;

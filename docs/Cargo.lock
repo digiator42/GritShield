@@ -555,6 +555,7 @@ dependencies = [
  "maud",
  "pulldown-cmark 0.13.4",
  "regex",
+ "serde",
  "sqlx",
  "syntect",
  "tokio",
@@ -852,7 +853,6 @@ checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
 [[package]]
 name = "gritshield"
 version = "0.1.0"
-source = "git+https://github.com/digiator42/gritshield#661b12f16a251a49aa7a93c354d9ebc05e6e4e79"
 dependencies = [
  "base64 0.21.7",
  "chrono",
@@ -865,6 +865,7 @@ dependencies = [
  "hex",
  "hmac 0.12.1",
  "inventory",
+ "lazy_static",
  "maud",
  "notify",
  "once_cell",
@@ -882,7 +883,6 @@ dependencies = [
 [[package]]
 name = "gritshield_macros"
 version = "0.1.0"
-source = "git+https://github.com/digiator42/gritshield#661b12f16a251a49aa7a93c354d9ebc05e6e4e79"
 dependencies = [
  "inventory",
  "quote",

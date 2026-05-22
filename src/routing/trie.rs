@@ -15,11 +15,14 @@ use crate::security::session::{Session, SessionStore};
 use crate::security::telemetry::SystemTelemetry;
 use crate::security::xss::{Sanitizer, UntrustedString};
 use futures::future::{BoxFuture, FutureExt};
+use lazy_static::lazy_static;
 use sea_orm::DatabaseConnection;
 use std::collections::HashMap;
 use std::fs;
+use std::future::Future;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::Path;
+use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -301,6 +304,21 @@ pub enum RoutingResult<'a> {
     NotFound,
 }
 
+pub type AsyncPageFuture = Pin<Box<dyn Future<Output = Response> + Send>>;
+
+pub type PageHandlerFn = fn(RequestContext) -> AsyncPageFuture;
+
+lazy_static! {
+    pub static ref GLOBAL_FALLBACK: Mutex<Option<PageHandlerFn>> = Mutex::new(None);
+}
+
+/// A registration hook your macro or files can call during static initialization
+pub fn register_global_fallback(handler: PageHandlerFn) {
+    if let Ok(mut guard) = GLOBAL_FALLBACK.lock() {
+        *guard = Some(handler);
+    }
+}
+
 pub struct Router {
     root: Node,
     pub middlewares: Vec<Box<dyn Middleware>>, // A list of dynamic trait objects
@@ -309,10 +327,16 @@ pub struct Router {
     pub use_logger: bool,
     pub global_error_handler: GlobalErrorHandler,
     pub telemetry: SystemTelemetry,
+    pub fallback_handler: Option<PageHandlerFn>,
 }
 
 impl Router {
     pub fn new() -> Self {
+        let fallback = if let Ok(guard) = GLOBAL_FALLBACK.lock() {
+            guard.clone()
+        } else {
+            None
+        };
         let mut router = Router {
             root: Node::new(),
             middlewares: Vec::new(),
@@ -323,6 +347,7 @@ impl Router {
                 handler: Some(default_framework_error_handler),
             },
             telemetry: SystemTelemetry::new(),
+            fallback_handler: fallback,
         };
 
         for route in inventory::iter::<AutoRoute> {
@@ -361,6 +386,12 @@ impl Router {
         for hook in &self.after_hooks {
             hook.call(&ctx, status, duration);
         }
+    }
+
+    /// Allows developers to attach a custom layout handler for unmatched 404 routes
+    pub fn set_fallback(mut self, handler: PageHandlerFn) -> Self {
+        self.fallback_handler = Some(handler);
+        self
     }
 
     pub fn run_middlewares(&self, ctx: &mut RequestContext) -> MiddlewareResult {
@@ -484,6 +515,11 @@ impl Router {
             for entry in fs::read_dir(current_dir)? {
                 let entry = entry?;
                 let path = entry.path();
+
+                if path.file_name().map_or(false, |name| name == "404.rs") {
+                    // Skip it! We attach it explicitly as an engine fallback instead
+                    continue;
+                }
 
                 if path.is_dir() {
                     // Recursively crawl nested folders (e.g., pages/api)

@@ -7,9 +7,13 @@ use gritshield::{
     security::errors::FrameworkError,
 };
 
+use crate::root::layout::main_layout;
+
 mod pages {
     #[path = "docs/[..path].rs"]
     pub mod docs_wildcard;
+    #[path = "404.rs"]
+    pub mod not_found;
 }
 mod root;
 
@@ -27,10 +31,10 @@ async fn main() {
         .mount_file_routes("src/pages")
         .expect("");
 
-    router.add_route(HttpMethod::GET, "/health", |_: RequestContext| async move {
-        "OK"
+    router.add_route(HttpMethod::GET, "/", |_: RequestContext| async move {
+        Response::json(200, &"OK")
     });
 
     println!("[GRITSHIELD] Booting engine cluster...");
-    gritshield::core::server::run_server("0.0.0.0", "8080", router, false).await;
+    gritshield::core::server::run_server("0.0.0.0", "8080", router, true).await;
 }

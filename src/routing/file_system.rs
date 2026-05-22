@@ -14,21 +14,37 @@ pub struct RegisteredFileRoute {
 pub static FILE_ROUTING_REGISTRY: Lazy<Mutex<HashMap<String, RegisteredFileRoute>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 
-// In src/routing/file_system.rs
 #[macro_export]
 macro_rules! register_page {
     ($method:expr, $handler:expr) => {
-        #[$crate::ctor::ctor(unsafe)] 
+        #[$crate::ctor::ctor(unsafe)]
         fn register_route() {
             // file!() to guarantee the key perfectly matches the filesystem path!
-            let raw_file_path = file!().replace("\\", "/"); 
-            
+            let raw_file_path = file!().replace("\\", "/");
+
             if let Ok(mut registry) = $crate::routing::file_system::FILE_ROUTING_REGISTRY.lock() {
-                registry.insert(raw_file_path, $crate::routing::file_system::RegisteredFileRoute {
-                    method: $method,
-                    handler_factory: || Box::new($handler),
-                });
+                registry.insert(
+                    raw_file_path,
+                    $crate::routing::file_system::RegisteredFileRoute {
+                        method: $method,
+                        handler_factory: || Box::new($handler),
+                    },
+                );
             }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! register_fallback_page {
+    ($handler:expr) => {
+        #[$crate::ctor::ctor(unsafe)]
+        fn init_framework_fallback() {
+            // Wrap the developer's async handler into a clean, pinned BoxFuture pointer
+            let wrapped_handler: $crate::routing::trie::PageHandlerFn =
+                |ctx| Box::pin($handler(ctx));
+
+            $crate::routing::trie::register_global_fallback(wrapped_handler);
         }
     };
 }
