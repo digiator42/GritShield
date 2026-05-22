@@ -1,5 +1,10 @@
 use gritshield::{
-    core::env::get_env, futures::future::{Ready, ready}, prelude::*, protocol::request::HttpMethod, routing::trie::{BoxedResponse, IntoResponse}, security::errors::FrameworkError
+    core::env::get_env,
+    futures::future::{Ready, ready},
+    prelude::*,
+    protocol::request::HttpMethod,
+    routing::trie::{BoxedResponse, IntoResponse},
+    security::errors::FrameworkError,
 };
 
 mod pages {
@@ -22,8 +27,10 @@ async fn main() {
         .mount_file_routes("src/pages")
         .expect("");
 
-    router.add_route(HttpMethod::GET, "/health", |_: RequestContext| async move { "OK" });
+    router.add_route(HttpMethod::GET, "/health", |_: RequestContext| async move {
+        "OK"
+    });
 
     println!("[GRITSHIELD] Booting engine cluster...");
-    gritshield::core::server::run_server("0.0.0.0", "8080", router, false).await;
+    gritshield::core::server::run_server("0.0.0.0", "8080", router, true).await;
 }

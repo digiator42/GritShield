@@ -84,7 +84,7 @@ impl HotReloader {
     fn spawn_app(current_dir: &PathBuf) -> std::process::Child {
         Command::new("cargo")
             .arg("run")
-            .current_dir(current_dir) 
+            .current_dir(current_dir)
             .env("CARGO_TARGET_DIR", current_dir.join("target/reloader")) // Private target folder inside developer app
             .env("RUNNING_UNDER_RELOADER", "1")
             .spawn()
