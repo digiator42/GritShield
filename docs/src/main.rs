@@ -25,5 +25,5 @@ async fn main() {
     router.add_route(HttpMethod::GET, "/health", |_: RequestContext| async move { "OK" });
 
     println!("[GRITSHIELD] Booting engine cluster...");
-    gritshield::core::server::run_server("0.0.0.0", "8080", router, true).await;
+    gritshield::core::server::run_server("0.0.0.0", "8080", router, false).await;
 }
