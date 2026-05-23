@@ -864,6 +864,7 @@ dependencies = [
  "gritshield_macros",
  "hex",
  "hmac 0.12.1",
+ "html-escape",
  "inventory",
  "lazy_static",
  "maud",

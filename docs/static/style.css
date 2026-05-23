@@ -54,7 +54,6 @@ footer { margin-top: 2rem; text-align: center; color: #64748b; font-size: 0.875r
     display: flex;
     min-height: calc(100vh - 8rem);
     gap: 2rem;
-    max-width: 1400px;
     margin: 0 auto;
     padding: 0 1rem;
 }

@@ -474,11 +474,17 @@ impl Router {
                         current = param_node;
                         break; // 🚀 Break instantly! The wildcard has devoured the rest of the URL path
                     } else {
-                        // Standard parameter extraction (:id, etc.)
-                        if let Some(ref name) = param_node.parameter_name {
-                            let clean_key = name.trim_start_matches(':').to_string();
-                            params.insert(clean_key, UntrustedString::new(segment.to_string()));
-                        }
+                        // Try the node's explicit property first; if None, fall back to the child map key string!
+                        let clean_key = if let Some(ref name) = param_node.parameter_name {
+                            name.trim_start_matches(':').to_string()
+                        } else {
+                            key.trim_start_matches(':').to_string()
+                        };
+
+                        // Insert the dynamic slug value safely into our parameters dictionary
+                        params.insert(clean_key, UntrustedString::new(segment.to_string()));
+
+                        // Advance the tracker node downward to continue evaluating subsequent segments
                         current = param_node;
                     }
                 } else {

@@ -68,6 +68,8 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
         start_time,
     };
 
+    let ctx_clone = ctx.clone();
+
     // Process Middleware Stack sequentially
     match router.run_middlewares(&mut ctx) {
         MiddlewareResult::Next(maybe_state) => {
@@ -153,8 +155,16 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
             eprintln!("[PANIC INFRASTRUCTURE SHIELD] Caught: {}", panic_msg);
 
             if let Some(custom_err_hook) = error_handler_ptr {
-                let fallback_ctx = RequestContext::new();
-                custom_err_hook(fallback_ctx, FrameworkError::Panic(panic_msg)).await
+                // let fallback_ctx = RequestContext::new();
+                // Updated to use the struct variant syntax
+                custom_err_hook(
+                    ctx_clone,
+                    FrameworkError::Panic {
+                        message: panic_msg,
+                        backtrace: std::backtrace::Backtrace::capture(),
+                    },
+                )
+                .await
             } else {
                 Response::new(500, Sanitizer::trust("<h1>500 Internal Server Error</h1>"))
             }
