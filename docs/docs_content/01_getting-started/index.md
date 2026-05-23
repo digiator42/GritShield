@@ -6,7 +6,6 @@ Welcome to GritShield! This guide will help you build your first secure web appl
 
 - Rust 1.70 or later
 - Basic knowledge of async Rust
-- A terminal and text editor
 
 ## Quick Start
 
@@ -21,7 +20,7 @@ Add GritShield to Cargo.toml:
 
 ```toml
 [dependencies]
-gritshield = { git = "https://github.com/yourorg/gritshield" }
+gritshield = { git = "https://github.com/digiator42/gritshield" }
 tokio = { version = "1", features = ["full"] }
 ```
 
@@ -53,5 +52,5 @@ Visit http://localhost:8080 to see your app!
 ## Next Steps
 
 - [Installation Guide](/docs/getting-started/installation) - Detailed setup
-- [Your First Route](/docs/getting-started/first-route) - Learn routing
+- [Your First Route](/docs/routing/dynamic-routes) - Learn routing
 - [Configuration](/docs/getting-started/configuration) - Environment setup

@@ -31,7 +31,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-gritshield = { git = "https://github.com/yourorg/gritshield", version = "0.1" }
+gritshield = { git = "https://github.com/digiator42/gritshield", version = "0.1" }
 tokio = { version = "1", features = ["full"] }
 ```
 
@@ -45,7 +45,7 @@ Create `src/main.rs`:
 use gritshield::prelude::*;
 
 #[get("/")]
-async fn hello(ctx: RequestContext) -> &'static str {
+async fn hello(_: RequestContext) -> &'static str {
     "Hello, GritShield!"
 }
 
@@ -118,7 +118,7 @@ Place your handlers in `src/pages/`:
 
 - `src/pages/index.rs` → route `/`
 - `src/pages/users/[id].rs` → route `/users/:id`
-- `src/pages/api/*.rs` → route `/api/*` (catch‑all)
+- `src/pages/api/[..path].rs` → route `/api/**` (catch‑all)
 
 Inside the file, use the `register_page!` macro:
 
@@ -586,10 +586,4 @@ Please open an issue before submitting a PR.
 
 # 📄 License
 
-MIT or Apache‑2.0 at your option.
-
----
-
-# GritShield
-
-**Build with confidence, ship with grit.**
+Apache‑2.0.

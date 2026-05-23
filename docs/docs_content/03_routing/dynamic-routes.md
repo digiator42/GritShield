@@ -56,7 +56,6 @@ Examples:
 | `[id].rs` | `/:id` | `id` |
 | `[slug].rs` | `/:slug` | `slug` |
 | `[..path].rs` | `/*path` | `*path` |
-| `[[...catchall]].rs` | `/*catchall` | `*catchall` |
 
 ## Parameter Validation
 
