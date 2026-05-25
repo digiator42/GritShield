@@ -2,7 +2,7 @@ use crate::{
     protocol::{request::Request, response::Response},
     routing::trie::{IntoHandler, RequestContext, Router, RoutingResult},
     security::{
-        cookies::CookieJar, errors::FrameworkError, middleware::MiddlewareResult, xss::Sanitizer,
+        cookies::CookieJar, errors::ShieldError, middleware::MiddlewareResult, xss::Sanitizer,
     },
 };
 use colored::Colorize;
@@ -125,14 +125,21 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
                     // Call the function pointer and .await the returned async execution stream!
                     custom_fallback(ctx).await
                 } else {
-                    Response::new(
-                        404,
-                        crate::security::xss::Sanitizer::trust("<h1>404 Not Found</h1>"),
-                    )
+                    // Trigger the global error handler for 404s to keep styling consistent
+                    if let Some(err_handler) = error_handler_ptr {
+                        err_handler(ctx, ShieldError::NotFound).await
+                    } else {
+                        Response::new(404, Sanitizer::trust("<h1>404 Not Found</h1>"))
+                    }
                 }
             }
             RoutingResult::MethodNotAllowed => {
-                Response::new(405, Sanitizer::trust("<h1>405 Method Not Allowed</h1>"))
+                // Trigger the global error handler for 405s to keep styling consistent
+                if let Some(err_handler) = error_handler_ptr {
+                    err_handler(ctx, ShieldError::MethodNotAllowed).await
+                } else {
+                    Response::new(405, Sanitizer::trust("<h1>405 Method Not Allowed</h1>"))
+                }
             }
         }
     };
@@ -159,7 +166,7 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
                 // Updated to use the struct variant syntax
                 custom_err_hook(
                     ctx_clone,
-                    FrameworkError::Panic {
+                    ShieldError::Panic {
                         message: panic_msg,
                         backtrace: std::backtrace::Backtrace::capture(),
                     },

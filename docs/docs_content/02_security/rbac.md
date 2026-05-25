@@ -5,10 +5,13 @@ GritShield provides RBAC through session user IDs and middleware.
 ## Session-Based RBAC
 
 Store user roles in the session after login:
+> ShieldResult<T> is a Result<T, ShieldError>
 
 ```rust
+use gritshield::routing::trie::ShieldResult;
+
 #[post("/login")]
-async fn login(ctx: RequestContext) -> Result<Response, FrameworkError> {
+async fn login(ctx: RequestContext) -> ShieldResult<Response> {
     let creds: LoginDto = ctx.json()?;
 
     if authenticate(&creds) {
@@ -16,7 +19,20 @@ async fn login(ctx: RequestContext) -> Result<Response, FrameworkError> {
         ctx.set_session_data("role", "admin");
         Ok(Response::redirect(303, "/dashboard"))
     } else {
-        Err(FrameworkError::UnauthorizedAccess)
+        Err(ShieldError::UnauthorizedAccess)
+    }
+}
+
+#[post("/login")]
+async fn login(ctx: RequestContext) -> Response {
+    let creds: LoginDto = ctx.json().unwrap();
+
+    if creds.user_id == "admin" && creds.password == "secret" {
+        ctx.login_user_id(&creds.user_id);
+        ctx.set_session_data("role", "admin");
+        Response::redirect(303, "/dashboard")
+    } else {
+        Response::json(401, &HashMap::from([("message", "Invalid credentials")]))
     }
 }
 ```

@@ -4,9 +4,7 @@ use crate::protocol::request::{HttpMethod, Request};
 use crate::protocol::response::Response;
 use crate::routing::file_system::FILE_ROUTING_REGISTRY;
 use crate::security::cookies::CookieJar;
-use crate::security::errors::{
-    FrameworkError, GlobalErrorHandler, default_framework_error_handler,
-};
+use crate::security::errors::{GlobalErrorHandler, ShieldError, default_framework_error_handler};
 use crate::security::jwt::Claims;
 use crate::security::middleware::{
     AfterRequestHook, Middleware, MiddlewareResult, MiddlewareState,
@@ -29,7 +27,7 @@ use std::time::Duration;
 pub type BoxedResponse = BoxFuture<'static, Response>;
 pub type Handler = fn(RequestContext) -> BoxedResponse;
 /// Short representation for handlers that can fail safely with an explicit framework error
-pub type ShieldResult<T> = Result<T, FrameworkError>;
+pub type ShieldResult<T> = Result<T, ShieldError>;
 
 pub trait IntoResponse {
     fn into_response(self) -> Response;
@@ -56,15 +54,26 @@ impl IntoResponse for ShieldResult<Response> {
         match self {
             Ok(res) => res,
             Err(err) => {
-                // Return a clean default security/error dashboard layout
                 println!(
                     "[SECURITY AUDIT] Handler caught an explicit framework error: {:?}",
                     err
                 );
-                Response::new(
-                    500,
-                    Sanitizer::trust("<h1>500 Internal Security Error</h1>"),
-                )
+
+                // Determine status code and message based on the actual error type
+                let (status, msg_string): (u16, String) = match err {
+                    ShieldError::UnauthorizedAccess => {
+                        (401, "<h1>401 Unauthorized</h1>".to_string())
+                    }
+                    ShieldError::Forbidden => (403, "<h1>403 Forbidden</h1>".to_string()),
+                    ShieldError::NotFound => (404, "<h1>404 Not Found</h1>".to_string()),
+                    ShieldError::BadRequest(err) => {
+                        (400, format!("<h1>400 Bad Request</h1><br/>{}", err))
+                    }
+                    _ => (500, "<h1>500 Internal Security Error</h1>".to_string()),
+                };
+
+                // 2. Pass the final String reference directly into your Sanitizer
+                Response::new(status, Sanitizer::trust(&msg_string))
             }
         }
     }
@@ -185,13 +194,16 @@ impl RequestContext {
     }
 
     /// A helper method allowing handlers to cleanly extract JSON data structures
-    pub fn json<T: serde::de::DeserializeOwned>(&self) -> Result<T, String> {
+    pub fn json<T: serde::de::DeserializeOwned>(&self) -> Result<T, ShieldError> {
         let content_type = self.content_type.as_deref().unwrap_or("");
         if !content_type.starts_with("application/json") {
-            return Err("Content-Type must be application/json".to_string());
+            return Err(ShieldError::BadRequest(
+                "Content-Type must be application/json".to_string(),
+            ));
         }
+
         serde_json::from_slice(&self.raw_body)
-            .map_err(|e| format!("Failed to parse JSON body: {}", e))
+            .map_err(|e| ShieldError::BadRequest(format!("Failed to parse JSON body: {}", e)))
     }
 
     /// Zero-boilerplate helper to read a standard, unsigned cookie

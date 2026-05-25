@@ -4,12 +4,12 @@ use crate::security::xss::Sanitizer;
 use futures::future::{self, BoxFuture, FutureExt};
 use colored::*;
 
-pub type ErrorHandlerFn = fn(RequestContext, FrameworkError) -> BoxFuture<'static, Response>;
+pub type ErrorHandlerFn = fn(RequestContext, ShieldError) -> BoxFuture<'static, Response>;
 
 use std::backtrace::Backtrace;
 
 #[derive(Debug)]
-pub enum FrameworkError {
+pub enum ShieldError {
     Panic {
         message: String,
         backtrace: Backtrace,
@@ -22,10 +22,16 @@ pub enum FrameworkError {
         message: String,
         backtrace: Backtrace,
     },
+    MethodNotAllowed,
     UnauthorizedAccess,
+    BadRequest(String),
+    Forbidden,
+    NotFound,
+    InternalError(String),
+    
 }
 
-impl FrameworkError {
+impl ShieldError {
     pub fn panic(msg: String) -> Self {
         Self::Panic {
             message: msg,
@@ -61,7 +67,7 @@ impl GlobalErrorHandler {
 
 pub fn default_framework_error_handler(
     ctx: RequestContext,
-    err: FrameworkError,
+    err: ShieldError,
 ) -> BoxFuture<'static, Response> {
     async move {
         let is_production = crate::core::env::get_env("APP_ENV", "development") == "production";
@@ -70,32 +76,67 @@ pub fn default_framework_error_handler(
         
         // Detect the type of error to tailor the presentation layout safely
         let (status_code, title, summary, technical_details, backtrace) = match err {
-            FrameworkError::Panic { message, backtrace } => (
+            ShieldError::Panic { message, backtrace } => (
                 500,
                 "Internal Server Error",
                 "A critical runtime exception was caught by GritShield's isolation boundary.",
                 message,
                 Some(backtrace),
             ),
-            FrameworkError::DatabaseFailure { message, backtrace } => (
+            ShieldError::DatabaseFailure { message, backtrace } => (
                 500,
                 "Database Connection Error",
                 "The storage layer failed to respond safely to the execution pipeline request.",
                 message,
                 Some(backtrace),
             ),
-            FrameworkError::FormParsingError { message, backtrace } => (
+            ShieldError::FormParsingError { message, backtrace } => (
                 400,
                 "Bad Request Payload",
                 "The incoming structural body encoding could not be parsed safely.",
                 message,
                 Some(backtrace),
             ),
-            FrameworkError::UnauthorizedAccess => (
+            ShieldError::MethodNotAllowed => (
+                405,
+                "Method Not Allowed",
+                "The HTTP method used is not supported for this endpoint.",
+                "The server does not allow the HTTP method specified in the request.".to_string(),
+                None,
+            ),
+            ShieldError::UnauthorizedAccess => (
                 401,
                 "Unauthorized",
                 "Authentication credentials are missing or could not be securely validated.",
                 "Access rejected due to missing Session User ID state identifier or invalid JWT token signatures.".to_string(),
+                None,
+            ),
+            ShieldError::BadRequest(reason) => (
+                400,
+                "Bad Request",
+                "The request could not be understood or was missing required parameters.",
+                format!("The server could not process the request due to client error: {}.", reason),
+                None,
+            ),
+            ShieldError::NotFound => (
+                404,
+                "Not Found",
+                "The requested resource could not be found on this server.",
+                "The server has not found anything matching the Request-URI.".to_string(),
+                None,
+            ),
+            ShieldError::Forbidden => (
+                403,
+                "Forbidden",
+                "The server understood the request but refuses to authorize it.",
+                "The server has refused to fulfill the request.".to_string(),
+                None,
+            ),
+            ShieldError::InternalError(reason) => (
+                500,
+                "Internal Server Error",
+                "An unexpected condition was encountered on the server.",
+                reason,
                 None,
             ),
         };
