@@ -1,13 +1,7 @@
 use gritshield::{
-    core::env::get_env,
-    futures::future::{Ready, ready},
     prelude::*,
     protocol::request::HttpMethod,
-    routing::trie::{BoxedResponse, IntoResponse},
-    security::errors::FrameworkError,
 };
-
-use crate::root::layout::main_layout;
 
 mod pages {
     #[path = "docs/[..path].rs"]
@@ -31,10 +25,11 @@ async fn main() {
         .mount_file_routes("src/pages")
         .expect("");
 
-    router.add_route(HttpMethod::GET, "/", |_: RequestContext| async move {
+    // Render health check endpoint
+    router.add_route(HttpMethod::GET, "/healthz", |_: RequestContext| async move {
         Response::json(200, &"OK")
     });
 
     println!("[GRITSHIELD] Booting engine cluster...");
-    gritshield::core::server::run_server("0.0.0.0", "8080", router, true).await;
+    gritshield::core::server::run_server("0.0.0.0", "8080", router, false).await;
 }
