@@ -65,7 +65,9 @@ Run with `cargo run` and open `http://localhost:8080`.
 
 ## 1. Request Context
 
-Every handler receives a `RequestContext` that holds the HTTP request, dynamic parameters, session, cookies, parsed form data, JSON body, and security helpers.
+There is no more importing this::that or constantly checking the docs just to find out where a feature lives.
+
+Every handler receives a `RequestContext` that holds the HTTP request, dynamic parameters, session, cookies, parsed form data, JSON body, and security helpers all in one place.
 
 ```rust
 async fn profile(ctx: RequestContext) -> String {
@@ -90,7 +92,7 @@ async fn get_user(ctx: RequestContext) -> Response {
 }
 
 #[post("/users")]
-async fn create_user(ctx: RequestContext) -> Result<Response, FrameworkError> {
+async fn create_user(ctx: RequestContext) -> Result<Response, ShieldError> {
     let new_user: CreateUserDto = ctx.json()?;
     // ...
     Ok(Response::redirect(303, "/users"))
@@ -145,7 +147,7 @@ pub trait Middleware: Send + Sync {
 ### Built‑in middleware
 
 - `LoggerMiddleware` – logs method, path, status, duration, authentication state.
-- `RateLimitMiddleware` – sliding‑window rate limiting (default 100 req/min per IP).
+- `RateLimitMiddleware` – sliding‑window rate limiting.
 - `IPBlacklistMiddleware` – blocks requests from configured IP addresses.
 - `AuthMiddleware` – session + JWT + CSRF gatekeeper.
 
@@ -172,13 +174,14 @@ Handlers can return any type that implements `IntoResponse`:
 
 - `Response` – full control over status, headers, cookies.
 - `&'static str / String` – automatically wrapped as HTML.
-- `Result<T, FrameworkError>` – maps errors to a safe error page.
+- `Result<T, ShieldError>` – maps errors to a safe error page.
 - `SafeHtml` – pre‑sanitised HTML content.
 
 ### Constructors
 
 ```rust
-Response::new(200, SafeHtml::from("<h1>Welcome</h1>"));
+Response::new(200, Sanitizer::trust("<h1>Welcome</h1>"))
+Response::new(200, );
 Response::redirect(303, "/login");
 Response::json(200, &my_struct);
 Response::static_file("static/style.css");
@@ -196,28 +199,42 @@ Serve them with:
 Response::static_file("static/logo.png")
 ```
 
+Serve static files in one go
+
+```rust
+#[get("/static/:*path")]
+async fn static_assets(ctx: RequestContext) -> Response {
+    let path = ctx.params.get("*path").unwrap().as_str();
+
+    Response::static_file(&format!("/static/{}", path).as_str())
+}
+```
+
 Directory traversal is prevented automatically.
 
 ---
 
 # 🔒 Security Features – OWASP Top 10 Eliminated
 
-| Vulnerability          | GritShield Protection                                                                                                                                                         |
-| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Vulnerability          | GritShield Protection                                                                                                                   |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
 | XSS                    | `UntrustedString` Only `Sanitizer::encode()` produces `SafeHtml` that escapes `&<>"'/`. Hardcoded strings require `Sanitizer::trust()`. |
-| CSRF                   | `AuthMiddleware` with `enable_csrf=true` validates tokens for mutating requests. Token auto‑rotated on every GET.                                                             |
-| SQL Injection          | SeaORM integration using prepared statements or type‑safe ORM.                                                                                                                |
-| Authentication         | Session IDs signed with HMAC‑SHA256. JWT tokens validated with expiration checks.                                                                                             |
-| Session Fixation       | New session ID generated on login. Old session invalidated.                                                                                                                   |
-| Broken Access Control  | Middleware checks authentication before handlers execute.                                                                                                                     |
-| Cryptographic Failures | HMAC‑SHA256 signing, environment‑based secrets, secure cookies.                                                                                                               |
-| Path Traversal         | Static serving rejects dangerous paths.                                                                                                                                       |
-| Rate Limiting          | Per‑IP sliding‑window rate limiting with `429 Too Many Requests`.                                                                                                             |
-| Information Leakage    | Production mode hides stack traces and detailed errors.                                                                                                                       |
+| CSRF                   | `AuthMiddleware` with `enable_csrf=true` validates tokens for mutating requests. Token auto‑rotated on every GET.                       |
+| SQL Injection          | SeaORM integration using prepared statements or type‑safe ORM.                                                                          |
+| Authentication         | Session IDs signed with HMAC‑SHA256. JWT tokens validated with expiration checks.                                                       |
+| Session Fixation       | New session ID generated on login. Old session invalidated.                                                                             |
+| Broken Access Control  | Middleware checks authentication before handlers execute.                                                                               |
+| Cryptographic Failures | HMAC‑SHA256 signing, environment‑based secrets, secure cookies.                                                                         |
+| Path Traversal         | Static serving rejects dangerous paths.                                                                                                 |
+| Rate Limiting          | Per‑IP sliding‑window rate limiting with `429 Too Many Requests`.                                                                       |
+| Information Leakage    | Production mode hides stack traces and detailed errors.                                                                                 |
 
 ---
 
 ## AuthMiddleware – Session vs JWT
+
+By using AuthMiddleware you have a full authentication system the exposes only `/login` & `/register` routes, set signed `hmac cookies`, generate a new `CSRF` token immediately, `logs out` user automatically then redirects to `/login`
+
 
 ### Session mode (default)
 
@@ -272,7 +289,7 @@ Retrieve the token:
 ```rust
 let token = ctx.get_csrf_token();
 
-ctx.render("form.html", context! {
+render!("title", context! {
     "csrf_token" => token
 })
 ```
@@ -413,7 +430,7 @@ Place templates in the `templates/` folder.
 ```rust
 use gritshield::html::TemplateEngine;
 
-// Precompile templates
+// Precompile templates, this should be used once, then get template will be cashed
 TemplateEngine::precompile_all("templates").unwrap();
 
 // Render template
@@ -492,7 +509,7 @@ The framework catches errors globally.
 ```rust
 fn custom_error_handler(
     ctx: RequestContext,
-    err: FrameworkError
+    err: ShieldError
 ) -> BoxFuture<'static, Response> {
 
     Box::pin(async move {
