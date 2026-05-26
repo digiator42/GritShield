@@ -31,7 +31,7 @@ async fn user(ctx: RequestContext) -> String {
 }
 
 #[post("/users")]
-async fn create_user(ctx: RequestContext) -> Result<Response, FrameworkError> {
+async fn create_user(ctx: RequestContext) -> ShieldResult<Response> {
     // Create user logic
     Ok(Response::redirect(303, "/users"))
 }
@@ -54,6 +54,6 @@ Routes are matched in the order they're added. Wildcards have lowest priority:
 ## Manual Registration
 
 ```rust
-router.add_route(HttpMethod::GET, "/health", || async { "OK" });
+router.add_route(HttpMethod::GET, "/health", |_| async { "OK" });
 router.add_route(HttpMethod::POST, "/api/data", handle_api);
 ```

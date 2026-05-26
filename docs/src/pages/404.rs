@@ -1,12 +1,12 @@
+use crate::root::layout::main_layout;
 use gritshield::protocol::response::Response;
 use gritshield::routing::trie::RequestContext;
 use gritshield::security::xss::Sanitizer;
 use maud::html;
-use crate::root::layout::main_layout;
 
-pub async fn handler(_: RequestContext) -> Response {
+pub async fn handler(ctx: RequestContext) -> Response {
     let body_markup = html! {
-        div class="my-auto p-12 text-center max-w-md mx-auto my-24 border border-slate-800 bg-slate-900/40 rounded-2xl" {
+        div class="my-auto p-12 text-center max-w-md mx-auto my-8 border border-slate-800 bg-slate-900/40 rounded-2xl" {
             span class="text-4xl" { "🛰️" }
             h1 class="text-xl font-bold text-slate-100 mt-4" { "Lost in Orbit" }
             p class="text-xs text-slate-400 mt-2 leading-relaxed" {
@@ -18,7 +18,7 @@ pub async fn handler(_: RequestContext) -> Response {
         }
     };
 
-    let full_html_page = main_layout("404 Not Found", body_markup);
+    let full_html_page = main_layout("404 Not Found", body_markup, &ctx);
 
     let res = Response::new(404, Sanitizer::trust(&full_html_page.into_string()));
     res

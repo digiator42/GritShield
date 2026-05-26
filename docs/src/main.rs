@@ -1,6 +1,9 @@
+use std::collections::HashMap;
+
 use gritshield::{
     prelude::*,
-    protocol::request::HttpMethod, security::middleware::{Middleware, MiddlewareResult},
+    protocol::{request::HttpMethod, response::JsonPayload},
+    security::middleware::{Middleware, MiddlewareResult},
 };
 
 mod pages {
@@ -26,9 +29,11 @@ async fn main() {
         .expect("");
 
     // Render health check endpoint
-    router.add_route(HttpMethod::GET, "/healthz", |_: RequestContext| async move {
-        Response::json(200, &"OK")
-    });
+    router.add_route(
+        HttpMethod::GET,
+        "/healthz",
+        |_: RequestContext| async move { Response::json(200, &"OK") },
+    );
 
-    gritshield::core::server::run_server("0.0.0.0", "8080", router, false).await;
+    gritshield::core::server::run_server("0.0.0.0", "8080", router, true).await;
 }

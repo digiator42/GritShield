@@ -1,5 +1,3 @@
-Welcome to the GritShield security-first web framework documentation.
-
 ## What is GritShield?
 
 GritShield is an **async-first, security-hardened** web framework for Rust that eliminates the majority of OWASP Top 10 vulnerabilities by design.
@@ -127,7 +125,7 @@ Inside the file, use the `register_page!` macro:
 ```rust
 use gritshield::prelude::*;
 
-register_page!(HttpMethod::GET, || async { "Hello from file route" });
+register_page!(HttpMethod::GET, |_| async { "Hello from file route" });
 ```
 
 GritShield automatically discovers `.rs` files under `src/pages` and mounts them.
@@ -233,7 +231,7 @@ Directory traversal is prevented automatically.
 
 ## AuthMiddleware – Session vs JWT
 
-By using AuthMiddleware you have a full authentication system the exposes only `/login` & `/register` routes, set signed `hmac cookies`, generate a new `CSRF` token immediately, `logs out` user automatically then redirects to `/login`
+By using AuthMiddleware you have a full authentication system that exposes only `/login`&`/register` routes, set signed `hmac cookies`, generate a new `CSRF` token immediately, `logs out` user automatically and redirects unauthenticated users to `/login`
 
 
 ### Session mode (default)
@@ -252,7 +250,7 @@ Features:
 - Creates a signed `GSESSION_ID` cookie.
 - Stores user data in an in‑memory `SessionStore`.
 - Use `ctx.login_user_id("123")` to authenticate.
-- `ctx.is_user_authenticated()` checks login state.
+- `ctx.is_user_authenticated()` checks login state (expects to set `user_id` in session once user login).
 
 ### JWT stateless mode
 

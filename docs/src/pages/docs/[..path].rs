@@ -67,7 +67,7 @@ pub async fn handler(ctx: RequestContext) -> Response {
     // Render the full page with root-level sidebar
     let page_content = render_documentation_layout(doc_subpath, &title, content_html, sidebar_html);
 
-    render!("GritShield Documentation", page_content)
+    render!(ctx, "GritShield Documentation", page_content)
 }
 
 /// Converts a clean URL path to filesystem path with numbered prefixes
@@ -82,11 +82,13 @@ fn clean_to_fs_path(clean_path: &str) -> String {
     // Define mapping from clean names to numbered folder names
     let folder_mapping = vec![
         ("getting-started", "01_getting-started"),
+        ("response", "02_response"),
         ("security", "02_security"),
         ("routing", "03_routing"),
         ("architecture", "04_architecture"),
         ("database", "05_database"),
-        ("deployment", "06_deployment"),
+        ("websocket", "06_websocket"),
+        ("deployment", "07_deployment"),
     ];
 
     for segment in segments {
