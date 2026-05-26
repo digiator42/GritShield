@@ -73,7 +73,31 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
 
     let ctx_clone = ctx.clone();
 
-    let is_ws_request = ctx
+    // Process Middleware Stack sequentially
+    match router.run_middlewares(&mut ctx) {
+        MiddlewareResult::Next(maybe_state) => {
+            if let Some(state) = maybe_state {
+                if state.session.is_some() {
+                    ctx.session = state.session;
+                }
+                if state.claims.is_some() {
+                    ctx.claims = state.claims;
+                }
+            }
+        }
+        MiddlewareResult::Error(err_res) => {
+            let (bytes, mime) = err_res.resolve();
+            let _ = stream.write_all(&err_res.to_bytes(&bytes, &mime)).await;
+
+            if router.use_logger {
+                router.log_lifecycle(&ctx, err_res.status, start_time.elapsed());
+            }
+            router.run_after_hooks(ctx, err_res.status, start_time.elapsed());
+            return;
+        }
+    }
+
+       let is_ws_request = ctx
         .req
         .headers
         .get("upgrade")
@@ -132,30 +156,6 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
             "[WS WARN] WebSocket upgrade requested for unregistered path: {}",
             ctx.req.path
         );
-    }
-
-    // Process Middleware Stack sequentially
-    match router.run_middlewares(&mut ctx) {
-        MiddlewareResult::Next(maybe_state) => {
-            if let Some(state) = maybe_state {
-                if state.session.is_some() {
-                    ctx.session = state.session;
-                }
-                if state.claims.is_some() {
-                    ctx.claims = state.claims;
-                }
-            }
-        }
-        MiddlewareResult::Error(err_res) => {
-            let (bytes, mime) = err_res.resolve();
-            let _ = stream.write_all(&err_res.to_bytes(&bytes, &mime)).await;
-
-            if router.use_logger {
-                router.log_lifecycle(&ctx, err_res.status, start_time.elapsed());
-            }
-            router.run_after_hooks(ctx, err_res.status, start_time.elapsed());
-            return;
-        }
     }
 
     let error_handler_ptr = router.global_error_handler.handler;
