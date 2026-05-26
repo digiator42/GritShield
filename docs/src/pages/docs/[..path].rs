@@ -204,7 +204,7 @@ fn build_sidebar_tree(
 fn render_sidebar(active_slug: &str, items: &[(String, String, usize)]) -> Markup {
     html! {
         div class="sidebar-header" {
-            h3 { "Documentation" }
+            h3 { "Tree" }
         }
         nav class="docs-sidebar" {
             ul class="sidebar-nav" {

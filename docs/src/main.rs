@@ -1,9 +1,6 @@
-use std::collections::HashMap;
-
 use gritshield::{
     prelude::*,
-    protocol::{request::HttpMethod, response::JsonPayload},
-    security::middleware::{Middleware, MiddlewareResult},
+    protocol::{request::HttpMethod},
 };
 
 mod pages {

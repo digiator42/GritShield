@@ -1,4 +1,3 @@
-# Routing Guide
 
 GritShield's router is built on a trie (prefix tree) for efficient path matching with O(n) complexity where n is the number of path segments.
 

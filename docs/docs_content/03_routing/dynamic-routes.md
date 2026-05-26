@@ -1,4 +1,3 @@
-# Dynamic Routes
 
 ## Single Parameter `:param`
 

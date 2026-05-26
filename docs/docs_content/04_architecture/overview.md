@@ -1,4 +1,3 @@
-# Architecture Overview
 
 GritShield is built on a modular, layered architecture that prioritizes security without sacrificing developer experience.
 

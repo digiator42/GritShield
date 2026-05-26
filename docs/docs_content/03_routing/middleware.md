@@ -1,4 +1,3 @@
-# Middleware
 
 Middleware runs before handlers and can modify the request context, add data, or reject requests.
 

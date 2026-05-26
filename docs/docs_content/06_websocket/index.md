@@ -1,4 +1,3 @@
-# WebSocket Support in GritShield
 
 GritShield provides built-in WebSocket support using a simple macro for route registration.
 
@@ -28,6 +27,9 @@ macro_rules! register_ws {
 ### 1. Create WebSocket Handler
 
 ```rust
+use futures_util::sink::SinkExt;
+use gritshield::{futures::StreamExt, routing::trie::RequestContext};
+use tokio::net::TcpStream;
 use tokio_tungstenite::WebSocketStream;
 
 async fn echo_handler(
@@ -51,12 +53,7 @@ async fn echo_handler(
         }
     }
 }
-```
 
-### 2. Register the Route
-
-```rust
-// Add this in your main.rs
 register_ws!("/ws/echo", echo_handler);
 ```
 
@@ -76,10 +73,3 @@ ws.onmessage = (event) => {
 
 ws.onclose = () => console.log("Connection closed");
 ```
-
-## Features
-
-- Easy macro-based registration
-- Full async support
-- Works alongside regular HTTP routes
-- Access to peer address via `WsContext`

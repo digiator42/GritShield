@@ -1,4 +1,3 @@
-# Database Migrations
 
 GritShield uses SeaORM's migration system for schema management.
 

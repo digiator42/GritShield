@@ -1,4 +1,3 @@
-# Architecture Documentation
 
 Welcome to the GritShield architecture documentation. This section covers the internal design, kernel structure, and security principles.
 

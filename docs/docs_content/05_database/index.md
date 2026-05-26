@@ -1,4 +1,3 @@
-# Database Integration
 
 GritShield integrates with SeaORM for type-safe, async database access.
 

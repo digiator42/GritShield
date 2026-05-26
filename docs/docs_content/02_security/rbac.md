@@ -1,4 +1,3 @@
-# Role-Based Access Control (RBAC)
 
 GritShield provides RBAC through session user IDs and middleware.
 

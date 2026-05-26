@@ -555,6 +555,7 @@ name = "docs"
 version = "0.1.0"
 dependencies = [
  "ctor",
+ "futures-util",
  "gritshield",
  "html-escape",
  "lazy_static",
@@ -565,6 +566,7 @@ dependencies = [
  "sqlx",
  "syntect",
  "tokio",
+ "tokio-tungstenite",
 ]
 
 [[package]]
