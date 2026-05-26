@@ -1,6 +1,6 @@
 use notify::{RawEvent, RecursiveMode, Watcher, raw_watcher};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::channel;
 use std::time::{Duration, Instant};
 
@@ -12,11 +12,8 @@ impl HotReloader {
             return;
         }
 
-        // Get the directory where the developer executed 'cargo run'
-        // This ensures we are always anchored to the developer's project root
         let project_root =
             std::env::current_dir().expect("Failed to get current working directory");
-
         println!(
             "[HOT-RELOAD] Supervisor active anchoring at: {:?}",
             project_root
@@ -25,7 +22,6 @@ impl HotReloader {
         let (tx, rx) = channel();
         let mut watcher = raw_watcher(tx).expect("Failed to initialize file watcher");
 
-        // Target the developer's absolute paths explicitly
         let src_dir = project_root.join("src");
         let static_dir = project_root.join("static");
 
@@ -44,50 +40,85 @@ impl HotReloader {
                 .unwrap();
         }
 
-        // Pass the project_root into spawn_app so cargo run knows WHERE to run
-        let mut child_process = Self::spawn_app(&project_root);
-        let mut last_reload = Instant::now();
+        let mut child_process = Self::rebuild_and_spawn(&project_root, None);
+
+        // Track when a change is pending
+        let mut change_pending = false;
+        let mut last_event_time = Instant::now();
+        let debounce_duration = Duration::from_millis(300); // Quick, snappy 300ms debounce
 
         loop {
-            match rx.recv_timeout(Duration::from_millis(200)) {
-                Ok(RawEvent {
-                    path: Some(_),
-                    op: Ok(op),
-                    ..
-                }) => {
-                    if op.is_empty() || op.contains(notify::Op::CHMOD) {
-                        continue;
-                    }
-
-                    if last_reload.elapsed() > Duration::from_millis(800) {
-                        println!(
-                            "[HOT-RELOAD] Developer file modification detected. Resetting lock..."
-                        );
-
-                        let _ = child_process.kill();
-                        let _ = child_process.wait();
-
-                        // Tiny Windows filesystem cooldown
-                        std::thread::sleep(Duration::from_millis(100));
-
-                        println!("[HOT-RELOAD] Rebuilding developer application...");
-                        child_process = Self::spawn_app(&project_root);
-                        last_reload = Instant::now();
+            // Poll for events with a small timeout to keep the loop driving
+            match rx.recv_timeout(Duration::from_millis(50)) {
+                Ok(RawEvent { op: Ok(op), .. }) => {
+                    // Ignore the event if it's completely empty OR if it is strictly a CHMOD event
+                    if !op.is_empty() && op != notify::Op::CHMOD {
+                        change_pending = true;
+                        last_event_time = Instant::now();
                     }
                 }
                 _ => {}
             }
+
+            // Flush out the remaining rapid event streams
+            while let Ok(RawEvent { op: Ok(op), .. }) = rx.try_recv() {
+                if !op.is_empty() && op != notify::Op::CHMOD {
+                    change_pending = true;
+                    last_event_time = Instant::now();
+                }
+            }
+
+            // Trigger execution ONLY when a change is pending AND the user has stopped saving/typing
+            if change_pending && last_event_time.elapsed() >= debounce_duration {
+                println!(
+                    "[HOT-RELOAD] triggered. Rebuilding application..."
+                );
+                child_process = Self::rebuild_and_spawn(&project_root, child_process);
+
+                // Reset state state-machine variables
+                change_pending = false;
+            }
         }
     }
 
-    // Pass the active project root directory down to the cargo process
-    fn spawn_app(current_dir: &PathBuf) -> std::process::Child {
-        Command::new("cargo")
-            .arg("run")
+    fn rebuild_and_spawn(current_dir: &PathBuf, mut active_child: Option<Child>) -> Option<Child> {
+        if let Some(mut child) = active_child {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+
+        // Essential OS filesystem handle release delay
+        std::thread::sleep(Duration::from_millis(100));
+
+        let build_status = Command::new("cargo")
+            .arg("build")
             .current_dir(current_dir)
-            .env("CARGO_TARGET_DIR", current_dir.join("target/reloader")) // Private target folder inside developer app
+            .env("CARGO_TARGET_DIR", current_dir.join("target/reloader"))
             .env("RUNNING_UNDER_RELOADER", "1")
-            .spawn()
-            .expect("Failed to execute application process")
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .status();
+
+        match build_status {
+            Ok(status) if status.success() => {
+                println!("[HOT-RELOAD] Build successful. Launching server executable...");
+
+                let new_child = Command::new("cargo")
+                    .args(["run", "--quiet"])
+                    .current_dir(current_dir)
+                    .env("CARGO_TARGET_DIR", current_dir.join("target/reloader"))
+                    .env("RUNNING_UNDER_RELOADER", "1")
+                    .stdout(Stdio::inherit())
+                    .stderr(Stdio::inherit())
+                    .spawn()
+                    .expect("Failed to execute application process");
+
+                Some(new_child)
+            }
+            _ => {
+                eprintln!("[HOT-RELOAD] Compilation failed. Waiting for code corrections...");
+                None
+            }
+        }
     }
 }

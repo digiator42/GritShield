@@ -1,6 +1,6 @@
 use gritshield::{
     prelude::*,
-    protocol::request::HttpMethod,
+    protocol::request::HttpMethod, security::middleware::{Middleware, MiddlewareResult},
 };
 
 mod pages {
@@ -30,6 +30,5 @@ async fn main() {
         Response::json(200, &"OK")
     });
 
-    println!("[GRITSHIELD] Booting engine cluster...");
     gritshield::core::server::run_server("0.0.0.0", "8080", router, false).await;
 }

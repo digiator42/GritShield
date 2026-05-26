@@ -1,6 +1,9 @@
 use crate::{
     protocol::{request::Request, response::Response},
-    routing::trie::{IntoHandler, RequestContext, Router, RoutingResult},
+    routing::{
+        trie::{IntoHandler, RequestContext, Router, RoutingResult},
+        websocket::WS_REGISTRY,
+    },
     security::{
         cookies::CookieJar, errors::ShieldError, middleware::MiddlewareResult, xss::Sanitizer,
     },
@@ -35,7 +38,7 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
         }
     };
 
-    // This allows router to be completely unborrowed before we start middleware.
+    // Match the route early to extract dynamic params for middleware use, even if the final handler isn't found
     let params = match router.match_route(&req.method, &req.path) {
         RoutingResult::Found(_, dynamic_params) => dynamic_params.clone(),
         _ => HashMap::new(),
@@ -69,6 +72,67 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
     };
 
     let ctx_clone = ctx.clone();
+
+    let is_ws_request = ctx
+        .req
+        .headers
+        .get("upgrade")
+        .map_or(false, |v| v == "websocket");
+
+    if is_ws_request {
+        let target_ws_handler = {
+            let ws_routes = WS_REGISTRY.lock().unwrap();
+            ws_routes.get(&ctx.req.path).cloned()
+        };
+
+        if let Some(ws_handler) = target_ws_handler {
+            println!("[CORE ENGINE] Upgrading socket connection path to WebSocket stream.");
+
+            // Manually build the WebSocket Handshake Accept response using the parsed headers
+            if let Some(key) = ctx.req.headers.get("sec-websocket-key") {
+                // Generate the cryptographic handshake accept token
+                let accept_hash =
+                    tokio_tungstenite::tungstenite::handshake::derive_accept_key(key.as_bytes());
+
+                // Formulate a proper 101 Switching Protocols HTTP response frame
+                let handshake_response = format!(
+                    "HTTP/1.1 101 Switching Protocols\r\n\
+                    Upgrade: websocket\r\n\
+                    Connection: Upgrade\r\n\
+                    Sec-WebSocket-Accept: {}\r\n\r\n",
+                    accept_hash
+                );
+
+                // Write the handshake directly to the open TCP socket
+                if let Err(e) = stream.write_all(handshake_response.as_bytes()).await {
+                    eprintln!("[WS ERROR] Failed to send handshake response: {:?}", e);
+                    return;
+                }
+
+                // Convert the raw TCP socket into a WebSocketStream directly, bypassing tungstenite's parser loop
+                let ws_stream = tokio_tungstenite::WebSocketStream::from_raw_socket(
+                    stream,
+                    tokio_tungstenite::tungstenite::protocol::Role::Server,
+                    None,
+                )
+                .await;
+
+                // Hand off the completely active stream to telemetry worker loop
+                tokio::spawn(async move {
+                    println!("[ACC TELEMETRY] Live Monitoring Operator Connected!");
+                    ws_handler(ws_stream, ctx).await;
+                });
+
+                return;
+            } else {
+                eprintln!("[WS ERROR] Missing Sec-WebSocket-Key header.");
+            }
+        }
+        println!(
+            "[WS WARN] WebSocket upgrade requested for unregistered path: {}",
+            ctx.req.path
+        );
+    }
 
     // Process Middleware Stack sequentially
     match router.run_middlewares(&mut ctx) {

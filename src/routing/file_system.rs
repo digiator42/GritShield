@@ -48,3 +48,16 @@ macro_rules! register_fallback_page {
         }
     };
 }
+
+#[macro_export]
+macro_rules! register_ws {
+    ($path:expr, $handler:expr) => {
+        #[$crate::ctor::ctor(unsafe)]
+        fn init_ws_route() {
+            let wrapped: $crate::routing::websocket::WsHandlerFn = |stream, ctx| {
+                Box::pin($handler(stream, ctx))
+            };
+            $crate::routing::websocket::register_ws_route($path, wrapped);
+        }
+    };
+}
