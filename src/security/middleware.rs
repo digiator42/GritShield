@@ -86,15 +86,20 @@ impl AuthMiddleware {
 
             let mut matches = true;
             for (i, rule_seg) in rule_segments.iter().enumerate() {
-                // If we hit your wildcard token variant, everything past this point matches!
-                if *rule_seg == "*" || rule_seg.starts_with(':') && rule_seg.contains('*') {
+                // 1. FIXED: Explicitly look for your actual deep catch-all token "**"
+                if *rule_seg == "**" || rule_seg.starts_with(":*") {
                     return true;
                 }
 
-                // If the incoming path is shorter than the rule segment check, it's not a match
+                // If the incoming path is shorter than the rule segment position, it's not a match
                 if i >= incoming_segments.len() {
                     matches = false;
                     break;
+                }
+
+                // 2. Single wildcard matches exactly ONE deep dynamic branch segment
+                if *rule_seg == "*" {
+                    continue;
                 }
 
                 // Standard exact segment match evaluation
@@ -116,7 +121,106 @@ impl AuthMiddleware {
 
 impl Middleware for AuthMiddleware {
     fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult {
+        // -----------------------------------------------------------------
+        // STEP 1: IMMEDIATE PUBLIC ROUTE BYPASS
+        // -----------------------------------------------------------------
+        if let Some(ref redirect_path) = self.redirect {
+            if ctx.req.path == *redirect_path {
+                return MiddlewareResult::Next(None);
+            }
+        }
+
         let is_public_route = self.is_public(&ctx.req.path);
+
+        println!(
+            "[AUTH MIDDLEWARE] Evaluating route: {} | Public: {}",
+            ctx.req.path, is_public_route
+        );
+
+        // If it's a public route (like /login or static files), skip CSRF and Auth checks entirely!
+        if is_public_route {
+            let mut associated_session = None;
+
+            // 1. Try to find an existing session from the browser's cookie jar
+            if let Some(sid) = ctx.get_signed_cookie("GSESSION_ID") {
+                if let Ok(store_guard) = self.store.sessions.lock() {
+                    if let Some(session_ptr) = store_guard.get(&sid) {
+                        associated_session = Some(Arc::clone(&session_ptr));
+                    }
+                }
+            }
+
+            // 2. If no session exists, mint one on-the-fly right here so handlers can write to it!
+            if associated_session.is_none() && self.jwt_handler.is_none() {
+                if let Ok(store_guard) = self.store.sessions.lock() {
+                    let new_sid = uuid::Uuid::new_v4().to_string();
+                    let new_session = Arc::new(Mutex::new(Session {
+                        id: new_sid.clone(),
+                        data: std::collections::HashMap::new(),
+                        user_id: None,
+                        last_accessed: std::time::Instant::now(),
+                    }));
+
+                    store_guard.insert(new_sid.clone(), Arc::clone(&new_session));
+
+                    let is_production =
+                        crate::core::env::get_env("APP_ENV", "development") == "production";
+                    let session_cookie = Cookie::new("GSESSION_ID", &new_sid)
+                        .set_secure(is_production)
+                        .set_same_site(SameSite::Lax);
+
+                    ctx.set_signed_cookie(session_cookie);
+                    associated_session = Some(new_session);
+                }
+            }
+
+            // Sync context state seamlessly
+            ctx.session = associated_session.clone();
+
+            return MiddlewareResult::Next(Some(MiddlewareState {
+                session: associated_session,
+                claims: None,
+                session_was_stale: false,
+            }));
+        }
+        
+        // Absolute Clean Short-Circuit for Explicit Logout Requests
+        if ctx.req.path == "/logout" {
+            println!("[AUTH KERNEL] Intercepted explicit /logout pathway trigger.");
+
+            // If a session cookie is present, erase its record from the internal memory store
+            if let Some(session_id) = ctx.get_signed_cookie("GSESSION_ID") {
+                if let Ok(store_guard) = self.store.sessions.lock() {
+                    store_guard.remove(&session_id);
+                    println!(
+                        "[AUTH KERNEL] Successfully removed session ID {} from memory pool.",
+                        session_id
+                    );
+                }
+            }
+
+            // Erase the cookie from the browser jar immediately
+            let mut delete_cookie = Cookie::new("GSESSION_ID", "");
+            delete_cookie.max_age = 0;
+
+            let is_production = crate::core::env::get_env("APP_ENV", "development") == "production";
+            let delete_cookie = delete_cookie
+                .set_secure(is_production)
+                .set_same_site(SameSite::Lax);
+
+            ctx.set_signed_cookie(delete_cookie);
+
+            // Prevent any further execution and immediately issue a 303 browser redirect
+            if let Some(ref redirect_path) = self.redirect {
+                return MiddlewareResult::Error(Response::redirect(303, redirect_path));
+            }
+            let res = Response::redirect(303, "/");
+            return MiddlewareResult::Error(res);
+        }
+
+        // -----------------------------------------------------------------
+        // STEP 2: RUN PRIVATE ROUTE LIFECYCLE (Sessions & CSRF Guard)
+        // -----------------------------------------------------------------
         let mut active_session = None;
 
         // --- CONDITIONAL SESSION LIEFOCYCLE ---
@@ -184,7 +288,7 @@ impl Middleware for AuthMiddleware {
             drop(store_guard); // Release lock cleanly
 
             // REFRESH TOKEN ROTATION INJECTOR
-            // Whenever a user requests or refreshes a page (GET), generate a new CSRF token immediately.
+            // Only rotates for strictly PROTECTED/PRIVATE GET requests!
             if ctx.req.method == HttpMethod::GET {
                 if let Some(ref session_arc) = active_session {
                     let mut session = session_arc.lock().unwrap();
@@ -194,73 +298,21 @@ impl Middleware for AuthMiddleware {
             }
         }
 
-        // Absolute Clean Short-Circuit for Explicit Logout Requests
-        if ctx.req.path == "/logout" {
-            println!("[AUTH KERNEL] Intercepted explicit /logout pathway trigger.");
-
-            // If a session cookie is present, erase its record from the internal memory store
-            if let Some(session_id) = ctx.get_signed_cookie("GSESSION_ID") {
-                if let Ok(store_guard) = self.store.sessions.lock() {
-                    store_guard.remove(&session_id);
-                    println!(
-                        "[AUTH KERNEL] Successfully removed session ID {} from memory pool.",
-                        session_id
-                    );
-                }
-            }
-
-            // Erase the cookie from the browser jar immediately
-            let mut delete_cookie = Cookie::new("GSESSION_ID", "");
-            delete_cookie.max_age = 0;
-
-            let is_production = crate::core::env::get_env("APP_ENV", "development") == "production";
-            let delete_cookie = delete_cookie
-                .set_secure(is_production)
-                .set_same_site(SameSite::Lax);
-
-            ctx.set_signed_cookie(delete_cookie);
-
-            // Prevent any further execution and immediately issue a 303 browser redirect
-            if let Some(ref redirect_path) = self.redirect {
-                return MiddlewareResult::Error(Response::redirect(303, redirect_path));
-            }
-            let res = Response::redirect(303, "/");
-            return MiddlewareResult::Error(res);
-        }
-
-        // --- BYPASS GATEKEEPING FOR PUBLIC ROUTES ---
-        if is_public_route {
-            return MiddlewareResult::Next(Some(MiddlewareState {
-                session: active_session.clone(), // Use clone to preserve variable
-                claims: None,
-                session_was_stale: cookie_was_stale,
-            }));
-        }
-
-        // --- : CSRF STATEFUL PROTECTION GUARD ---
+        // --- : CSRF STATEFUL PROTECTION GUARD (Only runs on protected private routes) ---
         if self.enable_csrf && self.jwt_handler.is_none() {
-            let method = ctx.req.method; // HttpMethod enum
-
-            // CSRF only attacks state-changing operations
+            let method = ctx.req.method;
             if method == HttpMethod::POST
                 || method == HttpMethod::PUT
                 || method == HttpMethod::PATCH
                 || method == HttpMethod::DELETE
             {
                 let mut csrf_verified = false;
-
-                // 1. Extract form payload body
                 let form_data = ctx.req.parse_form_body();
 
-                // 2. Fetch token from user's authenticated session state
                 if let Some(ref session_arc) = active_session {
                     let session = session_arc.lock().unwrap();
-
                     if let Some(session_token) = session.data.get("csrf_token") {
-                        // Look for the incoming hidden token field inside URL-encoded or Multipart text fields
                         if let Some(incoming_untrusted) = form_data.fields.get("csrf_token") {
-                            // Use a constant-time comparison helper if available, or a strict equality match
-                            // Since it's an UntrustedString wrapper, unpack its inner reference safely
                             if session_token == incoming_untrusted.as_str() {
                                 csrf_verified = true;
                             }
@@ -282,21 +334,19 @@ impl Middleware for AuthMiddleware {
         }
 
         // --- PRIVATE ROUTE AUTHENTICATION EVALUATION ---
-        println!("==> check session ===");
-        // Strategy A: Session Check
         if let Some(ref session_arc) = active_session {
             let session = session_arc.lock().unwrap();
-            println!("==> check session === {:?}", session);
             if session.data.get("user_id").is_some() {
                 drop(session);
                 return MiddlewareResult::Next(Some(MiddlewareState {
-                    session: active_session.clone(), // Cloned safely
+                    session: active_session.clone(),
                     claims: None,
                     session_was_stale: false,
                 }));
             }
         }
 
+        // ----------------------------------------------------------------------------
         // Strategy B: Fallback check against incoming JWT Bearer tokens
         if let Some(jwt_handler) = &self.jwt_handler {
             if let Some(auth_header) = ctx.headers.get("authorization") {

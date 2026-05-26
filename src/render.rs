@@ -1,8 +1,9 @@
 #[macro_export]
 macro_rules! render {
-    // Mode A: Standard Maud Markup Render (Default behavior)
-    ($title:expr, $markup:expr) => {{
-        let final_html = crate::root::layout::main_layout($title, $markup).into_string();
+    // Mode A: Standard Maud Markup Render
+    ($ctx:expr, $title:expr, $markup:expr) => {{
+        // Pass a reference to the context into main_layout
+        let final_html = crate::root::layout::main_layout($title, $markup, &$ctx).into_string();
 
         $crate::protocol::response::Response::new(
             200,
@@ -11,10 +12,9 @@ macro_rules! render {
     }};
 
     // Mode B: Raw HTML String Injection via explicit token flag
-    (raw, $title:expr, $html_string:expr) => {{
-        // Wrap the raw string in PreEscaped so Maud skips safety escaping
+    (raw, $ctx:expr, $title:expr, $html_string:expr) => {{
         let raw_wrapper = maud::PreEscaped($html_string);
-        let final_html = crate::root::layout::main_layout($title, raw_wrapper).into_string();
+        let final_html = crate::root::layout::main_layout($title, raw_wrapper, &$ctx).into_string();
 
         $crate::protocol::response::Response::new(
             200,
