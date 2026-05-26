@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::{
     security::xss::{SafeHtml, Sanitizer},
     utils::fs,
@@ -49,6 +51,87 @@ pub enum ResponseBody {
     Html(SafeHtml),
     StaticFile(String),
     Json(String),
+}
+
+/// Framework extension trait to safely convert multiple variants into structural response bodies
+pub trait IntoResponseBody {
+    fn convert(self) -> (ResponseBody, String); // Returns (Body variant, Default Content-Type)
+}
+
+// 1. Support Safe HTML (Maud markup/sanitizer objects)
+impl IntoResponseBody for SafeHtml {
+    fn convert(self) -> (ResponseBody, String) {
+        (
+            ResponseBody::Html(self),
+            "text/html; charset=utf-8".to_string(),
+        )
+    }
+}
+
+// 2. Support Raw Strings or Formatted Message text
+impl IntoResponseBody for String {
+    fn convert(self) -> (ResponseBody, String) {
+        // We assume raw strings are meant to be sent as safe plaintext/html bodies
+        (
+            ResponseBody::Html(Sanitizer::trust(&self)),
+            "text/html; charset=utf-8".to_string(),
+        )
+    }
+}
+
+impl IntoResponseBody for &'static str {
+    fn convert(self) -> (ResponseBody, String) {
+        (
+            ResponseBody::Html(Sanitizer::trust(self)),
+            "text/html; charset=utf-8".to_string(),
+        )
+    }
+}
+
+// 3. Create a wrapper struct specifically for explicit JSON data structures
+pub struct JsonPayload<T>(pub T);
+
+impl<T: serde::Serialize> IntoResponseBody for JsonPayload<T> {
+    fn convert(self) -> (ResponseBody, String) {
+        let json_string = serde_json::to_string(&self.0)
+            .unwrap_or_else(|_| r#"{"error": "Internal Server Serialization Error"}"#.to_string());
+        (
+            ResponseBody::Json(json_string),
+            "application/json; charset=utf-8".to_string(),
+        )
+    }
+}
+
+// 1. Support owned HashMaps, e.g., HashMap<K, V>
+impl<K, V> IntoResponseBody for HashMap<K, V>
+where
+    K: serde::Serialize + std::hash::Hash + Eq,
+    V: serde::Serialize,
+{
+    fn convert(self) -> (ResponseBody, String) {
+        let json_string = serde_json::to_string(&self)
+            .unwrap_or_else(|_| r#"{"error": "Internal Server Serialization Error"}"#.to_string());
+        (
+            ResponseBody::Json(json_string),
+            "application/json; charset=utf-8".to_string(),
+        )
+    }
+}
+
+// 2. Support borrowed HashMaps, e.g., &HashMap<K, V>
+impl<K, V> IntoResponseBody for &HashMap<K, V>
+where
+    K: serde::Serialize + std::hash::Hash + Eq,
+    V: serde::Serialize,
+{
+    fn convert(self) -> (ResponseBody, String) {
+        let json_string = serde_json::to_string(self)
+            .unwrap_or_else(|_| r#"{"error": "Internal Server Serialization Error"}"#.to_string());
+        (
+            ResponseBody::Json(json_string),
+            "application/json; charset=utf-8".to_string(),
+        )
+    }
 }
 
 pub struct Response {
@@ -195,5 +278,62 @@ impl Response {
                 .as_str(),
             )),
         }
+    }
+
+    /// Core polymorphic base constructor utilizing the IntoResponseBody converter pipeline
+    pub fn build<B: IntoResponseBody>(status: u16, payload: B) -> Self {
+        let (body, content_type) = payload.convert();
+
+        Response {
+            status,
+            headers: vec![
+                ("Content-Type".to_string(), content_type),
+                ("X-Content-Type-Options".to_string(), "nosniff".to_string()),
+                ("X-Frame-Options".to_string(), "DENY".to_string()),
+            ],
+            cookies: Vec::new(),
+            body,
+        }
+    }
+
+    // --- 2xx SUCCESS RESPONSES ---
+
+    /// 200 OK — Standard success response
+    pub fn ok<B: IntoResponseBody>(payload: B) -> Self {
+        Self::build(200, payload)
+    }
+
+    /// 201 Created — Resource successfully created
+    pub fn created<B: IntoResponseBody>(payload: B) -> Self {
+        Self::build(201, payload)
+    }
+
+    // --- 4xx CLIENT ERRORS ---
+
+    /// 400 Bad Request — Malformed syntax or missing validation constraints
+    pub fn bad_request<B: IntoResponseBody>(payload: B) -> Self {
+        Self::build(400, payload)
+    }
+
+    /// 401 Unauthorized — Authentication is missing or invalid
+    pub fn unauthorized<B: IntoResponseBody>(payload: B) -> Self {
+        Self::build(401, payload)
+    }
+
+    /// 403 Forbidden — lacks permissions
+    pub fn forbidden<B: IntoResponseBody>(payload: B) -> Self {
+        Self::build(403, payload)
+    }
+
+    /// 404 Not Found — Resource or path cannot be resolved
+    pub fn not_found<B: IntoResponseBody>(payload: B) -> Self {
+        Self::build(404, payload)
+    }
+
+    // --- 5xx SERVER ERRORS ---
+
+    /// 500 Internal Server Error — Generic catch-all for database faults or crypto crashes
+    pub fn internal_error<B: IntoResponseBody>(payload: B) -> Self {
+        Self::build(500, payload)
     }
 }

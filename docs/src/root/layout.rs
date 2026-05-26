@@ -1,6 +1,6 @@
 use gritshield::prelude::*;
 
-pub fn main_layout(title: &str, content: maud::Markup) -> maud::Markup {
+pub fn main_layout(title: &str, content: maud::Markup, _: &RequestContext) -> maud::Markup {
     html! {
         (maud::DOCTYPE)
         html {
