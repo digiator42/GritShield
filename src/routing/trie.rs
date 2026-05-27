@@ -131,6 +131,7 @@ pub struct RequestContext {
     pub content_type: Option<String>,
     pub cookies: Arc<Mutex<CookieJar>>,
     pub start_time: std::time::Instant,
+    pub role_inheritance: Arc<HashMap<String, Vec<String>>>,
 }
 
 impl RequestContext {
@@ -150,6 +151,7 @@ impl RequestContext {
             content_type: None,
             cookies: Arc::new(Mutex::new(CookieJar::new(None, String::new()))),
             start_time: std::time::Instant::now(),
+            role_inheritance: Arc::new(HashMap::new()),
         }
     }
 
@@ -270,6 +272,100 @@ impl RequestContext {
         self.get_session_data("user_id").is_some()
     }
 
+    /// Extracts the cached role string natively out of GritShield's hybrid state store.
+    /// Prioritizes stateful session storage, falling back seamlessly to stateless JWT claims.
+    pub fn get_user_role(&self) -> Option<String> {
+        // 1. Check stateful session storage first
+        if let Some(ref session_arc) = self.session {
+            if let Ok(session) = session_arc.lock() {
+                if let Some(role) = session.data.get("role") {
+                    return Some(role.clone());
+                }
+            }
+        }
+
+        // 2. Stateless Fallback: Read the role field embedded inside the cryptographically validated JWT
+        if let Some(ref claims) = self.claims {
+            return Some(claims.role.clone());
+        }
+
+        None
+    }
+
+    /// Non-blocking check evaluating security roles using hierarchical permissions bypassing.
+    pub fn has_fixed_role(&self, target_role: &str) -> bool {
+        match self.get_user_role() {
+            Some(role) => {
+                // If an exact match is found, allow entry immediately
+                if role == target_role {
+                    return true;
+                }
+
+                // Hierarchical authorization structure bypass rules
+                match (role.as_str(), target_role) {
+                    ("Admin", _) => true, // Admins bypass all lower operational barriers
+                    ("Operator", "Admin") => false,
+                    ("Operator", _) => true, // Operators access standard and low tier pathways
+                    ("Auditor", "Auditor") => true,
+                    _ => false,
+                }
+            }
+            None => false,
+        }
+    }
+
+    /// Strict guard line item helper. Immediately returns an explicit security error
+    /// if the user fails verification, allowing zero-boilerplate controller short-circuiting.
+    pub fn require_fixed_role(&self, target_role: &str) -> ShieldResult<()> {
+        if self.has_fixed_role(target_role) {
+            Ok(())
+        } else {
+            println!(
+                "\x1b[33m[SECURITY EXCEPTION] Inline controller guard tripped: User lacks required role '{}'\x1b[0m",
+                target_role
+            );
+            Err(ShieldError::Forbidden)
+        }
+    }
+
+    /// Dynamic recursive tree climber to check if a user role inherits the target role
+    fn check_inheritance(&self, current_role: &str, target_role: &str) -> bool {
+        if current_role == target_role {
+            return true;
+        }
+
+        // Search the map stored natively inside the request context
+        if let Some(children) = self.role_inheritance.get(current_role) {
+            for child in children {
+                if child == target_role || self.check_inheritance(child, target_role) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// Clean, non-blocking evaluation line using your dynamic inheritance rules
+    pub fn has_inherited_role(&self, target_role: &str) -> bool {
+        match self.get_user_role() {
+            Some(user_role) => self.check_inheritance(&user_role, target_role),
+            None => false,
+        }
+    }
+
+    /// Strict guard line item helper to allow inline `?` controller short-circuiting.
+    pub fn require_inherited_role(&self, target_role: &str) -> ShieldResult<()> {
+        if self.has_inherited_role(target_role) {
+            Ok(())
+        } else {
+            println!(
+                "\x1b[33m[SECURITY EXCEPTION] Inline dynamic RBAC guard tripped: Missing role '{}'\x1b[0m",
+                target_role
+            );
+            Err(ShieldError::Forbidden)
+        }
+    }
+
     /// Generates or retrieves an existing CSRF token for the active session context.
     /// If a session exists but lacks a token, it initializes one on-the-fly dynamically.
     pub fn get_csrf_token(&self) -> String {
@@ -304,6 +400,7 @@ pub struct AutoRoute {
     pub path: &'static str,
     pub method: HttpMethod,
     pub handler: Handler,
+    pub required_role: Option<&'static str>,
 }
 
 // Tell the compiler to create a tracking registry for AutoRoute elements
@@ -357,6 +454,8 @@ pub struct Router {
     pub global_error_handler: GlobalErrorHandler,
     pub telemetry: SystemTelemetry,
     pub fallback_handler: Option<PageHandlerFn>,
+    pub role_registry: HashMap<String, &'static str>, // Local thread-safe registry tracking roles mapped to explicit route URL strings
+    pub role_inheritance: HashMap<String, Vec<String>>,
 }
 
 impl Router {
@@ -377,6 +476,8 @@ impl Router {
             },
             telemetry: SystemTelemetry::new(),
             fallback_handler: fallback,
+            role_registry: HashMap::new(),
+            role_inheritance: HashMap::new(),
         };
 
         for route in inventory::iter::<AutoRoute> {
@@ -384,6 +485,17 @@ impl Router {
                 "[AUTO-ROUTING] Registering {} {:?}",
                 route.path, route.method
             );
+
+            // Capture role properties globally at framework startup
+            if let Some(role) = route.required_role {
+                println!(
+                    "\x1b[33m[RBAC SHIELD] Detected role requirement for path: {} | Required role: {}\x1b[0m",
+                    route.path, role
+                );
+                router.role_registry.insert(route.path.to_string(), role);
+            }
+
+            // Route standard mapping execution
             router.add_route(route.method, route.path, route.handler);
         }
 
@@ -420,6 +532,14 @@ impl Router {
     /// Allows developers to attach a custom layout handler for unmatched 404 routes
     pub fn set_fallback(mut self, handler: PageHandlerFn) -> Self {
         self.fallback_handler = Some(handler);
+        self
+    }
+
+    /// Builder method to dynamically define role hierarchies at startup
+    pub fn add_role_inheritance(mut self, parent: &str, children: Vec<&str>) -> Self {
+        let child_strings = children.into_iter().map(|s| s.to_string()).collect();
+        self.role_inheritance
+            .insert(parent.to_string(), child_strings);
         self
     }
 
@@ -467,7 +587,6 @@ impl Router {
         }
 
         current.is_end = true;
-        // Heap-allocate the handler container so it fits uniformly into the Trie matrix
         current.methods.insert(method, Box::new(handler));
     }
 

@@ -69,6 +69,7 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
         req,
         cookies: jar.clone(),
         start_time,
+        role_inheritance: Arc::new(router.role_inheritance.clone()),
     };
 
     let ctx_clone = ctx.clone();
@@ -168,6 +169,25 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
         // router_clone is ultra short-lived and never crosses an outer function boundary.
         match router_clone.match_route(&ctx.req.method, &ctx.req.path) {
             RoutingResult::Found(handler, _) => {
+                // AUTOMATED ACCESS CONTROL MATRIX (RBAC Guard)
+                // Look up if this matching URL route path has an explicit role requirement attached
+                if let Some(required_role) = router_clone.role_registry.get(&ctx.req.path) {
+                    if !ctx.has_fixed_role(required_role) {
+                        println!(
+                            "\x1b[31m[RBAC SHIELD] Blocked Unauthorized Access attempt to {} | Missing operational clearance: {}\x1b[0m",
+                            ctx.req.path, required_role
+                        );
+
+                        return Response::forbidden(&std::collections::HashMap::from([(
+                            "error",
+                            format!(
+                                "Access Denied: Missing required operational role clearance '{}'.",
+                                required_role
+                            ),
+                        )]));
+                    }
+                }
+
                 let response: Response = handler.call(ctx.clone()).await;
 
                 if router_clone.use_logger {

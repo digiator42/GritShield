@@ -9,11 +9,12 @@ type HmacSha256 = Hmac<Sha256>;
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Claims {
     pub sub: String, // Subject (User ID)
+    pub role: String, // Stateless Role Claim tracking
     pub exp: usize,  // Expiration time
 }
 
 impl Claims {
-    pub fn new(sub: String, duration: u64) -> Self {
+    pub fn new(sub: String, role: String, duration: u64) -> Self {
         let now = SystemTime::now();
         let exp = now
             .checked_add(Duration::from_secs(duration))
@@ -24,6 +25,7 @@ impl Claims {
 
         Claims {
             sub: sub,
+            role: role,
             exp: exp as usize,
         }
     }
