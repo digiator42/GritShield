@@ -2,7 +2,7 @@ use std::fmt;
 
 /// A wrapper around a String that has NOT been sanitized.
 /// It cannot be printed or converted to a byte array directly.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct UntrustedString(String);
 
 impl UntrustedString {
@@ -14,6 +14,12 @@ impl UntrustedString {
 
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+}
+
+impl fmt::Display for UntrustedString {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 

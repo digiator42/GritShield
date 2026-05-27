@@ -270,14 +270,31 @@ impl RequestContext {
         self.get_session_data("user_id").is_some()
     }
 
-    /// Generates or retrieves an existing CSRF token for the active session context
+    /// Generates or retrieves an existing CSRF token for the active session context.
+    /// If a session exists but lacks a token, it initializes one on-the-fly dynamically.
     pub fn get_csrf_token(&self) -> String {
         if let Some(ref session_arc) = self.session {
-            let session = session_arc.lock().unwrap();
+            let mut session = session_arc.lock().unwrap();
+
+            // If it exists, return it immediately
             if let Some(token) = session.data.get("csrf_token") {
                 return token.clone();
             }
+
+            // If the session exists but lacks a token, mint it right now!
+            let fresh_token = uuid::Uuid::new_v4().to_string();
+            session
+                .data
+                .insert("csrf_token".to_string(), fresh_token.clone());
+
+            println!(
+                "[CSRF KERNEL] Lazy-initialized token on first context read: {}",
+                fresh_token
+            );
+            return fresh_token;
         }
+
+        // Fallback catch if no session is mounted at all
         String::new()
     }
 }

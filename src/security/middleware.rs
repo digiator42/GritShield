@@ -125,7 +125,8 @@ impl Middleware for AuthMiddleware {
         // STEP 1: IMMEDIATE PUBLIC ROUTE BYPASS
         // -----------------------------------------------------------------
         if let Some(ref redirect_path) = self.redirect {
-            if ctx.req.path == *redirect_path {
+            // Prevent cascades if the path already matches or ends with the target redirect
+            if ctx.req.path == *redirect_path || ctx.req.path.ends_with(redirect_path) {
                 return MiddlewareResult::Next(None);
             }
         }
@@ -183,7 +184,7 @@ impl Middleware for AuthMiddleware {
                 session_was_stale: false,
             }));
         }
-        
+
         // Absolute Clean Short-Circuit for Explicit Logout Requests
         if ctx.req.path == "/logout" {
             println!("[AUTH KERNEL] Intercepted explicit /logout pathway trigger.");
@@ -287,13 +288,15 @@ impl Middleware for AuthMiddleware {
 
             drop(store_guard); // Release lock cleanly
 
-            // REFRESH TOKEN ROTATION INJECTOR
-            // Only rotates for strictly PROTECTED/PRIVATE GET requests!
-            if ctx.req.method == HttpMethod::GET {
-                if let Some(ref session_arc) = active_session {
-                    let mut session = session_arc.lock().unwrap();
+            // Only generate a token if the active session doesn't have one yet!
+            if let Some(ref session_arc) = active_session {
+                let mut session = session_arc.lock().unwrap();
+                if !session.data.contains_key("csrf_token") {
                     let fresh_token = uuid::Uuid::new_v4().to_string();
                     session.data.insert("csrf_token".to_string(), fresh_token);
+                    println!(
+                        "[CSRF KERNEL] Initialized unique persistent anti-forgery token for session context."
+                    );
                 }
             }
         }
@@ -307,13 +310,31 @@ impl Middleware for AuthMiddleware {
                 || method == HttpMethod::DELETE
             {
                 let mut csrf_verified = false;
-                let form_data = ctx.req.parse_form_body();
 
+                // 1. Try extracting token out of custom AJAX headers first
+                let mut incoming_token: Option<String> = ctx
+                    .headers
+                    .get("x-csrf-token") // Header keys are typically lowercased by default
+                    .map(|s| s.to_string());
+
+                // 2. Fallback to parsing the classic form body if header isn't used
+                if incoming_token.is_none() {
+                    let form_data = ctx.req.parse_form_body();
+                    if let Some(form_val) = form_data.fields.get("csrf_token") {
+                        incoming_token = Some(form_val.to_string());
+                    }
+                }
+
+                // 3. Cross-reference the discovered input against the global session cache
                 if let Some(ref session_arc) = active_session {
                     let session = session_arc.lock().unwrap();
                     if let Some(session_token) = session.data.get("csrf_token") {
-                        if let Some(incoming_untrusted) = form_data.fields.get("csrf_token") {
-                            if session_token == incoming_untrusted.as_str() {
+                        if let Some(ref untrusted) = incoming_token {
+                            println!(
+                                "[CSRF GUARD] Comparing memory token [{}] against incoming challenge token [{}]",
+                                session_token, untrusted
+                            );
+                            if session_token == untrusted {
                                 csrf_verified = true;
                             }
                         }
@@ -325,10 +346,13 @@ impl Middleware for AuthMiddleware {
                         "\x1b[31m[SECURITY ALERT] CSRF Validation Failed for Route: {}\x1b[0m",
                         ctx.req.path
                     );
-                    let err_body = Sanitizer::trust(
-                        "<h1>403 Forbidden</h1><p>GritShield: CSRF Token Invalid or Missing.</p>",
-                    );
-                    return MiddlewareResult::Error(Response::new(403, err_body));
+                    // Use your elegant built-in polymorphic builder helper here!
+                    return MiddlewareResult::Error(Response::forbidden(
+                        &std::collections::HashMap::from([(
+                            "error",
+                            "GritShield: Anti-Forgery Token Validation Rejected.",
+                        )]),
+                    ));
                 }
             }
         }

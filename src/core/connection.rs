@@ -97,7 +97,7 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
         }
     }
 
-       let is_ws_request = ctx
+    let is_ws_request = ctx
         .req
         .headers
         .get("upgrade")
