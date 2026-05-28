@@ -172,13 +172,14 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
                 // AUTOMATED ACCESS CONTROL MATRIX (RBAC Guard)
                 // Look up if this matching URL route path has an explicit role requirement attached
                 if let Some(required_role) = router_clone.role_registry.get(&ctx.req.path) {
-                    if !ctx.has_fixed_role(required_role) {
+                    // Evaluates Fixed Engine rules FIRST, falling back to Dynamic tree links seamlessly
+                    if !ctx.has_role(required_role) {
                         println!(
                             "\x1b[31m[RBAC SHIELD] Blocked Unauthorized Access attempt to {} | Missing operational clearance: {}\x1b[0m",
                             ctx.req.path, required_role
                         );
 
-                        return Response::forbidden(&std::collections::HashMap::from([(
+                        return Response::forbidden(&HashMap::from([(
                             "error",
                             format!(
                                 "Access Denied: Missing required operational role clearance '{}'.",

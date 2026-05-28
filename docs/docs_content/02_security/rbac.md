@@ -3,8 +3,10 @@ GritShield provides RBAC through session user IDs and middleware.
 
 ## Session-Based RBAC
 
-Store user roles in the session after login:
-> ShieldResult<T> is a Result<T, ShieldError>
+GritShield provides convenient built-in role checking methods directly on `RequestContext` for clean and secure authorization.
+
+> ### First you need to store user roles in the session after login:
+>💡 ShieldResult<T> is `Result<T, ShieldError>`
 
 ```rust
 use gritshield::routing::trie::ShieldResult;
@@ -21,22 +23,112 @@ async fn login(ctx: RequestContext) -> ShieldResult<Response> {
         Err(ShieldError::UnauthorizedAccess)
     }
 }
+```
 
-#[post("/login")]
-async fn login(ctx: RequestContext) -> Response {
-    let creds: LoginDto = ctx.json().unwrap();
+## Now you can use built-in ctx methods
 
-    if creds.user_id == "admin" && creds.password == "secret" {
-        ctx.login_user_id(&creds.user_id);
-        ctx.set_session_data("role", "admin");
-        Response::redirect(303, "/dashboard")
-    } else {
-        Response::json(401, &HashMap::from([("message", "Invalid credentials")]))
+```rust
+// Check auth
+pub async fn dashboard(ctx: RequestContext) -> Response {
+    // Expects `user_id` in session or jwt claims
+    if !ctx.is_user_authenticated() {
+        return Response::unauthorized("Please log in to access this page.");
     }
+    // ...
 }
 ```
 
-## Role Check Middleware
+## Fixed Role Checking (with Hierarchy)
+Rust
+```rust
+pub async fn admin_panel(ctx: RequestContext) -> Response {
+    // Simple check
+    if !ctx.has_role("Admin") {
+        return Response::forbidden("Admin access required");
+    }
+
+    // Admin logic here...
+    Response::ok("Welcome Admin")
+}
+
+// Simpler 
+pub async fn admin_panel(ctx: RequestContext) -> ShieldResult<Response> {
+    // Or using strict guard with ?, Admin passes, Auditor will not!
+    ctx.require_role("Operator")?;
+
+    Ok(Response::ok("Welcome Operator"))
+}
+```
+
+## Dynamic Role Inheritance
+
+GritShield Allows you to define hierarchical relationships between roles (e.g., `Admin` inherits from `Manager`, which inherits from `Editor`).
+
+This system enables flexible and maintainable permission structures without hardcoding every role combination.
+
+## Key Benefits
+
+- Roles can inherit permissions from other roles
+- Recursive checking (multi-level inheritance)
+- Clean separation between fixed roles and dynamic hierarchies
+- Easy to extend or modify role relationships at runtime
+
+## Example Usage
+
+You can configure role inheritance when building your router:
+
+```rust
+let router = Router::new()
+    .add_role_inheritance("Admin", vec!["Manager", "Operator", "Auditor"])
+    .add_role_inheritance("Manager", vec!["Editor", "Viewer"])
+    .add_role_inheritance("Editor", vec!["Contributor"]);
+```
+
+How It Works
+
+- `Admin` inherits everything (`Manager`, `Operator`, `Auditor`)
+- `Manager` inherits `Editor` and `Viewer`
+- Inheritance is recursive — so `Admin` automatically has access to `Editor` and `Contributor` as well.
+
+```
+                               [Admin]
+                              /   |    \
+                             /    |     \
+                            /     |      \
+                           /      |       \
+                          /       |        \
+                     [Manager] [Operator] [Auditor]
+                       /   \
+                      /     \
+                     [Editor] [Viewer]
+                        |
+                     [Contributor]
+```
+
+### Now use built-in functions inside your handlers
+```rust
+pub async fn manage_users(ctx: RequestContext) -> Response {
+    // Check with inheritance tree
+    if !ctx.has_inherited_role("Manager") {
+        return Response::forbidden("Manager role or higher required");
+    }
+
+    // Strict version with ? (Recommended)
+    ctx.require_inherited_role("Manager")?; // needs ShieldResult, or use unwrap
+
+    // Handler logic...
+}
+
+pub async fn edit_post(ctx: RequestContext) -> ShieldResult<Response> {
+    // This will return true for: Editor, Manager, Admin
+    ctx.require_inherited_role("Editor")?;
+
+    // Only users with Editor role or higher can proceed
+    Ok(Response::ok("Post edited successfully"))
+}
+```
+
+## Create Your Own Role Check Middleware
 
 Create custom middleware for role validation:
 
@@ -47,17 +139,15 @@ struct RoleMiddleware {
 
 impl Middleware for RoleMiddleware {
     fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult {
-        if let Some(ref session) = ctx.session {
-            let session = session.lock().unwrap();
-            if let Some(role) = session.data.get("role") {
-                if role == &self.required_role {
-                    return MiddlewareResult::Next(None);
-                }
-            }
-        }
 
-        MiddlewareResult::Error(Response::new(403,
-            Sanitizer::trust("<h1>403 Forbidden - Insufficient Role</h1>")))
+        if let Some(role) = ctx.get_session_data("role") {
+            if role == &self.required_role {
+                return MiddlewareResult::Next(None);
+            }
+
+        MiddlewareResult::Error(Response::forbidden(
+            Sanitizer::trust("<h1>403 Forbidden - Insufficient Role</h1>")
+        ))
     }
 }
 
@@ -98,20 +188,16 @@ async fn admin_panel(ctx: RequestContext) -> Response {
 }
 ```
 
-## Route-Specific Roles
+## Now let's save you from writing RBAC functions each time
 
-Use custom attributes or manual checks:
+You can protect routes directly at the handler definition using the `role` parameter:
 
 ```rust
-#[get("/api/admin/users")]
-async fn admin_users(ctx: RequestContext) -> Response {
-    if !has_role(&ctx, "admin") {
-        return Response::new(403, Sanitizer::trust("Forbidden"));
-    }
-    // Handler logic
-}
-
-fn has_role(ctx: &RequestContext, required: &str) -> bool {
-    ctx.get_session_data("role").map_or(false, |r| r == required)
+#[post("/dashboard", role = "Admin")]
+pub async fn admin_panel(ctx: RequestContext) -> Response {
+    // handler
+    Response::ok("Hello Admin")
 }
 ```
+
+This checks dyncamically for inheritance roles first if defined, falling back to fixed role checks, giving you zero boilerplate rbac helper.

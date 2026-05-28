@@ -275,7 +275,7 @@ impl RequestContext {
     /// Extracts the cached role string natively out of GritShield's hybrid state store.
     /// Prioritizes stateful session storage, falling back seamlessly to stateless JWT claims.
     pub fn get_user_role(&self) -> Option<String> {
-        // 1. Check stateful session storage first
+        // Check stateful session storage first
         if let Some(ref session_arc) = self.session {
             if let Ok(session) = session_arc.lock() {
                 if let Some(role) = session.data.get("role") {
@@ -284,7 +284,7 @@ impl RequestContext {
             }
         }
 
-        // 2. Stateless Fallback: Read the role field embedded inside the cryptographically validated JWT
+        // Stateless Fallback: Read the role field embedded inside the cryptographically validated JWT
         if let Some(ref claims) = self.claims {
             return Some(claims.role.clone());
         }
@@ -292,7 +292,7 @@ impl RequestContext {
         None
     }
 
-    /// Non-blocking check evaluating security roles using hierarchical permissions bypassing.
+    /// Non-blocking check evaluating security roles using hierarchical permissions (Admin, Operator, Auditor) bypassing.
     pub fn has_fixed_role(&self, target_role: &str) -> bool {
         match self.get_user_role() {
             Some(role) => {
@@ -314,20 +314,6 @@ impl RequestContext {
         }
     }
 
-    /// Strict guard line item helper. Immediately returns an explicit security error
-    /// if the user fails verification, allowing zero-boilerplate controller short-circuiting.
-    pub fn require_fixed_role(&self, target_role: &str) -> ShieldResult<()> {
-        if self.has_fixed_role(target_role) {
-            Ok(())
-        } else {
-            println!(
-                "\x1b[33m[SECURITY EXCEPTION] Inline controller guard tripped: User lacks required role '{}'\x1b[0m",
-                target_role
-            );
-            Err(ShieldError::Forbidden)
-        }
-    }
-
     /// Dynamic recursive tree climber to check if a user role inherits the target role
     fn check_inheritance(&self, current_role: &str, target_role: &str) -> bool {
         if current_role == target_role {
@@ -345,21 +331,31 @@ impl RequestContext {
         false
     }
 
-    /// Clean, non-blocking evaluation line using your dynamic inheritance rules
-    pub fn has_inherited_role(&self, target_role: &str) -> bool {
-        match self.get_user_role() {
-            Some(user_role) => self.check_inheritance(&user_role, target_role),
-            None => false,
+    /// Evaluates BOTH Dynamic Graph Trees AND Fixed System matrices
+    /// Prioritizes runtime user-defined inheritance graphs first, falling back to core system rules.
+    pub fn has_role(&self, target_role: &str) -> bool {
+        // Evaluate against user-defined dynamic runtime configurations first
+        if let Some(user_role) = self.get_user_role() {
+            if self.check_inheritance(&user_role, target_role) {
+                return true;
+            }
         }
+
+        // FALLBACK — Check hardcoded framework override rules if dynamic checks yield false
+        if self.has_fixed_role(target_role) {
+            return true;
+        }
+
+        false
     }
 
-    /// Strict guard line item helper to allow inline `?` controller short-circuiting.
-    pub fn require_inherited_role(&self, target_role: &str) -> ShieldResult<()> {
-        if self.has_inherited_role(target_role) {
+    /// Checks if the user has the required role, and if not, returns a Forbidden error
+    pub fn require_role(&self, target_role: &str) -> ShieldResult<()> {
+        if self.has_role(target_role) {
             Ok(())
         } else {
             println!(
-                "\x1b[33m[SECURITY EXCEPTION] Inline dynamic RBAC guard tripped: Missing role '{}'\x1b[0m",
+                "\x1b[33m[SECURITY EXCEPTION] Inline unified RBAC guard tripped: Missing role '{}'\x1b[0m",
                 target_role
             );
             Err(ShieldError::Forbidden)
@@ -392,6 +388,40 @@ impl RequestContext {
 
         // Fallback catch if no session is mounted at all
         String::new()
+    }
+
+    /// Safely extracts and decodes a query parameter value by key.
+    /// Converts hex escape sequences (like %20) back into clean UTF-8 text.
+    pub fn get_query_param_decoded(&self, key: &str) -> Option<String> {
+        // Assuming your request object has a query map or parses raw params
+        // Adjust `self.req.query.get(key)` to match how your Request parser tracks URL params
+        let raw_val = self.query.get(key)?;
+
+        let mut decoded = String::new();
+        let mut chars = raw_val.as_str().chars();
+
+        while let Some(ch) = chars.next() {
+            if ch == '%' {
+                // Read the next two characters representing hex digits
+                let mut hex = String::new();
+                if let Some(h1) = chars.next() {
+                    hex.push(h1);
+                }
+                if let Some(h2) = chars.next() {
+                    hex.push(h2);
+                }
+
+                if let Ok(byte) = u8::from_str_radix(&hex, 16) {
+                    decoded.push(byte as char);
+                }
+            } else if ch == '+' {
+                decoded.push(' '); // Form encoding variant fallback
+            } else {
+                decoded.push(ch);
+            }
+        }
+
+        Some(decoded)
     }
 }
 
