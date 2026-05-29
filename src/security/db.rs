@@ -194,8 +194,7 @@ fn extract_up_sql(content: &str) -> String {
         }
         if trimmed.to_lowercase().contains("-- down:") || trimmed.to_lowercase().contains("-- down")
         {
-            collecting = false;
-            break; // Stop completely once the Rollback block starts
+            break;
         }
 
         if collecting {
