@@ -12,7 +12,8 @@ pub mod security;
 pub mod utils;
 pub use ctor;
 
-pub use gritshield_macros::*;
+// pub use gritshield_macros::*;
+pub use gritshield_macros::{get, post, put, patch, delete};
 
 // -----------------------------------------------------------------
 // DEPENDENCY ISOLATION HUB

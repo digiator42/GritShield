@@ -1,16 +1,15 @@
 extern crate proc_macro;
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, ItemFn, LitStr, Token, Ident};
 use syn::parse::{Parse, ParseStream, Result};
-
+use syn::{parse_macro_input, Ident, ItemFn, LitStr, Token};
 /// Storage container for parsed macro metadata arguments
 struct RouteArgs {
     path: LitStr,
     required_role: Option<LitStr>,
 }
 
-/// Implement parsing for structural argument formats: 
+/// Implement parsing for structural argument formats:
 /// e.g. `"/api/route"` OR `"/api/route", role = "Operator"`
 impl Parse for RouteArgs {
     fn parse(input: ParseStream) -> Result<Self> {
@@ -21,7 +20,7 @@ impl Parse for RouteArgs {
         // 2. Check if a trailing comma exists indicating secondary settings attributes
         if input.peek(Token![,]) {
             input.parse::<Token![,]>()?;
-            
+
             // Look for specific named parameter blocks, e.g., "role"
             let key: Ident = input.parse()?;
             if key == "role" {
@@ -30,7 +29,10 @@ impl Parse for RouteArgs {
             }
         }
 
-        Ok(RouteArgs { path, required_role })
+        Ok(RouteArgs {
+            path,
+            required_role,
+        })
     }
 }
 
@@ -41,7 +43,7 @@ macro_rules! generate_route_macro {
             // Parse utilizing our explicit RouteArgs composite layout wrapper
             let args = parse_macro_input!(attr as RouteArgs);
             let input_fn = parse_macro_input!(item as ItemFn);
-            
+
             let path = args.path;
             let required_role_opt = match args.required_role {
                 Some(lit) => quote! { Some(#lit) },

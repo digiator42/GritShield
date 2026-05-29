@@ -2,11 +2,20 @@
 name = "gritshield_macros"
 version = "0.1.0"
 edition = "2021"
+authors = ["Your Name <you@example.com>"]
+description = "Procedural attribute routing macros for the GritShield secure web framework."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/digiator42/gritshield"
+documentation = "https://docs.rs/gritshield_macros"
+readme = "README.md"
+keywords = ["macros", "proc-macro", "web", "routing", "security"]
+categories = ["development-tools::procedural-macro-helpers"]
 
 [lib]
-proc-macro = true # tells Rust this crate manipulates syntax trees
+proc-macro = true
 
 [dependencies]
 syn = { version = "2.0", features = ["full"] }
 quote = "1.0"
 inventory = "0.3"
+proc-macro2 = "1.0"
