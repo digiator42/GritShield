@@ -5,7 +5,7 @@ use std::time::Instant;
 
 use crate::protocol::request::HttpMethod;
 use crate::protocol::response::{Cookie, SameSite};
-use crate::protocol::{request::Request, response::Response};
+use crate::protocol::{response::Response};
 use crate::routing::trie::RequestContext;
 use crate::security::jwt::{Claims, JwtHandler};
 use crate::security::rate_limit::RateLimiter;

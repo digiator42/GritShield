@@ -1,8 +1,7 @@
 use crate::protocol::response::Response;
 use crate::routing::trie::RequestContext;
 use crate::security::xss::Sanitizer;
-use futures::future::{self, BoxFuture, FutureExt};
-use colored::*;
+use futures::future::{BoxFuture, FutureExt};
 
 pub type ErrorHandlerFn = fn(RequestContext, ShieldError) -> BoxFuture<'static, Response>;
 

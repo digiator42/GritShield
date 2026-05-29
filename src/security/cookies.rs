@@ -1,4 +1,4 @@
-use crate::protocol::response::{Cookie, SameSite};
+use crate::protocol::response::{Cookie};
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
 use std::collections::HashMap;

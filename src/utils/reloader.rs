@@ -1,5 +1,5 @@
 use notify::{RawEvent, RecursiveMode, Watcher, raw_watcher};
-use std::path::{Path, PathBuf};
+use std::path::{PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::channel;
 use std::time::{Duration, Instant};
@@ -81,7 +81,7 @@ impl HotReloader {
         }
     }
 
-    fn rebuild_and_spawn(current_dir: &PathBuf, mut active_child: Option<Child>) -> Option<Child> {
+    fn rebuild_and_spawn(current_dir: &PathBuf, active_child: Option<Child>) -> Option<Child> {
         if let Some(mut child) = active_child {
             let _ = child.kill();
             let _ = child.wait();

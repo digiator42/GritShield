@@ -1,7 +1,7 @@
 use crate::{
     protocol::{request::Request, response::Response},
     routing::{
-        trie::{IntoHandler, RequestContext, Router, RoutingResult},
+        trie::{RequestContext, Router, RoutingResult},
         websocket::WS_REGISTRY,
     },
     security::{
@@ -9,12 +9,12 @@ use crate::{
     },
 };
 use colored::Colorize;
-use futures::future::{self, BoxFuture, FutureExt};
+use futures::future::{FutureExt};
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
 };
-use std::{net::SocketAddr, panic::AssertUnwindSafe, sync::atomic::Ordering};
+use std::{net::SocketAddr, sync::atomic::Ordering};
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 
