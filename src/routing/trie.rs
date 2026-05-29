@@ -532,7 +532,7 @@ impl Router {
         router
     }
 
-    pub fn mound_db(mut self, db: Arc<DatabaseConnection>) -> Self {
+    pub fn mount_db(mut self, db: Arc<DatabaseConnection>) -> Self {
         self.db = Some(db);
         self
     }

@@ -1,6 +1,6 @@
 [package]
 name = "gritshield"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Ahmed Hassan <digiator2020@gmail.com>"]
 edition = "2024"
 description = "A security-first, high-performance micro-framework."
@@ -10,6 +10,12 @@ documentation = "https://docs.rs/gritshield"
 readme = "README.md"
 keywords = ["web", "framework", "orm", "micro", "async"]
 categories = ["web-programming::http-server"]
+
+[features]
+sqlite = ["sea-orm/sqlx-sqlite"]
+postgres = ["sea-orm/sqlx-postgres"] 
+mysql = ["sea-orm/sqlx-mysql"]
+
 
 [dependencies]
 colored = "2.1"
@@ -25,12 +31,12 @@ maud = "0.25"
 gritshield_macros = "0.1.0"
 inventory = "0.3"
 notify = "4.0"
-sea-orm = { version = "1.1.20", default-features = false, features = ["macros"] }
+sea-orm = { version = "1.1", default-features = false, features = ["runtime-tokio-native-tls", "macros"] }
+sea-orm-migration = "1.1.20"
 tokio = { version = "1.0", features = ["full"] }
 futures = "0.3"
 tokio-tungstenite = "0.21"
 futures-util = "0.3"
-sea-orm-migration = "1.1.20"
 dotenvy = "0.15.7"
 dashmap = "6.1.0"
 hex = "0.4.3"
@@ -39,3 +45,4 @@ ctor = "1.0"
 chrono = "0.4"
 lazy_static = "1.4"
 html-escape = "0.2.13"
+log = "0.4"
