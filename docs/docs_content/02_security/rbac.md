@@ -92,12 +92,10 @@ How It Works
 
 ```
                                [Admin]
-                              /   |    \
-                             /    |     \
-                            /     |      \
-                           /      |       \
-                          /       |        \
-                     [Manager] [Operator] [Auditor]
+                             /    |    \
+                            /     |     \
+                           /      |      \
+                    [Manager] [Operator] [Auditor]
                        /   \
                       /     \
                      [Editor] [Viewer]
@@ -200,4 +198,4 @@ pub async fn admin_panel(ctx: RequestContext) -> Response {
 }
 ```
 
-This checks dyncamically for inheritance roles first if defined, falling back to fixed role checks, giving you zero boilerplate rbac helper.
+Gritshield checks dyncamically for inheritance roles first if defined, falling back to fixed role checks, giving you zero boilerplate rbac helper.

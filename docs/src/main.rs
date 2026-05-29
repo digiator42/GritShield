@@ -32,5 +32,5 @@ async fn main() {
         |_: RequestContext| async move { Response::json(200, &"OK") },
     );
 
-    gritshield::core::server::run_server("0.0.0.0", "8080", router, true).await;
+    gritshield::core::server::run_server("0.0.0.0", "8080", router, false).await;
 }

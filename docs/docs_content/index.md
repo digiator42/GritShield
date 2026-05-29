@@ -4,15 +4,15 @@ GritShield is an **async-first, security-hardened** web framework for Rust that 
 
 ## Key Features
 
-- **⚡ Native Default Asynchrony** – Built entirely from the ground up on non-blocking `async/await` design patterns, leveraging a multi-threaded Tokio runtime context to sustain massive concurrent execution throughput without thread starvation.
-- **🔒 XSS-Safe Templating** – Untrusted data cannot reach HTML without explicit sanitisation.
-- **🛡️ CSRF Protection** – Automatic token validation for state-changing requests.
-- **🍪 Signed Cookies** – Cryptographic HMAC-SHA256 signatures prevent client-side cookie tampering.
-- **👤 Session Management** – Thread-safe, in-memory store protected by asynchronous synchronization locks with automatic expiration hooks.
-- **🎫 JWT Support** – Stateless authentication via securely managed HS256 tokens.
-- **⏱️ Rate Limiting** – Sliding-window rate tracking per IP address, backed by low-overhead atomic counters.
-- **🚫 IP Blacklisting** – Instantly drops connection sockets for malicious clients directly at the early middleware layer.
-- **📁 File-Based Routing** – Auto-discovery of structural endpoint handlers mapped straight to your local filesystem hierarchy.
+- **Native Default Asynchrony** – Built entirely from the ground up on non-blocking `async/await` design patterns, leveraging a multi-threaded Tokio runtime context to sustain massive concurrent execution throughput without thread starvation.
+- **XSS-Safe Templating** – Untrusted data cannot reach HTML without explicit sanitisation.
+- **CSRF Protection** – Automatic token validation for state-changing requests.
+- **Signed Cookies** – Cryptographic HMAC-SHA256 signatures prevent client-side cookie tampering.
+- **Session Management** – Thread-safe, in-memory store protected by asynchronous synchronization locks with automatic expiration hooks.
+- **JWT Support** – Stateless authentication via securely managed HS256 tokens.
+- **Rate Limiting** – Sliding-window rate tracking per IP address, backed by low-overhead atomic counters.
+- **IP Blacklisting** – Instantly drops connection sockets for malicious clients directly at the early middleware layer.
+- **File-Based Routing** – Auto-discovery of structural endpoint handlers mapped straight to your local filesystem hierarchy.
 
 ## Quick Navigation
 
@@ -23,7 +23,7 @@ GritShield is an **async-first, security-hardened** web framework for Rust that 
 
 # GritShield Documentation
 
-## 📦 Installation
+## Installation
 
 Add to your `Cargo.toml`:
 
@@ -35,7 +35,7 @@ tokio = { version = "1", features = ["full"] }
 
 ---
 
-## 🚀 Quick Start – Hello World
+## Quick Start – Hello World
 
 Create `src/main.rs`:
 
@@ -59,7 +59,7 @@ Run with `cargo run` and open `http://localhost:8080`.
 
 ---
 
-## 🧱 Core Concepts
+## Core Concepts
 
 ## 1. Request Context
 
@@ -80,89 +80,86 @@ async fn profile(ctx: RequestContext) -> String {
 
 ## 2. Routing
 
-### a) Attribute Macros
+- ### a) Attribute Macros
 
-```rust
-#[get("/users/:id")]
-async fn get_user(ctx: RequestContext) -> Response {
-    let id = ctx.params.get("id").unwrap().as_str();
-    Response::new(Sanitizer::trust(format!("User {}", id)))
-}
+  ```rust
+  #[get("/users/:id")]
+  async fn get_user(ctx: RequestContext) -> Response {
+      let id = ctx.params.get("id").unwrap().as_str();
+      Response::new(Sanitizer::trust(format!("User {}", id)))
+  }
 
-#[post("/users")]
-async fn create_user(ctx: RequestContext) -> Result<Response, ShieldError> {
-    let new_user: CreateUserDto = ctx.json()?;
-    // ...
-    Ok(Response::redirect(303, "/users"))
-}
-```
+  #[post("/users")]
+  async fn create_user(ctx: RequestContext) -> Result<Response, ShieldError> {
+      let new_user: CreateUserDto = ctx.json()?;
+      // ...
+      Ok(Response::redirect(303, "/users"))
+  }
+  ```
 
-Supported methods:
+  Supported methods:
+  - `#[get]`
+  - `#[post]`
+  - `#[put]`
+  - `#[patch]`
+  - `#[delete]`
 
-- `#[get]`
-- `#[post]`
-- `#[put]`
-- `#[patch]`
-- `#[delete]`
+- ### b) Manual Registration
 
-### b) Manual Registration
+  ```rust
+  router.add_route(HttpMethod::GET, "/health", |_: RequestContext| async move { "OK" });
 
-```rust
-router.add_route(HttpMethod::GET, "/health", |_: RequestContext| async move { "OK" });
+  ```
 
-```
+- ### c) File‑Based Routing (Next.js style)
 
-### c) File‑Based Routing (Next.js style)
+  Place your handlers in `src/pages/`:
+  - `src/pages/index.rs` → route `/`
+  - `src/pages/users/[id].rs` → route `/users/:id`
+  - `src/pages/api/[..path].rs` → route `/api/**` (catch‑all)
 
-Place your handlers in `src/pages/`:
+  Inside the file, use the `register_page!` macro:
 
-- `src/pages/index.rs` → route `/`
-- `src/pages/users/[id].rs` → route `/users/:id`
-- `src/pages/api/[..path].rs` → route `/api/**` (catch‑all)
+  ```rust
+  use gritshield::prelude::*;
 
-Inside the file, use the `register_page!` macro:
+  register_page!(HttpMethod::GET, |_| async { "Hello from file route" });
+  ```
 
-```rust
-use gritshield::prelude::*;
-
-register_page!(HttpMethod::GET, |_| async { "Hello from file route" });
-```
-
-GritShield automatically discovers `.rs` files under `src/pages` and mounts them.
+  GritShield automatically discovers `.rs` files under `src/pages` and mounts them.
 
 ---
 
 ## 3. Middleware Stack
 
-Middleware implements the `Middleware` trait. They run in the order they are added.
+- Middleware implements the `Middleware` trait. They run in the order they are added.
 
-```rust
-pub trait Middleware: Send + Sync {
-    fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult;
-}
-```
+  ```rust
+  pub trait Middleware: Send + Sync {
+      fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult;
+  }
+  ```
 
-### Built‑in middleware
+  ### Built‑in middleware
+  - `LoggerMiddleware` – logs method, path, status, duration, authentication state.
+  - `RateLimitMiddleware` – sliding‑window rate limiting.
+  - `IPBlacklistMiddleware` – blocks requests from configured IP addresses.
+  - `AuthMiddleware` – session + JWT + CSRF gatekeeper.
 
-- `LoggerMiddleware` – logs method, path, status, duration, authentication state.
-- `RateLimitMiddleware` – sliding‑window rate limiting.
-- `IPBlacklistMiddleware` – blocks requests from configured IP addresses.
-- `AuthMiddleware` – session + JWT + CSRF gatekeeper.
+  ### Adding custom middleware
 
-### Adding custom middleware
+  ```rust
+  struct MyMiddleware;
 
-```rust
-struct MyMiddleware;
+  impl Middleware for MyMiddleware {
+      fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult {
+          // modify context or reject
+          MiddlewareResult::Next(None)
+      }
+  }
 
-impl Middleware for MyMiddleware {
-    fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult {
-        // modify context or reject
-        MiddlewareResult::Next(None)
-    }
-}
-
-router = router.add_middleware(MyMiddleware);
-```
+  router = router.add_middleware(MyMiddleware);
+  ```
 
 ---
 
@@ -212,27 +209,9 @@ Directory traversal is prevented automatically.
 
 ---
 
-# 🔒 Security Features – OWASP Top 10 Eliminated
-
-| Vulnerability          | GritShield Protection                                                                                                                   |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| XSS                    | `UntrustedString` Only `Sanitizer::encode()` produces `SafeHtml` that escapes `&<>"'/`. Hardcoded strings require `Sanitizer::trust()`. |
-| CSRF                   | `AuthMiddleware` with `enable_csrf=true` validates tokens for mutating requests. Token auto‑rotated on every GET.                       |
-| SQL Injection          | SeaORM integration using prepared statements or type‑safe ORM.                                                                          |
-| Authentication         | Session IDs signed with HMAC‑SHA256. JWT tokens validated with expiration checks.                                                       |
-| Session Fixation       | New session ID generated on login. Old session invalidated.                                                                             |
-| Broken Access Control  | Middleware checks authentication before handlers execute.                                                                               |
-| Cryptographic Failures | HMAC‑SHA256 signing, environment‑based secrets, secure cookies.                                                                         |
-| Path Traversal         | Static serving rejects dangerous paths.                                                                                                 |
-| Rate Limiting          | Per‑IP sliding‑window rate limiting with `429 Too Many Requests`.                                                                       |
-| Information Leakage    | Production mode hides stack traces and detailed errors.                                                                                 |
-
----
-
 ## AuthMiddleware – Session vs JWT
 
 By using AuthMiddleware you have a full authentication system that exposes only `/login`&`/register` routes, set signed `hmac cookies`, generate a new `CSRF` token immediately, `logs out` user automatically and redirects unauthenticated users to `/login`
-
 
 ### Session mode (default)
 
@@ -276,19 +255,16 @@ Features:
 
 Enabled automatically in session mode.
 
-HTML forms must include:
-
-```html
-<input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-```
+HTML forms must include csrf_token value:
 
 Retrieve the token:
 
 ```rust
 let token = ctx.get_csrf_token();
 
-render!("title", context! {
-    "csrf_token" => token
+// using maud
+render!(ctx, "title", html! {
+    input type="hidden" id="global-csrf-token" value=(csrf_token);
 })
 ```
 
@@ -367,7 +343,7 @@ router = router.add_middleware(blacklist);
 
 ---
 
-# 🗄️ Database Integration
+# Database Integration
 
 GritShield integrates with SeaORM.
 
@@ -391,7 +367,7 @@ async fn list_users(ctx: RequestContext) -> String {
 
 ---
 
-# 📨 Request Data Parsing
+# Request Data Parsing
 
 Supported formats:
 
@@ -421,7 +397,7 @@ async fn upload(ctx: RequestContext) -> String {
 
 ---
 
-# 🧩 Templating
+# Templating
 
 Place templates in the `templates/` folder.
 
@@ -441,7 +417,7 @@ You can integrate with templating crates like Handlebars.
 
 ---
 
-# ⚙️ Configuration & Environment
+# Configuration & Environment
 
 Environment variables are loaded from `.env` or the system.
 
@@ -461,7 +437,7 @@ let db_url = gritshield::core::env::get_env(
 
 ---
 
-# 📊 Telemetry & Logging
+# Telemetry & Logging
 
 Enable request logging:
 
@@ -479,7 +455,7 @@ Supports custom telemetry hooks and metrics collection.
 
 ---
 
-# 🔁 Hot Reload (Development)
+# Hot Reload (Development)
 
 ```rust
 run_server("127.0.0.1", "8080", router, true).await;
@@ -489,7 +465,7 @@ Automatically rebuilds and reloads on source changes.
 
 ---
 
-# 🧪 Error Handling
+# Error Handling
 
 The framework catches errors globally.
 
@@ -520,7 +496,7 @@ router.global_error_handler.handler = Some(custom_error_handler);
 
 ---
 
-# 🚢 Deployment
+# Deployment
 
 ### Recommended production setup
 
@@ -551,7 +527,7 @@ CMD ["myapp"]
 
 ---
 
-# 🧪 Testing Helpers
+# Testing Helpers
 
 ```rust
 #[tokio::test]
@@ -566,7 +542,7 @@ async fn test_handler() {
 
 ---
 
-# 📚 API Reference (Selected)
+# API Reference (Selected)
 
 | Type / Function                             | Description                         |
 | ------------------------------------------- | ----------------------------------- |
@@ -589,7 +565,7 @@ async fn test_handler() {
 
 ---
 
-# 🤝 Contributing
+# Contributing
 
 GritShield is built with security as the highest priority.
 
@@ -599,6 +575,6 @@ Please open an issue before submitting a PR.
 
 ---
 
-# 📄 License
+# License
 
 Apache‑2.0.
