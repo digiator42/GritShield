@@ -1,8 +1,20 @@
 [package]
-name = "gritshield"
+name = "gritshield_cli"
 version = "0.1.0"
 edition = "2024"
+authors = ["Your Name <you@example.com>"]
+description = "Command line interface tool for scaffolding secure web engines under the GritShield framework."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/digiator42/gritshield"
+readme = "README.md"
+keywords = ["cli", "scaffold", "generator", "gritshield", "web"]
+categories = ["development-tools::cargo-plugins", "command-line-utilities"]
+
+[[bin]]
+name = "gritshield"
+path = "src/main.rs"
 
 [dependencies]
-# luxury terminal argument parsing
 clap = { version = "4.0", features = ["derive"] }
+heck = "0.5"
+dialoguer = "0.11"
