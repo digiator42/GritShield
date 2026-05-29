@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-gritshield = { git = "https://github.com/digiator42/GritShield", branch = "main" }
+gritshield = "0.1.0"
 tokio = { version = "1.0", features = ["full"] }
 sqlx = { version = "0.9.0", features = [ "runtime-tokio" ] }
 maud = "0.25"
