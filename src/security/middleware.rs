@@ -3,9 +3,10 @@ use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
+use crate::core::env::get_env;
 use crate::protocol::request::HttpMethod;
+use crate::protocol::response::Response;
 use crate::protocol::response::{Cookie, SameSite};
-use crate::protocol::{response::Response};
 use crate::routing::trie::RequestContext;
 use crate::security::jwt::{Claims, JwtHandler};
 use crate::security::rate_limit::RateLimiter;
@@ -164,8 +165,7 @@ impl Middleware for AuthMiddleware {
 
                     store_guard.insert(new_sid.clone(), Arc::clone(&new_session));
 
-                    let is_production =
-                        crate::core::env::get_env("APP_ENV", "development") == "production";
+                    let is_production = get_env("APP_ENV", "development") == "production";
                     let session_cookie = Cookie::new("GSESSION_ID", &new_sid)
                         .set_secure(is_production)
                         .set_same_site(SameSite::Lax);
@@ -204,7 +204,7 @@ impl Middleware for AuthMiddleware {
             let mut delete_cookie = Cookie::new("GSESSION_ID", "");
             delete_cookie.max_age = 0;
 
-            let is_production = crate::core::env::get_env("APP_ENV", "development") == "production";
+            let is_production = get_env("APP_ENV", "development") == "production";
             let delete_cookie = delete_cookie
                 .set_secure(is_production)
                 .set_same_site(SameSite::Lax);
@@ -268,8 +268,7 @@ impl Middleware for AuthMiddleware {
 
                 store_guard.insert(new_sid.clone(), Arc::clone(&new_session));
 
-                let is_production =
-                    crate::core::env::get_env("APP_ENV", "development") == "production";
+                let is_production = get_env("APP_ENV", "development") == "production";
                 let session_cookie = Cookie::new("GSESSION_ID", &new_sid)
                     .set_secure(is_production)
                     .set_same_site(SameSite::Lax);
@@ -468,7 +467,7 @@ impl Middleware for SessionMiddleware {
         store.insert(new_sid.clone(), Arc::clone(&new_session));
 
         // Drop the secure signed cookie straight back into the browser's CookieJar
-        let is_production = crate::core::env::get_env("APP_ENV", "development") == "production";
+        let is_production = get_env("APP_ENV", "development") == "production";
         let session_cookie = Cookie::new("session_id", &new_sid)
             .set_secure(is_production) // Automatically true on prod, false on localhost HTTP
             .set_same_site(SameSite::Lax);

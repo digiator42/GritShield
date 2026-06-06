@@ -1,4 +1,4 @@
-use crate::protocol::response::Response;
+use crate::{core::env::get_env, protocol::response::Response};
 use crate::routing::trie::RequestContext;
 use crate::security::xss::Sanitizer;
 use futures::future::{BoxFuture, FutureExt};
@@ -69,9 +69,9 @@ pub fn default_framework_error_handler(
     err: ShieldError,
 ) -> BoxFuture<'static, Response> {
     async move {
-        let is_production = crate::core::env::get_env("APP_ENV", "development") == "production";
-        let is_trace_enabled = crate::core::env::get_env("RUST_BACKTRACE", "0") == "1" 
-            || crate::core::env::get_env("RUST_LIB_BACKTRACE", "0") == "1";
+        let is_production = get_env("APP_ENV", "development") == "production";
+        let is_trace_enabled = get_env("RUST_BACKTRACE", "0") == "1" 
+            || get_env("RUST_LIB_BACKTRACE", "0") == "1";
         
         // Detect the type of error to tailor the presentation layout safely
         let (status_code, title, summary, technical_details, backtrace) = match err {

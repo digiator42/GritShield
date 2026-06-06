@@ -1,7 +1,8 @@
 use crate::{
+    core::env::get_env,
     protocol::{request::Request, response::Response},
     routing::{
-        trie::{RequestContext, Router, RoutingResult},
+        trie::{GLOBAL_FALLBACK, RequestContext, Router, RoutingResult},
         websocket::WS_REGISTRY,
     },
     security::{
@@ -9,7 +10,7 @@ use crate::{
     },
 };
 use colored::Colorize;
-use futures::future::{FutureExt};
+use futures::future::FutureExt;
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
@@ -49,7 +50,7 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
         .headers
         .get("cookie")
         .or_else(|| req.headers.get("Cookie"));
-    let secret_key = crate::core::env::get_env("JWT_SECRET", "fallback_secure_key_string");
+    let secret_key = get_env("JWT_SECRET", "fallback_secure_key_string");
     let jar = Arc::new(Mutex::new(CookieJar::new(cookie_header, secret_key)));
 
     let telemetry = router.telemetry.clone();
@@ -58,7 +59,7 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
         params,
         telemetry,
         headers: req.headers.clone(),
-        peer_addr: peer_addr,
+        peer_addr,
         claims: None,
         query: req.query.clone(),
         session: None,
@@ -71,8 +72,6 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
         start_time,
         role_inheritance: Arc::new(router.role_inheritance.clone()),
     };
-
-    let ctx_clone = ctx.clone();
 
     // Process Middleware Stack sequentially
     match router.run_middlewares(&mut ctx) {
@@ -164,6 +163,9 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
     // Clone our Arc handle for the execution block
     let router_clone = router.clone();
 
+    // Clone ctx for response error handling
+    let ctx_clone = ctx.clone();
+
     // Route Execution Future
     let response_future = async move {
         // router_clone is ultra short-lived and never crosses an outer function boundary.
@@ -194,13 +196,13 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
                 if router_clone.use_logger {
                     router_clone.log_lifecycle(&ctx, response.status, start_time.elapsed());
                 }
-                router_clone.run_after_hooks(ctx.clone(), response.status, start_time.elapsed());
+                router_clone.run_after_hooks(ctx, response.status, start_time.elapsed());
 
                 response
             }
             RoutingResult::NotFound => {
                 // Look up the global macro-registered fallback state
-                let fallback_opt = if let Ok(guard) = crate::routing::trie::GLOBAL_FALLBACK.lock() {
+                let fallback_opt = if let Ok(guard) = GLOBAL_FALLBACK.lock() {
                     guard.clone()
                 } else {
                     None

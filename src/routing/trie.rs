@@ -1,7 +1,7 @@
 use crate::core::logger::log_request_summary;
 use crate::protocol::form::FormData;
 use crate::protocol::request::{HttpMethod, Request};
-use crate::protocol::response::Response;
+use crate::protocol::response::{Cookie, Response};
 use crate::routing::file_system::FILE_ROUTING_REGISTRY;
 use crate::security::cookies::CookieJar;
 use crate::security::errors::{GlobalErrorHandler, ShieldError, default_framework_error_handler};
@@ -222,14 +222,14 @@ impl RequestContext {
     }
 
     /// Premium helper to inject or update a cookie directly without manual locking
-    pub fn set_cookie(&self, cookie: crate::protocol::response::Cookie) {
+    pub fn set_cookie(&self, cookie: Cookie) {
         if let Ok(mut jar) = self.cookies.lock() {
             jar.add(cookie);
         }
     }
 
     /// Premium helper to inject a secure, cryptographically signed cookie
-    pub fn set_signed_cookie(&self, cookie: crate::protocol::response::Cookie) {
+    pub fn set_signed_cookie(&self, cookie: Cookie) {
         if let Ok(mut jar) = self.cookies.lock() {
             jar.add_signed(cookie);
         }
@@ -650,7 +650,7 @@ impl Router {
 
                         params.insert(clean_key, UntrustedString::new(remainder));
                         current = param_node;
-                        break; // 🚀 Break instantly! The wildcard has devoured the rest of the URL path
+                        break;
                     } else {
                         // Try the node's explicit property first; if None, fall back to the child map key string!
                         let clean_key = if let Some(ref name) = param_node.parameter_name {

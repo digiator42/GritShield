@@ -5,6 +5,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
+use crate::core::env::get_env;
+
 static TEMPLATE_CACHE: Lazy<Mutex<HashMap<String, String>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 
@@ -62,7 +64,7 @@ impl TemplateEngine {
     }
 
     pub fn get(template_name: &str) -> String {
-        let is_production = crate::core::env::get_env("SHIELD_ENV", "development") == "production";
+        let is_production = get_env("SHIELD_ENV", "development") == "production";
         let normalized_key = template_name.replace("\\", "/").to_lowercase();
 
         if is_production {

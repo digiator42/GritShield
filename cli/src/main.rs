@@ -20,7 +20,7 @@ enum Commands {
     New { name: String }, //
 
     /// Generate framework structures (controllers, models, migrations)
-    #[command(alias = "g")]
+    #[command(alias = "gen")]
     Generate {
         #[command(subcommand)]
         blueprint: Blueprints,

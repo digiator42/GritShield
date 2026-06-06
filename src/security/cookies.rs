@@ -1,4 +1,7 @@
-use crate::protocol::response::{Cookie};
+use crate::{
+    core::env::get_env,
+    protocol::response::{Cookie, Response, SameSite},
+};
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
 use std::collections::HashMap;
@@ -75,7 +78,7 @@ impl CookieJar {
     /// Instructs the browser to wipe the target key immediately
     pub fn remove(&mut self, name: &str) {
         // Detect if we are running in local development
-        let is_production = crate::core::env::get_env("APP_ENV", "development") == "production";
+        let is_production = get_env("APP_ENV", "development") == "production";
 
         // Build the tombstone deletion cookie
         let mut tombstone = Cookie::new(name, "");
@@ -84,9 +87,9 @@ impl CookieJar {
         // FIX: Adjust safety restrictions so localhost HTTP can actually process the deletion!
         tombstone.secure = is_production;
         tombstone.same_site = if is_production {
-            crate::protocol::response::SameSite::Strict
+            SameSite::Strict
         } else {
-            crate::protocol::response::SameSite::Lax
+            SameSite::Lax
         };
 
         // Stage it to be sent back over the wire
@@ -94,10 +97,7 @@ impl CookieJar {
     }
 
     /// Consumes the jar and drains all outgoing cookies into the target response pipeline
-    pub fn commit(
-        self,
-        mut response: crate::protocol::response::Response,
-    ) -> crate::protocol::response::Response {
+    pub fn commit(self, mut response: Response) -> Response {
         for (_, cookie) in self.outgoing {
             response = response.with_cookie(cookie);
         }

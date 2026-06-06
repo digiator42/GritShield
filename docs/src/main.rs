@@ -1,7 +1,4 @@
-use gritshield::{
-    prelude::*,
-    protocol::{request::HttpMethod},
-};
+use gritshield::{prelude::*, protocol::request::HttpMethod};
 
 mod pages {
     #[path = "docs/[..path].rs"]
@@ -26,11 +23,9 @@ async fn main() {
         .expect("");
 
     // Render health check endpoint
-    router.add_route(
-        HttpMethod::GET,
-        "/healthz",
-        |_: RequestContext| async move { Response::json(200, &"OK") },
-    );
+    router.add_route(HttpMethod::GET, "/healthz", |_| async move {
+        Response::json(200, &"OK")
+    });
 
     gritshield::core::server::run_server("0.0.0.0", "8080", router, false).await;
 }
