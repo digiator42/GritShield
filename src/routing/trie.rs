@@ -40,11 +40,18 @@ impl IntoResponse for Response {
     }
 }
 
-// Add this blanket implementation to allow pre-boxed trait objects
-impl IntoHandler for Box<dyn IntoHandler> {
-    fn call(&self, ctx: RequestContext) -> BoxedResponse {
-        // Delegate straight down to the inner trait object inside the box!
-        self.as_ref().call(ctx)
+// Support raw static string slices: &'static str
+impl IntoResponse for &'static str {
+    fn into_response(self) -> Response {
+        // Automatically wraps the text as an HTML response with a 200 OK status
+        Response::new(200, Sanitizer::trust(self))
+    }
+}
+
+// Support dynamic heap strings: String
+impl IntoResponse for String {
+    fn into_response(self) -> Response {
+        Response::new(200, Sanitizer::trust(&self))
     }
 }
 
@@ -72,30 +79,23 @@ impl IntoResponse for ShieldResult<Response> {
                     _ => (500, "<h1>500 Internal Security Error</h1>".to_string()),
                 };
 
-                // 2. Pass the final String reference directly into your Sanitizer
+                // Pass the final String reference directly
                 Response::new(status, Sanitizer::trust(&msg_string))
             }
         }
     }
 }
 
-// Support raw static string slices: &'static str
-impl IntoResponse for &'static str {
-    fn into_response(self) -> Response {
-        // Automatically wraps the text as an HTML response with a 200 OK status
-        Response::new(200, Sanitizer::trust(self))
-    }
-}
-
-// Support dynamic heap strings: String
-impl IntoResponse for String {
-    fn into_response(self) -> Response {
-        Response::new(200, Sanitizer::trust(&self))
-    }
-}
-
 pub trait IntoHandler: Send + Sync + 'static {
     fn call(&self, ctx: RequestContext) -> BoxedResponse;
+}
+
+// Add this blanket implementation to allow pre-boxed trait objects
+impl IntoHandler for Box<dyn IntoHandler> {
+    fn call(&self, ctx: RequestContext) -> BoxedResponse {
+        // Delegate straight down to the inner trait object inside the box!
+        self.as_ref().call(ctx)
+    }
 }
 
 impl<F, Fut, R> IntoHandler for F

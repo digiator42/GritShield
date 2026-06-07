@@ -1,0 +1,1555 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>GritShield Documentation</title>
+        <meta name="robots" content="noindex">
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="favicon-8114d1fc.png">
+        <link rel="stylesheet" href="css/variables-8adf115d.css">
+        <link rel="stylesheet" href="css/general-0392ca55.css">
+        <link rel="stylesheet" href="css/chrome-fc474251.css">
+        <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "searchindex-c577c29e.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc-b564aed0.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">GritShield Documentation</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="home"><a href="#home" class="header">Home</a></h1>
+<h2 id="what-is-gritshield"><a class="header" href="#what-is-gritshield">What is GritShield?</a></h2>
+<p>GritShield is an <strong>async-first, security-hardened</strong> web framework for Rust that eliminates the majority of OWASP Top 10 vulnerabilities by design.</p>
+<h2 id="key-features"><a class="header" href="#key-features">Key Features</a></h2>
+<ul>
+<li><strong>Native Default Asynchrony</strong> – Built entirely from the ground up on non-blocking <code>async/await</code> design patterns, leveraging a multi-threaded Tokio runtime context to sustain massive concurrent execution throughput without thread starvation.</li>
+<li><strong>XSS-Safe Templating</strong> – Untrusted data cannot reach HTML without explicit sanitisation.</li>
+<li><strong>CSRF Protection</strong> – Automatic token validation for state-changing requests.</li>
+<li><strong>Signed Cookies</strong> – Cryptographic HMAC-SHA256 signatures prevent client-side cookie tampering.</li>
+<li><strong>Session Management</strong> – Thread-safe, in-memory store protected by asynchronous synchronization locks with automatic expiration hooks.</li>
+<li><strong>JWT Support</strong> – Stateless authentication via securely managed HS256 tokens.</li>
+<li><strong>Rate Limiting</strong> – Sliding-window rate tracking per IP address, backed by low-overhead atomic counters.</li>
+<li><strong>IP Blacklisting</strong> – Instantly drops connection sockets for malicious clients directly at the early middleware layer.</li>
+<li><strong>File-Based Routing</strong> – Auto-discovery of structural endpoint handlers mapped straight to your local filesystem hierarchy.</li>
+</ul>
+<h2 id="quick-navigation"><a class="header" href="#quick-navigation">Quick Navigation</a></h2>
+<ul>
+<li><a href="/docs/getting-started">Getting Started</a> - First steps with GritShield</li>
+<li><a href="/docs/architecture/overview">Architecture Overview</a> - Understand the kernel design</li>
+<li><a href="/docs/security">Security Guide</a> - Learn about security features</li>
+<li><a href="/docs/routing">Routing Guide</a> - Master the routing system</li>
+</ul>
+<h1 id="gritshield-documentation"><a class="header" href="#gritshield-documentation">GritShield Documentation</a></h1>
+<h2 id="installation"><a class="header" href="#installation">Installation</a></h2>
+<p>Add to your <code>Cargo.toml</code>:</p>
+<pre><code class="language-toml">[dependencies]
+gritshield = { git = "https://github.com/digiator42/gritshield", version = "0.1" }
+tokio = { version = "1", features = ["full"] }
+</code></pre>
+<hr>
+<h2 id="quick-start--hello-world"><a class="header" href="#quick-start--hello-world">Quick Start – Hello World</a></h2>
+<p>Create <code>src/main.rs</code>:</p>
+<pre><code class="language-rust">use gritshield::prelude::*;
+
+#[get("/")]
+async fn hello(_: RequestContext) -&gt; &amp;'static str {
+    "Hello, GritShield!"
+}
+
+#[tokio::main]
+async fn main() {
+    let router = Router::new().mount_logger();
+
+    run_server("127.0.0.1", "8080", router, false).await;
+}</code></pre>
+<p>Run with <code>cargo run</code> and open <code>http://localhost:8080</code>.</p>
+<hr>
+<h2 id="core-concepts"><a class="header" href="#core-concepts">Core Concepts</a></h2>
+<h2 id="1-request-context"><a class="header" href="#1-request-context">1. Request Context</a></h2>
+<p>There is no more importing this::that or constantly checking the docs just to find out where a feature lives.</p>
+<p>Every handler receives a <code>RequestContext</code> that holds the HTTP request, dynamic parameters, session, cookies, parsed form data, JSON body, and security helpers all in one place.</p>
+<pre><code class="language-rust">async fn profile(ctx: RequestContext) -&gt; String {
+    let user_id = ctx.params.get("id").unwrap().as_str();
+    let session_user = ctx.get_session_data("user_id").unwrap_or_default();
+
+    format!("Viewing profile of {}", user_id)
+}</code></pre>
+<hr>
+<h2 id="2-routing"><a class="header" href="#2-routing">2. Routing</a></h2>
+<ul>
+<li>
+<h3 id="a-attribute-macros"><a class="header" href="#a-attribute-macros">a) Attribute Macros</a></h3>
+<pre><code class="language-rust">#[get("/users/:id")]
+async fn get_user(ctx: RequestContext) -&gt; Response {
+    let id = ctx.params.get("id").unwrap().as_str();
+    Response::new(Sanitizer::trust(format!("User {}", id)))
+}
+
+#[post("/users")]
+async fn create_user(ctx: RequestContext) -&gt; Result&lt;Response, ShieldError&gt; {
+    let new_user: CreateUserDto = ctx.json()?;
+    // ...
+    Ok(Response::redirect(303, "/users"))
+}</code></pre>
+<p>Supported methods:</p>
+<ul>
+<li><code>#[get]</code></li>
+<li><code>#[post]</code></li>
+<li><code>#[put]</code></li>
+<li><code>#[patch]</code></li>
+<li><code>#[delete]</code></li>
+</ul>
+</li>
+<li>
+<h3 id="b-manual-registration"><a class="header" href="#b-manual-registration">b) Manual Registration</a></h3>
+<pre><code class="language-rust">router.add_route(HttpMethod::GET, "/health", |_: RequestContext| async move { "OK" });
+</code></pre>
+</li>
+<li>
+<h3 id="c-filebased-routing-nextjs-style"><a class="header" href="#c-filebased-routing-nextjs-style">c) File‑Based Routing (Next.js style)</a></h3>
+<p>Place your handlers in <code>src/pages/</code>:</p>
+<ul>
+<li><code>src/pages/index.rs</code> → route <code>/</code></li>
+<li><code>src/pages/users/[id].rs</code> → route <code>/users/:id</code></li>
+<li><code>src/pages/api/[..path].rs</code> → route <code>/api/**</code> (catch‑all)</li>
+</ul>
+<p>Inside the file, use the <code>register_page!</code> macro:</p>
+<pre><code class="language-rust">use gritshield::prelude::*;
+
+register_page!(HttpMethod::GET, |_| async { "Hello from file route" });</code></pre>
+<p>GritShield automatically discovers <code>.rs</code> files under <code>src/pages</code> and mounts them.</p>
+</li>
+</ul>
+<hr>
+<h2 id="3-middleware-stack"><a class="header" href="#3-middleware-stack">3. Middleware Stack</a></h2>
+<ul>
+<li>
+<p>Middleware implements the <code>Middleware</code> trait. They run in the order they are added.</p>
+<pre><code class="language-rust">pub trait Middleware: Send + Sync {
+    fn execute(&amp;self, ctx: &amp;mut RequestContext) -&gt; MiddlewareResult;
+}</code></pre>
+<h3 id="builtin-middleware"><a class="header" href="#builtin-middleware">Built‑in middleware</a></h3>
+<ul>
+<li><code>LoggerMiddleware</code> – logs method, path, status, duration, authentication state.</li>
+<li><code>RateLimitMiddleware</code> – sliding‑window rate limiting.</li>
+<li><code>IPBlacklistMiddleware</code> – blocks requests from configured IP addresses.</li>
+<li><code>AuthMiddleware</code> – session + JWT + CSRF gatekeeper.</li>
+</ul>
+<h3 id="adding-custom-middleware"><a class="header" href="#adding-custom-middleware">Adding custom middleware</a></h3>
+<pre><code class="language-rust">struct MyMiddleware;
+
+impl Middleware for MyMiddleware {
+    fn execute(&amp;self, ctx: &amp;mut RequestContext) -&gt; MiddlewareResult {
+        // modify context or reject
+        MiddlewareResult::Next(None)
+    }
+}
+
+router = router.add_middleware(MyMiddleware);</code></pre>
+</li>
+</ul>
+<hr>
+<h2 id="4-responses"><a class="header" href="#4-responses">4. Responses</a></h2>
+<p>Handlers can return any type that implements <code>IntoResponse</code>:</p>
+<ul>
+<li><code>Response</code> – full control over status, headers, cookies.</li>
+<li><code>&amp;'static str / String</code> – automatically wrapped as HTML.</li>
+<li><code>Result&lt;T, ShieldError&gt;</code> – maps errors to a safe error page.</li>
+<li><code>SafeHtml</code> – pre‑sanitised HTML content.</li>
+</ul>
+<h3 id="constructors"><a class="header" href="#constructors">Constructors</a></h3>
+<pre><code class="language-rust">Response::new(200, Sanitizer::trust("&lt;h1&gt;Welcome&lt;/h1&gt;"))
+Response::new(200, );
+Response::redirect(303, "/login");
+Response::json(200, &amp;my_struct);
+Response::static_file("static/style.css");</code></pre>
+<hr>
+<h2 id="5-static-files"><a class="header" href="#5-static-files">5. Static Files</a></h2>
+<p>Place files in the <code>static/</code> folder.</p>
+<p>Serve them with:</p>
+<pre><code class="language-rust">Response::static_file("static/logo.png")</code></pre>
+<p>Serve static files in one go</p>
+<pre><code class="language-rust">#[get("/static/:*path")]
+async fn static_assets(ctx: RequestContext) -&gt; Response {
+    let path = ctx.params.get("*path").unwrap().as_str();
+
+    Response::static_file(&amp;format!("/static/{}", path).as_str())
+}</code></pre>
+<p>Directory traversal is prevented automatically.</p>
+<hr>
+<h2 id="authmiddleware--session-vs-jwt"><a class="header" href="#authmiddleware--session-vs-jwt">AuthMiddleware – Session vs JWT</a></h2>
+<p>By using AuthMiddleware you have a full authentication system that exposes only <code>/login</code>&amp;<code>/register</code> routes, set signed <code>hmac cookies</code>, generate a new <code>CSRF</code> token immediately, <code>logs out</code> user automatically and redirects unauthenticated users to <code>/login</code></p>
+<h3 id="session-mode-default"><a class="header" href="#session-mode-default">Session mode (default)</a></h3>
+<pre><code class="language-rust">let auth = AuthMiddleware::new_session(
+    vec!["/login".to_string(), "/register".to_string()],
+    Some("/login")
+);
+
+router = router.add_middleware(auth);</code></pre>
+<p>Features:</p>
+<ul>
+<li>Creates a signed <code>GSESSION_ID</code> cookie.</li>
+<li>Stores user data in an in‑memory <code>SessionStore</code>.</li>
+<li>Use <code>ctx.login_user_id("123")</code> to authenticate.</li>
+<li><code>ctx.is_user_authenticated()</code> checks login state (expects to set <code>user_id</code> in session once user login).</li>
+</ul>
+<h3 id="jwt-stateless-mode"><a class="header" href="#jwt-stateless-mode">JWT stateless mode</a></h3>
+<pre><code class="language-rust">let jwt_handler = JwtHandler::new(&amp;std::env::var("JWT_SECRET").unwrap());
+
+let auth = AuthMiddleware::new_jwt(
+    jwt_handler,
+    vec!["/public".into()],
+    None
+);</code></pre>
+<p>Features:</p>
+<ul>
+<li>Expects <code>Authorization: Bearer &lt;token&gt;</code>.</li>
+<li>Stateless authentication.</li>
+<li>Claims available through <code>ctx.claims</code>.</li>
+</ul>
+<hr>
+<h2 id="csrf-protection"><a class="header" href="#csrf-protection">CSRF Protection</a></h2>
+<p>Enabled automatically in session mode.</p>
+<p>HTML forms must include csrf_token value:</p>
+<p>Retrieve the token:</p>
+<pre><code class="language-rust">let token = ctx.get_csrf_token();
+
+// using maud
+render!(ctx, "title", html! {
+    input type="hidden" id="global-csrf-token" value=(csrf_token);
+})</code></pre>
+<hr>
+<h2 id="cookies--signed--secure"><a class="header" href="#cookies--signed--secure">Cookies – Signed &amp; Secure</a></h2>
+<pre><code class="language-rust">// Read a signed cookie
+if let Some(val) = ctx.get_signed_cookie("user_pref") {
+    // ...
+}
+
+// Set a signed cookie
+let cookie = Cookie::new("pref", "dark_mode")
+    .set_secure(cfg!(production))
+    .set_same_site(SameSite::Lax);
+
+ctx.set_signed_cookie(cookie);
+
+// Delete a cookie
+ctx.remove_cookie("pref");</code></pre>
+<p>Unsigned cookies are also available:</p>
+<pre><code class="language-rust">ctx.get_cookie()
+ctx.set_cookie()</code></pre>
+<hr>
+<h2 id="xss-prevention"><a class="header" href="#xss-prevention">XSS Prevention</a></h2>
+<p>All user input arrives as <code>UntrustedString</code>.</p>
+<p>To display safely:</p>
+<pre><code class="language-rust">let safe_html = Sanitizer::encode(untrusted_string);</code></pre>
+<p>To return trusted HTML:</p>
+<pre><code class="language-rust">Sanitizer::trust("...")</code></pre>
+<p>Only use for strings you fully control.</p>
+<hr>
+<h2 id="rate-limiting"><a class="header" href="#rate-limiting">Rate Limiting</a></h2>
+<pre><code class="language-rust">let limiter = RateLimiter::new(50, Duration::from_secs(60));
+
+let rate_middleware = RateLimitMiddleware { limiter };
+
+router = router.add_middleware(rate_middleware);</code></pre>
+<hr>
+<h2 id="ip-blacklisting"><a class="header" href="#ip-blacklisting">IP Blacklisting</a></h2>
+<pre><code class="language-rust">let blacklist = IPBlacklistMiddleware::new(vec![
+    "192.168.1.100",
+    "10.0.0.5"
+]);
+
+router = router.add_middleware(blacklist);</code></pre>
+<hr>
+<h1 id="database-integration"><a class="header" href="#database-integration">Database Integration</a></h1>
+<p>GritShield integrates with SeaORM.</p>
+<pre><code class="language-rust">let db = sea_orm::Database::connect(
+    "postgres://user:pass@localhost/db"
+).await.unwrap();
+
+let router = Router::new().mound_db(Arc::new(db));</code></pre>
+<p>Access the connection inside handlers:</p>
+<pre><code class="language-rust">async fn list_users(ctx: RequestContext) -&gt; String {
+    let db = ctx.db.as_ref().unwrap();
+
+    // use db
+}</code></pre>
+<hr>
+<h1 id="request-data-parsing"><a class="header" href="#request-data-parsing">Request Data Parsing</a></h1>
+<p>Supported formats:</p>
+<ul>
+<li>JSON → <code>ctx.json::&lt;T&gt;()</code></li>
+<li>Form URL‑encoded → <code>ctx.form.fields</code></li>
+<li>Multipart uploads → <code>ctx.form.files</code></li>
+<li>Query parameters → <code>ctx.query</code></li>
+<li>Raw body → <code>ctx.raw_body</code></li>
+</ul>
+<h3 id="example-file-upload"><a class="header" href="#example-file-upload">Example file upload</a></h3>
+<pre><code class="language-rust">#[post("/upload")]
+async fn upload(ctx: RequestContext) -&gt; String {
+    if let Some(file) = ctx.form.files.get("avatar") {
+        std::fs::write(
+            format!("uploads/{}", file.filename),
+            &amp;file.data
+        ).unwrap();
+
+        "Uploaded!"
+    } else {
+        "No file".into()
+    }
+}</code></pre>
+<hr>
+<h1 id="templating"><a class="header" href="#templating">Templating</a></h1>
+<p>Place templates in the <code>templates/</code> folder.</p>
+<pre><code class="language-rust">use gritshield::html::TemplateEngine;
+
+// Precompile templates, this should be used once, then get template will be cashed
+TemplateEngine::precompile_all("templates").unwrap();
+
+// Render template
+let html = TemplateEngine::get("home.html");
+
+Response::new(200, Sanitizer::trust(&amp;html))</code></pre>
+<p>You can integrate with templating crates like Handlebars.</p>
+<hr>
+<h1 id="configuration--environment"><a class="header" href="#configuration--environment">Configuration &amp; Environment</a></h1>
+<p>Environment variables are loaded from <code>.env</code> or the system.</p>
+<h3 id="important-variables"><a class="header" href="#important-variables">Important variables</a></h3>
+<ul>
+<li><code>APP_ENV</code></li>
+<li><code>JWT_SECRET</code></li>
+</ul>
+<h3 id="access-variables"><a class="header" href="#access-variables">Access variables</a></h3>
+<pre><code class="language-rust">let db_url = gritshield::core::env::get_env(
+    "DATABASE_URL",
+    "sqlite::memory:"
+);</code></pre>
+<hr>
+<h1 id="telemetry--logging"><a class="header" href="#telemetry--logging">Telemetry &amp; Logging</a></h1>
+<p>Enable request logging:</p>
+<pre><code class="language-rust">router = Router::new().mount_logger();</code></pre>
+<p>Example log output:</p>
+<pre><code class="language-text">🗲  [200] GET /dashboard ➔  Size: 2.34 KB | Time: 12ms | Auth: 🍪 Session ID: a1b2c3d4
+</code></pre>
+<p>Supports custom telemetry hooks and metrics collection.</p>
+<hr>
+<h1 id="hot-reload-development"><a class="header" href="#hot-reload-development">Hot Reload (Development)</a></h1>
+<pre><code class="language-rust">run_server("127.0.0.1", "8080", router, true).await;</code></pre>
+<p>Automatically rebuilds and reloads on source changes.</p>
+<hr>
+<h1 id="error-handling"><a class="header" href="#error-handling">Error Handling</a></h1>
+<p>The framework catches errors globally.</p>
+<h3 id="development-mode"><a class="header" href="#development-mode">Development mode</a></h3>
+<ul>
+<li>Detailed technical information shown.</li>
+</ul>
+<h3 id="production-mode"><a class="header" href="#production-mode">Production mode</a></h3>
+<ul>
+<li>Generic user‑safe error page.</li>
+<li>Errors logged server‑side.</li>
+</ul>
+<h3 id="custom-error-handler"><a class="header" href="#custom-error-handler">Custom error handler</a></h3>
+<pre><code class="language-rust">fn custom_error_handler(
+    ctx: RequestContext,
+    err: ShieldError
+) -&gt; BoxFuture&lt;'static, Response&gt; {
+
+    Box::pin(async move {
+        Response::new(500, Sanitizer::trust("Oops"))
+    })
+}
+
+router.global_error_handler.handler = Some(custom_error_handler);</code></pre>
+<hr>
+<h1 id="deployment"><a class="header" href="#deployment">Deployment</a></h1>
+<h3 id="recommended-production-setup"><a class="header" href="#recommended-production-setup">Recommended production setup</a></h3>
+<ul>
+<li>Set <code>APP_ENV=production</code></li>
+<li>Use strong <code>JWT_SECRET</code></li>
+<li>Use reverse proxy (Nginx/Caddy)</li>
+<li>Compile with <code>--release</code></li>
+</ul>
+<h3 id="example-dockerfile"><a class="header" href="#example-dockerfile">Example Dockerfile</a></h3>
+<pre><code class="language-dockerfile">FROM rust:1.70 as builder
+
+WORKDIR /app
+
+COPY . .
+
+RUN cargo build --release
+
+FROM debian:bookworm-slim
+
+COPY --from=builder /app/target/release/myapp /usr/local/bin/
+
+ENV APP_ENV=production
+
+CMD ["myapp"]
+</code></pre>
+<hr>
+<h1 id="testing-helpers"><a class="header" href="#testing-helpers">Testing Helpers</a></h1>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_handler() {
+    let ctx = RequestContext::new();
+
+    let response = my_handler(ctx).await;
+
+    assert_eq!(response.status, 200);
+}</code></pre>
+<hr>
+<h1 id="api-reference-selected"><a class="header" href="#api-reference-selected">API Reference (Selected)</a></h1>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Type / Function</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>Router::new()</code></td><td>Creates empty router.</td></tr>
+<tr><td><code>router.add_route(method, path, handler)</code></td><td>Manual route registration.</td></tr>
+<tr><td><code>router.add_middleware(M)</code></td><td>Appends middleware to the pipeline.</td></tr>
+<tr><td><code>RequestContext::get_signed_cookie(name)</code></td><td>Reads signed cookie.</td></tr>
+<tr><td><code>RequestContext::set_signed_cookie(cookie)</code></td><td>Writes signed cookie.</td></tr>
+<tr><td><code>RequestContext::remove_cookie(name)</code></td><td>Deletes cookie.</td></tr>
+<tr><td><code>RequestContext::login_user_id(id)</code></td><td>Sets authenticated user ID.</td></tr>
+<tr><td><code>RequestContext::get_csrf_token()</code></td><td>Returns CSRF token.</td></tr>
+<tr><td><code>Response::redirect(status, location)</code></td><td>Redirect response.</td></tr>
+<tr><td><code>Response::json(status, &amp;data)</code></td><td>Serialises JSON response.</td></tr>
+<tr><td><code>Sanitizer::encode(UntrustedString)</code></td><td>Escapes HTML safely.</td></tr>
+<tr><td><code>Sanitizer::trust(str)</code></td><td>Creates trusted HTML.</td></tr>
+<tr><td><code>RateLimiter::new(max, window)</code></td><td>Creates rate limiter.</td></tr>
+<tr><td><code>JwtHandler::sign(claims)</code></td><td>Signs JWT token.</td></tr>
+<tr><td><code>JwtHandler::verify(token)</code></td><td>Verifies JWT token.</td></tr>
+<tr><td><code>TemplateEngine::get(name)</code></td><td>Returns template content.</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h1 id="contributing"><a class="header" href="#contributing">Contributing</a></h1>
+<p>GritShield is built with security as the highest priority.</p>
+<p>Contributions, bug reports, and security advisories are welcome.</p>
+<p>Please open an issue before submitting a PR.</p>
+<hr>
+<h1 id="license"><a class="header" href="#license">License</a></h1>
+<p>Apache‑2.0.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="getting-started-with-gritshield"><a class="header" href="#getting-started-with-gritshield">Getting Started with GritShield</a></h1>
+<p>Welcome to GritShield! This guide will help you build your first secure web application.</p>
+<h2 id="prerequisites"><a class="header" href="#prerequisites">Prerequisites</a></h2>
+<ul>
+<li>Rust 1.70 or later</li>
+<li>Basic knowledge of async Rust</li>
+</ul>
+<h2 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h2>
+<p>Create a new Rust project:</p>
+<pre><code class="language-bash">cargo new myapp
+cd myapp
+</code></pre>
+<p>Add GritShield to Cargo.toml:</p>
+<pre><code class="language-toml">[dependencies]
+gritshield = { git = "https://github.com/digiator42/gritshield" }
+tokio = { version = "1", features = ["full"] }
+</code></pre>
+<p>Create your first handler in src/main.rs:</p>
+<pre><code class="language-rust">use gritshield::prelude::*;
+
+#[get("/")]
+async fn hello(ctx: RequestContext) -&gt; &amp;'static str {
+    "Hello, GritShield!"
+}
+
+#[tokio::main]
+async fn main() {
+    let router = Router::new().mount_logger();
+    run_server("127.0.0.1", "8080", router, false).await;
+}</code></pre>
+<p>Run it:</p>
+<pre><code class="language-bash">cargo run
+</code></pre>
+<p>Visit http://localhost:8080 to see your app!</p>
+<h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
+<ul>
+<li><a href="/docs/getting-started/installation">Installation Guide</a> - Detailed setup</li>
+<li><a href="/docs/routing/dynamic-routes">Your First Route</a> - Learn routing</li>
+<li><a href="/docs/getting-started/configuration">Configuration</a> - Environment setup</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="configuration"><a class="header" href="#configuration">Configuration</a></h1>
+<p>GritShield uses environment variables for configuration with <code>.env</code> file support.</p>
+<h2 id="environment-variables"><a class="header" href="#environment-variables">Environment Variables</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variable</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>APP_ENV</code></td><td><code>development</code></td><td><code>development</code> or <code>production</code></td></tr>
+<tr><td><code>JWT_SECRET</code></td><td><code>fallback_secure_key_string</code></td><td>Secret for JWT and signed cookies</td></tr>
+<tr><td><code>DATABASE_URL</code></td><td>None</td><td>Database connection string</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="env-file"><a class="header" href="#env-file">.env File</a></h2>
+<p>Create <code>.env</code> in your project root:</p>
+<pre><code class="language-env">APP_ENV=development
+JWT_SECRET=your-super-secret-key-minimum-32-chars
+DATABASE_URL=postgres://user:pass@localhost/mydb
+</code></pre>
+<h2 id="reading-configuration"><a class="header" href="#reading-configuration">Reading Configuration</a></h2>
+<pre><code class="language-rust">use gritshield::core::env::get_env;
+
+let db_url = get_env("DATABASE_URL", "sqlite::memory:");
+let is_production = get_env("APP_ENV", "development") == "production";</code></pre>
+<h2 id="production-settings"><a class="header" href="#production-settings">Production Settings</a></h2>
+<p>For production, always set:</p>
+<pre><code class="language-env">APP_ENV=production
+JWT_SECRET=&lt;random-32+-byte-string&gt;
+</code></pre>
+<p>Production mode automatically:</p>
+<ul>
+<li>Disables debug output in error pages</li>
+<li>Enforces secure cookies</li>
+<li>Uses strict SameSite policies</li>
+<li>Caches templates in memory</li>
+</ul>
+<h2 id="custom-configuration"><a class="header" href="#custom-configuration">Custom Configuration</a></h2>
+<p>Extend with your own env vars:</p>
+<pre><code class="language-env">REDIS_URL=redis://localhost:6379
+S3_BUCKET=myapp-uploads
+MAILER_DSN=smtp://user:pass@mailhog:1025
+</code></pre>
+<p>Access them with <code>get_env()</code> or <code>std::env::var()</code> directly.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="generic-response-system"><a class="header" href="#generic-response-system">Generic Response System</a></h1>
+<p>GritShield provides a powerful and flexible <code>Response</code> builder that supports multiple payload types through clean, unified methods.</p>
+<h2 id="overview"><a class="header" href="#overview">Overview</a></h2>
+<p>The <code>Response</code> struct uses generic implementations, allowing you to return:</p>
+<ul>
+<li>Plain text (<code>&amp;str</code>, <code>String</code>)</li>
+<li>Safe HTML (<code>SafeHtml</code>, Maud templates)</li>
+<li>JSON structures (via <code>JsonPayload</code> or directly with serializable types and <code>HashMap</code>)</li>
+</ul>
+<p>All through convenient methods like <code>ok()</code>, <code>bad_request()</code>, <code>unauthorized()</code>, <code>forbidden()</code>, <code>created()</code>, etc.</p>
+<h2 id="usage-examples"><a class="header" href="#usage-examples">Usage Examples</a></h2>
+<h3 id="1-simple-text--string-responses"><a class="header" href="#1-simple-text--string-responses">1. Simple Text / String Responses</a></h3>
+<pre><code class="language-rust">pub async fn handler(ctx: RequestContext) -&gt; Response {
+    if input_invalid {
+        return Response::bad_request("The provided password does not meet security policies.");
+    }
+    Response::ok("Operation completed successfully.")
+}</code></pre>
+<h3 id="2-safe-html-responses"><a class="header" href="#2-safe-html-responses">2. Safe HTML Responses</a></h3>
+<pre><code class="language-rust">pub async fn handler(ctx: RequestContext) -&gt; Response {
+    let error_markup = Sanitizer::trust("&lt;h1&gt;Validation Error&lt;/h1&gt;&lt;p&gt;Invalid credentials&lt;/p&gt;");
+    
+    Response::bad_request(error_markup)
+}</code></pre>
+<p>Using Maud HTML:</p>
+<pre><code class="language-rust">Response::forbidden(html! {
+    div class="error-box p-6 bg-red-950 text-red-200 rounded-lg" {
+        h1 class="text-xl font-bold" { "🔒 Access Denied" }
+        p { "You do not have permission to view this resource." }
+    }
+})</code></pre>
+<h3 id="3-json-payloads-with-jsonpayload"><a class="header" href="#3-json-payloads-with-jsonpayload">3. JSON Payloads with <code>JsonPayload</code></a></h3>
+<pre><code class="language-rust">#[derive(serde::Serialize)]
+struct ErrorContainer {
+    error: String,
+    missing_fields: Vec&lt;String&gt;,
+}
+
+pub async fn handler(ctx: RequestContext) -&gt; Response {
+    let details = ErrorContainer {
+        error: "Missing Form Values".to_string(),
+        missing_fields: vec!["username".to_string()],
+    };
+
+    Response::bad_request(JsonPayload(details))
+}</code></pre>
+<h3 id="4-direct-hashmap--json"><a class="header" href="#4-direct-hashmap--json">4. Direct HashMap → JSON</a></h3>
+<pre><code class="language-rust">pub async fn handler(ctx: RequestContext) -&gt; Response {
+    // Pass by reference
+    Response::bad_request(&amp;HashMap::from([
+        ("message", "This is a test endpoint"),
+        ("status", "success"),
+    ]))
+}</code></pre>
+<pre><code class="language-rust">pub async fn handler(ctx: RequestContext) -&gt; Response {
+    let mut error_map = HashMap::new();
+    error_map.insert("error_code", 40012);
+    error_map.insert("attempt_count", 3);
+
+    Response::bad_request(error_map)
+}</code></pre>
+<h2 id="common-response-methods"><a class="header" href="#common-response-methods">Common Response Methods</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Status</th><th>Use Case</th></tr>
+</thead>
+<tbody>
+<tr><td><code>Response::ok()</code></td><td>200</td><td>Success</td></tr>
+<tr><td><code>Response::created()</code></td><td>201</td><td>Resource successfully created</td></tr>
+<tr><td><code>Response::bad_request()</code></td><td>400</td><td>Validation / client error</td></tr>
+<tr><td><code>Response::unauthorized()</code></td><td>401</td><td>Authentication required</td></tr>
+<tr><td><code>Response::forbidden()</code></td><td>403</td><td>Insufficient permissions</td></tr>
+<tr><td><code>Response::not_found()</code></td><td>404</td><td>Resource not found</td></tr>
+<tr><td><code>Response::redirect()</code></td><td>303</td><td>Redirect</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="real-world-showcase"><a class="header" href="#real-world-showcase">Real-World Showcase</a></h2>
+<h3 id="unauthorized-session"><a class="header" href="#unauthorized-session">Unauthorized Session</a></h3>
+<pre><code class="language-rust">pub async fn dashboard_handler(ctx: RequestContext) -&gt; Response {
+    if ctx.session.is_none() {
+        return Response::unauthorized("&lt;h1&gt;Access Denied&lt;/h1&gt;&lt;p&gt;Please log in first.&lt;/p&gt;");
+    }
+    // ... load dashboard
+}</code></pre>
+<h3 id="resource-creation"><a class="header" href="#resource-creation">Resource Creation</a></h3>
+<pre><code class="language-rust">pub async fn register_api(ctx: RequestContext) -&gt; Response {
+    // ... create user logic ...
+    
+    Response::created(&amp;HashMap::from([
+        ("status", "account_deployed"),
+        ("uid", &amp;new_user_id),
+    ]))
+}</code></pre>
+<h3 id="role-based-access-control"><a class="header" href="#role-based-access-control">Role-Based Access Control</a></h3>
+<pre><code class="language-rust">pub async fn admin_panel(ctx: RequestContext) -&gt; Response {
+    if user_role != "SuperAdmin" {
+        return Response::forbidden(html! {
+            div class="error-box p-6 bg-red-950 text-red-200 rounded-lg" {
+                h1 class="text-xl font-bold" { "🔒 Insufficient Clearance" }
+                p { "Your profile role scope does not grant access." }
+            }
+        });
+    }
+    // ... open panel
+}</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="security-guide"><a class="header" href="#security-guide">Security Guide</a></h1>
+<p>GritShield eliminates OWASP Top 10 vulnerabilities by design. This section covers each security feature in depth.</p>
+<h2 id="owasp-top-10-coverage"><a class="header" href="#owasp-top-10-coverage">OWASP Top 10 Coverage</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>#</th><th>Vulnerability</th><th>GritShield Protection</th></tr>
+</thead>
+<tbody>
+<tr><td>1</td><td>Broken Access Control</td><td>AuthMiddleware + session/JWT</td></tr>
+<tr><td>2</td><td>Cryptographic Failures</td><td>HMAC-SHA256, environment secrets</td></tr>
+<tr><td>3</td><td>Injection (SQL)</td><td>SeaORM prepared statements</td></tr>
+<tr><td>4</td><td>Insecure Design</td><td>Security-first architecture</td></tr>
+<tr><td>5</td><td>Security Misconfiguration</td><td>Production defaults</td></tr>
+<tr><td>6</td><td>Vulnerable Components</td><td>Minimal dependencies, audited</td></tr>
+<tr><td>7</td><td>Identification Failures</td><td>Signed sessions, JWT validation</td></tr>
+<tr><td>8</td><td>Software Integrity</td><td>Rust’s safety guarantees</td></tr>
+<tr><td>9</td><td>Monitoring Failures</td><td>Telemetry + logging middleware</td></tr>
+<tr><td>10</td><td>SSRF</td><td>No automatic external requests</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="topics"><a class="header" href="#topics">Topics</a></h2>
+<ul>
+<li><a href="/docs/security/rate-limiting">Rate Limiting</a> - Prevent DoS attacks</li>
+<li><a href="/docs/security/rbac">RBAC</a> - Role-based access control</li>
+<li><a href="/docs/security/csrf-protection">CSRF Protection</a> - Cross-site request forgery</li>
+<li><a href="/docs/security/xss-prevention">XSS Prevention</a> - Cross-site scripting</li>
+</ul>
+<h2 id="security-headers"><a class="header" href="#security-headers">Security Headers</a></h2>
+<p>GritShield includes these security headers by default:</p>
+<ul>
+<li><code>X-Content-Type-Options: nosniff</code></li>
+<li><code>X-Frame-Options: DENY</code></li>
+</ul>
+<h2 id="best-practices"><a class="header" href="#best-practices">Best Practices</a></h2>
+<ol>
+<li>Always use <code>Sanitizer::encode()</code> for user input</li>
+<li>Enable CSRF for all forms</li>
+<li>Use HTTPS in production</li>
+<li>Rotate JWT secrets regularly</li>
+<li>Monitor rate limit violations</li>
+<li>Keep dependencies updated</li>
+</ol>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="rbac"><a href="#rbac" class="header">RBAC</a></h1>
+<p>GritShield provides RBAC through session user IDs and middleware.</p>
+<h2 id="session-based-rbac"><a class="header" href="#session-based-rbac">Session-Based RBAC</a></h2>
+<p>GritShield provides convenient built-in role checking methods directly on <code>RequestContext</code> for clean and secure authorization.</p>
+<blockquote>
+<h3 id="first-you-need-to-store-user-roles-in-the-session-after-login"><a class="header" href="#first-you-need-to-store-user-roles-in-the-session-after-login">First you need to store user roles in the session after login:</a></h3>
+<p>💡 ShieldResult<t> is <code>Result&lt;T, ShieldError&gt;</code></t></p>
+</blockquote>
+<pre><code class="language-rust">use gritshield::routing::trie::ShieldResult;
+
+#[post("/login")]
+async fn login(ctx: RequestContext) -&gt; ShieldResult&lt;Response&gt; {
+    let creds: LoginDto = ctx.json()?;
+
+    if authenticate(&amp;creds) {
+        ctx.login_user_id(&amp;creds.user_id);
+        ctx.set_session_data("role", "admin");
+        Ok(Response::redirect(303, "/dashboard"))
+    } else {
+        Err(ShieldError::UnauthorizedAccess)
+    }
+}</code></pre>
+<h2 id="now-you-can-use-built-in-ctx-methods"><a class="header" href="#now-you-can-use-built-in-ctx-methods">Now you can use built-in ctx methods</a></h2>
+<pre><code class="language-rust">// Check auth
+pub async fn dashboard(ctx: RequestContext) -&gt; Response {
+    // Expects `user_id` in session or jwt claims
+    if !ctx.is_user_authenticated() {
+        return Response::unauthorized("Please log in to access this page.");
+    }
+    // ...
+}</code></pre>
+<h2 id="fixed-role-checking-with-hierarchy"><a class="header" href="#fixed-role-checking-with-hierarchy">Fixed Role Checking (with Hierarchy)</a></h2>
+<p>Rust</p>
+<pre><code class="language-rust">pub async fn admin_panel(ctx: RequestContext) -&gt; Response {
+    // Simple check
+    if !ctx.has_role("Admin") {
+        return Response::forbidden("Admin access required");
+    }
+
+    // Admin logic here...
+    Response::ok("Welcome Admin")
+}
+
+// Simpler 
+pub async fn admin_panel(ctx: RequestContext) -&gt; ShieldResult&lt;Response&gt; {
+    // Or using strict guard with ?, Admin passes, Auditor will not!
+    ctx.require_role("Operator")?;
+
+    Ok(Response::ok("Welcome Operator"))
+}</code></pre>
+<h2 id="dynamic-role-inheritance"><a class="header" href="#dynamic-role-inheritance">Dynamic Role Inheritance</a></h2>
+<p>GritShield Allows you to define hierarchical relationships between roles (e.g., <code>Admin</code> inherits from <code>Manager</code>, which inherits from <code>Editor</code>).</p>
+<p>This system enables flexible and maintainable permission structures without hardcoding every role combination.</p>
+<h2 id="key-benefits"><a class="header" href="#key-benefits">Key Benefits</a></h2>
+<ul>
+<li>Roles can inherit permissions from other roles</li>
+<li>Recursive checking (multi-level inheritance)</li>
+<li>Clean separation between fixed roles and dynamic hierarchies</li>
+<li>Easy to extend or modify role relationships at runtime</li>
+</ul>
+<h2 id="example-usage"><a class="header" href="#example-usage">Example Usage</a></h2>
+<p>You can configure role inheritance when building your router:</p>
+<pre><code class="language-rust">let router = Router::new()
+    .add_role_inheritance("Admin", vec!["Manager", "Operator", "Auditor"])
+    .add_role_inheritance("Manager", vec!["Editor", "Viewer"])
+    .add_role_inheritance("Editor", vec!["Contributor"]);</code></pre>
+<p>How It Works</p>
+<ul>
+<li><code>Admin</code> inherits everything (<code>Manager</code>, <code>Operator</code>, <code>Auditor</code>)</li>
+<li><code>Manager</code> inherits <code>Editor</code> and <code>Viewer</code></li>
+<li>Inheritance is recursive — so <code>Admin</code> automatically has access to <code>Editor</code> and <code>Contributor</code> as well.</li>
+</ul>
+<pre><code>                               [Admin]
+                             /    |    \
+                            /     |     \
+                           /      |      \
+                    [Manager] [Operator] [Auditor]
+                       /   \
+                      /     \
+                     [Editor] [Viewer]
+                        |
+                     [Contributor]
+</code></pre>
+<h3 id="now-use-built-in-functions-inside-your-handlers"><a class="header" href="#now-use-built-in-functions-inside-your-handlers">Now use built-in functions inside your handlers</a></h3>
+<pre><code class="language-rust">pub async fn manage_users(ctx: RequestContext) -&gt; Response {
+    // Check with inheritance tree
+    if !ctx.has_inherited_role("Manager") {
+        return Response::forbidden("Manager role or higher required");
+    }
+
+    // Strict version with ? (Recommended)
+    ctx.require_inherited_role("Manager")?; // needs ShieldResult, or use unwrap
+
+    // Handler logic...
+}
+
+pub async fn edit_post(ctx: RequestContext) -&gt; ShieldResult&lt;Response&gt; {
+    // This will return true for: Editor, Manager, Admin
+    ctx.require_inherited_role("Editor")?;
+
+    // Only users with Editor role or higher can proceed
+    Ok(Response::ok("Post edited successfully"))
+}</code></pre>
+<h2 id="create-your-own-role-check-middleware"><a class="header" href="#create-your-own-role-check-middleware">Create Your Own Role Check Middleware</a></h2>
+<p>Create custom middleware for role validation:</p>
+<pre><code class="language-rust">struct RoleMiddleware {
+    required_role: String,
+}
+
+impl Middleware for RoleMiddleware {
+    fn execute(&amp;self, ctx: &amp;mut RequestContext) -&gt; MiddlewareResult {
+
+        if let Some(role) = ctx.get_session_data("role") {
+            if role == &amp;self.required_role {
+                return MiddlewareResult::Next(None);
+            }
+
+        MiddlewareResult::Error(Response::forbidden(
+            Sanitizer::trust("&lt;h1&gt;403 Forbidden - Insufficient Role&lt;/h1&gt;")
+        ))
+    }
+}
+
+// Usage
+router = router
+    .add_middleware(AuthMiddleware::new_session(vec![], Some("/login")))
+    .add_middleware(RoleMiddleware { required_role: "admin".to_string() });</code></pre>
+<h2 id="jwt-based-rbac"><a class="header" href="#jwt-based-rbac">JWT-Based RBAC</a></h2>
+<p>Embed roles in JWT claims:</p>
+<pre><code class="language-rust">#[derive(Serialize, Deserialize, Clone)]
+pub struct Claims {
+    pub sub: String,
+    pub role: String,
+    pub exp: usize,
+}
+
+// Create token with role
+let claims = Claims {
+    sub: user_id,
+    role: "admin".to_string(),
+    exp: expiration,
+};
+let token = jwt_handler.sign(&amp;claims)?;
+
+// Access role in handler
+#[get("/admin")]
+async fn admin_panel(ctx: RequestContext) -&gt; Response {
+    let role = ctx.claims.as_ref().map(|c| c.role.as_str()).unwrap_or("");
+    if role != "admin" {
+        return Response::new(403, Sanitizer::trust("Forbidden"));
+    }
+    // Admin logic...
+}</code></pre>
+<h2 id="now-lets-save-you-from-writing-rbac-functions-each-time"><a class="header" href="#now-lets-save-you-from-writing-rbac-functions-each-time">Now let’s save you from writing RBAC functions each time</a></h2>
+<p>You can protect routes directly at the handler definition using the <code>role</code> parameter:</p>
+<pre><code class="language-rust">#[post("/dashboard", role = "Admin")]
+pub async fn admin_panel(ctx: RequestContext) -&gt; Response {
+    // handler
+    Response::ok("Hello Admin")
+}</code></pre>
+<p>Gritshield checks dyncamically for inheritance roles first if defined, falling back to fixed role checks, giving you zero boilerplate rbac helper.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="routing"><a href="#routing" class="header">Routing</a></h1>
+<p>GritShield’s router is built on a trie (prefix tree) for efficient path matching with O(n) complexity where n is the number of path segments.</p>
+<h2 id="features"><a class="header" href="#features">Features</a></h2>
+<ul>
+<li>Static routes: <code>/users</code>, <code>/about</code></li>
+<li>Dynamic parameters: <code>/users/:id</code></li>
+<li>Wildcard/Catch-all: <code>/docs/*path</code></li>
+<li>HTTP method routing: GET, POST, PUT, PATCH, DELETE</li>
+<li>Automatic parameter extraction</li>
+<li>File-based route discovery</li>
+</ul>
+<h2 id="topics-1"><a class="header" href="#topics-1">Topics</a></h2>
+<ul>
+<li><a href="/docs/routing/file-based-routing">File-Based Routing</a> - Next.js style routing</li>
+<li><a href="/docs/routing/dynamic-routes">Dynamic Routes</a> - Parameters and wildcards</li>
+<li><a href="/docs/routing/middleware">Middleware</a> - Pipeline components</li>
+</ul>
+<h2 id="basic-examples"><a class="header" href="#basic-examples">Basic Examples</a></h2>
+<pre><code class="language-rust">#[get("/")]
+async fn home(ctx: RequestContext) -&gt; &amp;'static str {
+    "Home page"
+}
+
+#[get("/users/:id")]
+async fn user(ctx: RequestContext) -&gt; String {
+    format!("User: {}", ctx.params.get("id").unwrap().as_str())
+}
+
+#[post("/users")]
+async fn create_user(ctx: RequestContext) -&gt; ShieldResult&lt;Response&gt; {
+    // Create user logic
+    Ok(Response::redirect(303, "/users"))
+}
+
+#[get("/static/*path")]
+async fn static_files(ctx: RequestContext) -&gt; Response {
+    let path = ctx.params.get("*path").unwrap().as_str();
+    Response::static_file(&amp;format!("static/{}", path))
+}</code></pre>
+<h2 id="route-priority"><a class="header" href="#route-priority">Route Priority</a></h2>
+<p>Routes are matched in the order they’re added. Wildcards have lowest priority:</p>
+<ol>
+<li>Exact matches (<code>/users/profile</code>)</li>
+<li>Parameter matches (<code>/users/:id</code>)</li>
+<li>Wildcard matches (<code>/docs/*path</code>)</li>
+</ol>
+<h2 id="manual-registration"><a class="header" href="#manual-registration">Manual Registration</a></h2>
+<pre><code class="language-rust">router.add_route(HttpMethod::GET, "/health", |_| async { "OK" });
+router.add_route(HttpMethod::POST, "/api/data", handle_api);</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="dynamic-routes"><a href="#dynamic-routes" class="header">Dynamic Routes</a></h1>
+<h2 id="single-parameter-param"><a class="header" href="#single-parameter-param">Single Parameter <code>:param</code></a></h2>
+<p>Define routes with single segment parameters:</p>
+<pre><code class="language-rust">#[get("/users/:id")]
+async fn get_user(ctx: RequestContext) -&gt; String {
+    let user_id = ctx.params.get("id").unwrap().as_str();
+    format!("User ID: {}", user_id)
+}
+
+#[get("/posts/:slug")]
+async fn get_post(ctx: RequestContext) -&gt; String {
+    let slug = ctx.params.get("slug").unwrap().as_str();
+    format!("Post: {}", slug)
+}</code></pre>
+<p>Access parameters via <code>ctx.params</code> HashMap.</p>
+<h2 id="multiple-parameters"><a class="header" href="#multiple-parameters">Multiple Parameters</a></h2>
+<pre><code class="language-rust">#[get("/users/:user_id/posts/:post_id")]
+async fn get_user_post(ctx: RequestContext) -&gt; String {
+    let user_id = ctx.params.get("user_id").unwrap().as_str();
+    let post_id = ctx.params.get("post_id").unwrap().as_str();
+    format!("User {} Post {}", user_id, post_id)
+}</code></pre>
+<h2 id="wildcardcatch-all-param"><a class="header" href="#wildcardcatch-all-param">Wildcard/Catch-All <code>*param</code></a></h2>
+<p>Capture multiple path segments:</p>
+<pre><code class="language-rust">#[get("/docs/*path")]
+async fn documentation(ctx: RequestContext) -&gt; String {
+    let path = ctx.params.get("*path").unwrap().as_str();
+    format!("Documentation path: {}", path)
+}</code></pre>
+<p>Examples:</p>
+<ul>
+<li><code>/docs</code> → path = “” (empty string)</li>
+<li><code>/docs/guide</code> → path = “guide”</li>
+<li><code>/docs/guide/getting-started</code> → path = “guide/getting-started”</li>
+</ul>
+<h2 id="file-based-routing-syntax"><a class="header" href="#file-based-routing-syntax">File-Based Routing Syntax</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>File Name</th><th>Route</th><th>Parameter</th></tr>
+</thead>
+<tbody>
+<tr><td><code>[id].rs</code></td><td><code>/:id</code></td><td><code>id</code></td></tr>
+<tr><td><code>[slug].rs</code></td><td><code>/:slug</code></td><td><code>slug</code></td></tr>
+<tr><td><code>[..path].rs</code></td><td><code>/*path</code></td><td><code>*path</code></td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="parameter-validation"><a class="header" href="#parameter-validation">Parameter Validation</a></h2>
+<pre><code class="language-rust">#[get("/users/:id")]
+async fn get_user(ctx: RequestContext) -&gt; Result&lt;Response, FrameworkError&gt; {
+    let id_str = ctx.params.get("id").unwrap().as_str();
+    let user_id: i32 = id_str.parse()
+        .map_err(|_| FrameworkError::FormParsingError("Invalid user ID".into()))?;
+    
+    // Use user_id
+    Ok(Response::json(200, &amp;user))
+}</code></pre>
+<h2 id="optional-parameters"><a class="header" href="#optional-parameters">Optional Parameters</a></h2>
+<p>For optional parameters, define separate routes or use wildcards:</p>
+<pre><code class="language-rust">#[get("/search")]
+async fn search(ctx: RequestContext) -&gt; String {
+    let query = ctx.query.get("q").map(|v| v.as_str()).unwrap_or("");
+    format!("Searching for: {}", query)
+}</code></pre>
+<p>This uses query strings instead of path parameters for optional values.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="middleware"><a href="#middleware" class="header">Middleware</a></h1>
+<p>Middleware runs before handlers and can modify the request context, add data, or reject requests.</p>
+<h2 id="middleware-trait"><a class="header" href="#middleware-trait">Middleware Trait</a></h2>
+<pre><code class="language-rust">pub trait Middleware: Send + Sync {
+    fn execute(&amp;self, ctx: &amp;mut RequestContext) -&gt; MiddlewareResult;
+}</code></pre>
+<h2 id="middlewareresult"><a class="header" href="#middlewareresult">MiddlewareResult</a></h2>
+<pre><code class="language-rust">pub enum MiddlewareResult {
+    Next(Option&lt;MiddlewareState&gt;),  // Continue to next middleware/handler
+    Error(Response),                 // Stop and return response immediately
+}</code></pre>
+<h2 id="built-in-middleware"><a class="header" href="#built-in-middleware">Built-in Middleware</a></h2>
+<p><strong>LoggerMiddleware</strong></p>
+<p>Logs each request with method, path, status, duration, and auth info:</p>
+<pre><code class="language-rust">router = router.add_middleware(LoggerMiddleware);</code></pre>
+<p>Output: 🗲 [200] GET /dashboard ➔ Size: 2.34 KB | Time: 12ms | Auth: 🍪 Session ID: a1b2c3d4</p>
+<p><strong>RateLimitMiddleware</strong></p>
+<p>Prevents abuse with per-IP rate limiting:</p>
+<pre><code class="language-rust">let limiter = RateLimiter::new(100, Duration::from_secs(60));
+router = router.add_middleware(RateLimitMiddleware { limiter });</code></pre>
+<p><strong>IPBlacklistMiddleware</strong></p>
+<p>Blocks specific IP addresses:</p>
+<pre><code class="language-rust">let blacklist = IPBlacklistMiddleware::new(vec!["192.168.1.100", "10.0.0.5"]);
+router = router.add_middleware(blacklist);</code></pre>
+<p><strong>AuthMiddleware</strong></p>
+<p>Handles authentication, sessions, JWT, and CSRF:</p>
+<pre><code class="language-rust">// Session mode
+let auth = AuthMiddleware::new_session(
+    vec!["/login".to_string(), "/register".to_string()],
+    Some("/login")
+);
+
+// JWT mode
+let jwt = JwtHandler::new(&amp;secret);
+let auth = AuthMiddleware::new_jwt(jwt, vec!["/public".into()], None);
+
+router = router.add_middleware(auth);</code></pre>
+<h2 id="custom-middleware"><a class="header" href="#custom-middleware">Custom Middleware</a></h2>
+<pre><code class="language-rust">struct TimingMiddleware;
+
+impl Middleware for TimingMiddleware {
+    fn execute(&amp;self, ctx: &amp;mut RequestContext) -&gt; MiddlewareResult {
+        ctx.start_time = std::time::Instant::now();
+        MiddlewareResult::Next(None)
+    }
+}
+
+struct AddHeaderMiddleware;
+
+impl Middleware for AddHeaderMiddleware {
+    fn execute(&amp;self, ctx: &amp;mut RequestContext) -&gt; MiddlewareResult {
+        // Store data to be used later
+        ctx.headers.insert("X-Custom".to_string(), "value".to_string());
+        MiddlewareResult::Next(None)
+    }
+}
+
+// Chain middleware
+router = router
+    .add_middleware(TimingMiddleware)
+    .add_middleware(LoggerMiddleware)
+    .add_middleware(AddHeaderMiddleware);</code></pre>
+<h2 id="afterrequesthook"><a class="header" href="#afterrequesthook">AfterRequestHook</a></h2>
+<p>Run code after request completion:</p>
+<pre><code class="language-rust">pub trait AfterRequestHook: Send + Sync {
+    fn call(&amp;self, ctx: &amp;RequestContext, status: u16, duration: Duration);
+}
+
+struct MetricsHook;
+
+impl AfterRequestHook for MetricsHook {
+    fn call(&amp;self, ctx: &amp;RequestContext, status: u16, duration: Duration) {
+        metrics.record_request(ctx.req.path, status, duration);
+    }
+}
+
+router = router.add_after_hook(Box::new(MetricsHook));</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="architecture"><a href="#architecture" class="header">Architecture</a></h1>
+<p>Welcome to the GritShield architecture documentation. This section covers the internal design, kernel structure, and security principles.</p>
+<h2 id="topics-2"><a class="header" href="#topics-2">Topics</a></h2>
+<ul>
+<li><a href="/docs/architecture/kernel-design">Kernel Design</a> - Deep dive into the core architecture</li>
+<li><a href="/docs/architecture/overview">Overview</a> - High-level architecture overview</li>
+</ul>
+<h2 id="architecture-principles"><a class="header" href="#architecture-principles">Architecture Principles</a></h2>
+<p>GritShield is built on these core principles:</p>
+<ol>
+<li><strong>Security by Default</strong> - Every component is secure out-of-the-box</li>
+<li><strong>Zero Trust</strong> - Never trust user input, always validate</li>
+<li><strong>Defense in Depth</strong> - Multiple layers of security</li>
+<li><strong>Fail Securely</strong> - Errors default to safe states</li>
+<li><strong>Least Privilege</strong> - Minimal access for all components</li>
+</ol>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="overview-2"><a href="#overview-2" class="header">Overview</a></h1>
+<p>GritShield is built on a modular, layered architecture that prioritizes security without sacrificing developer experience.</p>
+<h2 id="core-layers"><a class="header" href="#core-layers">Core Layers</a></h2>
+<h3 id="1-protocol-layer"><a class="header" href="#1-protocol-layer">1. Protocol Layer</a></h3>
+<p>Handles raw HTTP request/response parsing with strict size limits and timeout protection.</p>
+<pre><code class="language-rust">// Request parsing with 1MB limit and 5s timeout
+let req = Request::parse(&amp;mut stream).await?;</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="kernel-design"><a href="#kernel-design" class="header">Kernel Design</a></h1>
+<h2 id="core-components"><a class="header" href="#core-components">Core Components</a></h2>
+<h3 id="request-pipeline"><a class="header" href="#request-pipeline">Request Pipeline</a></h3>
+<p>TCP Stream → Request Parser → Cookie Jar → Middleware Stack → Router → Handler → Response</p>
+<h3 id="memory-safety"><a class="header" href="#memory-safety">Memory Safety</a></h3>
+<p>GritShield leverages Rust’s ownership system:</p>
+<ul>
+<li>No garbage collection pauses</li>
+<li>Thread-safe without data races</li>
+<li>Memory leaks are compile-time errors</li>
+<li>Buffer overflows impossible</li>
+</ul>
+<h3 id="async-runtime"><a class="header" href="#async-runtime">Async Runtime</a></h3>
+<p>Built on <code>tokio</code> with a multi-threaded work-stealing scheduler:</p>
+<pre><code class="language-rust">tokio::spawn(async move {
+    handle_connection(stream, peer_addr, router).await
+});</code></pre>
+<h3 id="security-kernel"><a class="header" href="#security-kernel">Security Kernel</a></h3>
+<p><strong>Trust Boundary</strong></p>
+<p>The security kernel is the only component that can:</p>
+<ul>
+<li>Create UntrustedString from raw input</li>
+<li>Convert UntrustedString to SafeHtml via sanitization</li>
+<li>Sign and verify cookies with HMAC</li>
+<li>Validate JWT tokens</li>
+</ul>
+<p><strong>Isolation Layers</strong></p>
+<ul>
+<li>Protocol Layer - Raw HTTP parsing with timeouts</li>
+<li>Security Layer - All validation and sanitization</li>
+<li>Application Layer - Your business logic</li>
+<li>Presentation Layer - Safe HTML output only</li>
+</ul>
+<h3 id="performance-design"><a class="header" href="#performance-design">Performance Design</a></h3>
+<ul>
+<li>Zero-copy parsing where possible</li>
+<li>Arc sharing for database connections</li>
+<li>Lock-free telemetry counters</li>
+<li>Memory pool for session storage</li>
+<li>Trie-based O(n) routing where n = path segments</li>
+</ul>
+<h3 id="error-isolation"><a class="header" href="#error-isolation">Error Isolation</a></h3>
+<p>Panics are caught at the request level:</p>
+<pre><code class="language-rust">match AssertUnwindSafe(response_future).catch_unwind().await {
+    Ok(response) =&gt; response,
+    Err(panic) =&gt; handle_panic(panic),
+}</code></pre>
+<p>One crashing request never brings down the server.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="database"><a href="#database" class="header">Database</a></h1>
+<p>GritShield integrates with SeaORM for type-safe, async database access.</p>
+<h2 id="supported-databases"><a class="header" href="#supported-databases">Supported Databases</a></h2>
+<ul>
+<li>PostgreSQL</li>
+<li>MySQL</li>
+<li>SQLite</li>
+<li>(Any database SeaORM supports)</li>
+</ul>
+<h2 id="quick-start-1"><a class="header" href="#quick-start-1">Quick Start</a></h2>
+<pre><code class="language-rust">use sea_orm::{Database, DatabaseConnection};
+use std::sync::Arc;
+
+let db = Database::connect("postgres://user:pass@localhost/mydb").await?;
+let router = Router::new().mound_db(Arc::new(db));</code></pre>
+<h2 id="topics-3"><a class="header" href="#topics-3">Topics</a></h2>
+<ul>
+<li>SeaORM Integration - Detailed usage</li>
+<li>Migrations - Schema management</li>
+</ul>
+<h2 id="entity-example"><a class="header" href="#entity-example">Entity Example</a></h2>
+<pre><code class="language-rust">use sea_orm::entity::prelude::*;
+
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+#[sea_orm(table_name = "users")]
+pub struct User {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    pub name: String,
+    pub email: String,
+}
+
+#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+pub enum Relation {}
+
+impl ActiveModelBehavior for ActiveModel {}</code></pre>
+<h2 id="query-example"><a class="header" href="#query-example">Query Example</a></h2>
+<pre><code class="language-rust">#[get("/users")]
+async fn list_users(ctx: RequestContext) -&gt; Result&lt;Response, FrameworkError&gt; {
+    let db = ctx.db.as_ref().ok_or_else(|| {
+        FrameworkError::DatabaseFailure("No database connection".into())
+    })?;
+    
+    let users = User::find().all(db.as_ref()).await
+        .map_err(|e| FrameworkError::DatabaseFailure(e.to_string()))?;
+    
+    Response::json(200, &amp;users)
+}</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="migrations"><a href="#migrations" class="header">Migrations</a></h1>
+<p>GritShield uses SeaORM’s migration system for schema management.</p>
+<h2 id="setup"><a class="header" href="#setup">Setup</a></h2>
+<p>Add to <code>Cargo.toml</code>:</p>
+<pre><code class="language-toml">[dependencies]
+sea-orm = { version = "0.12", features = ["sqlx-postgres", "runtime-tokio-rustls", "macros"] }
+sea-orm-migration = { version = "0.12" }
+</code></pre>
+<h2 id="create-migration"><a class="header" href="#create-migration">Create Migration</a></h2>
+<pre><code class="language-bash">cargo run -- generate migration create_users_table
+</code></pre>
+<h2 id="migration-file"><a class="header" href="#migration-file">Migration File</a></h2>
+<p><code>migration/src/m20220101_000001_create_users_table.rs</code>:</p>
+<pre><code class="language-rust">use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&amp;self, manager: &amp;SchemaManager) -&gt; Result&lt;(), DbErr&gt; {
+        manager
+            .create_table(
+                Table::create()
+                    .table(Users::Table)
+                    .if_not_exists()
+                    .col(ColumnDef::new(Users::Id).integer().not_null().auto_increment().primary_key())
+                    .col(ColumnDef::new(Users::Name).string().not_null())
+                    .col(ColumnDef::new(Users::Email).string().not_null().unique_key())
+                    .col(ColumnDef::new(Users::CreatedAt).timestamp().not_null())
+                    .to_owned(),
+            )
+            .await
+    }
+
+    async fn down(&amp;self, manager: &amp;SchemaManager) -&gt; Result&lt;(), DbErr&gt; {
+        manager
+            .drop_table(Table::drop().table(Users::Table).to_owned())
+            .await
+    }
+}
+
+#[derive(Iden)]
+enum Users {
+    Table,
+    Id,
+    Name,
+    Email,
+    CreatedAt,
+}</code></pre>
+<h2 id="run-migrations"><a class="header" href="#run-migrations">Run Migrations</a></h2>
+<p>In your application startup:</p>
+<pre><code class="language-rust">use sea_orm_migration::{Migrator, MigratorTrait};
+
+async fn run_migrations(db: &amp;DatabaseConnection) -&gt; Result&lt;(), DbErr&gt; {
+    Migrator::up(db, None).await
+}</code></pre>
+<h2 id="migration-cli"><a class="header" href="#migration-cli">Migration CLI</a></h2>
+<pre><code class="language-bash"># Create new migration
+cargo run -- generate migration add_age_column
+
+# Run pending migrations
+cargo run -- up
+
+# Rollback last migration
+cargo run -- down
+
+# Reset all migrations
+cargo run -- fresh
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="websocket"><a href="#websocket" class="header">WebSocket</a></h1>
+<p>GritShield provides built-in WebSocket support using a simple macro for route registration.</p>
+<h2 id="overview-1"><a class="header" href="#overview-1">Overview</a></h2>
+<p>WebSockets are registered using the <code>register_ws!</code> macro. This macro automatically registers the handler at application startup.</p>
+<h3 id="register-websocket-macro"><a class="header" href="#register-websocket-macro">Register WebSocket Macro</a></h3>
+<pre><code class="language-rust">#[macro_export]
+macro_rules! register_ws {
+    ($path:expr, $handler:expr) =&gt; {
+        #[ctor::ctor]
+        fn init_ws_route() {
+            let wrapped: $crate::routing::websocket::WsHandlerFn = |stream, ctx| {
+                Box::pin($handler(stream, ctx))
+            };
+            $crate::routing::websocket::register_ws_route($path, wrapped);
+        }
+    };
+}</code></pre>
+<h2 id="simple-usage-demo"><a class="header" href="#simple-usage-demo">Simple Usage Demo</a></h2>
+<h3 id="1-create-websocket-handler"><a class="header" href="#1-create-websocket-handler">1. Create WebSocket Handler</a></h3>
+<pre><code class="language-rust">use futures_util::sink::SinkExt;
+use gritshield::{futures::StreamExt, routing::trie::RequestContext};
+use tokio::net::TcpStream;
+use tokio_tungstenite::WebSocketStream;
+
+async fn echo_handler(
+    mut stream:  WebSocketStream&lt;TcpStream&gt;, 
+    ctx: RequestContext
+) {
+    println!("New WebSocket connection from: {}", ctx.peer_addr);
+
+    while let Some(msg) = stream.next().await {
+        match msg {
+            Ok(message) =&gt; {
+                if message.is_text() || message.is_binary() {
+                    // Echo message back
+                    let _ = stream.send(message).await;
+                }
+            }
+            Err(e) =&gt; {
+                eprintln!("WebSocket error: {}", e);
+                break;
+            }
+        }
+    }
+}
+
+register_ws!("/ws/echo", echo_handler);</code></pre>
+<h2 id="client-side-test-javascript"><a class="header" href="#client-side-test-javascript">Client Side Test (JavaScript)</a></h2>
+<pre><code class="language-javascript">const ws = new WebSocket("ws://localhost:8080/ws/echo");
+
+ws.onopen = () =&gt; {
+  console.log("Connected to GritShield WebSocket");
+  ws.send("Hello Server!");
+};
+
+ws.onmessage = (event) =&gt; {
+  console.log("Received:", event.data);
+};
+
+ws.onclose = () =&gt; console.log("Connection closed");
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="deployment-guide"><a class="header" href="#deployment-guide">Deployment Guide</a></h1>
+<p>This section covers deploying GritShield applications to production environments.</p>
+<h2 id="topics-4"><a class="header" href="#topics-4">Topics</a></h2>
+<ul>
+<li><a href="/docs/deployment/production">Production Deployment</a> - Production setup and hardening</li>
+<li><a href="/docs/deployment/docker">Docker Deployment</a> - Containerization</li>
+</ul>
+<h2 id="before-you-deploy"><a class="header" href="#before-you-deploy">Before You Deploy</a></h2>
+<p>✓ Set <code>APP_ENV=production</code><br>✓ Generate strong <code>JWT_SECRET</code> (32+ random bytes)<br>✓ Configure production database<br>✓ Enable HTTPS/TLS<br>✓ Set up monitoring<br>✓ Configure logging</p>
+<h2 id="quick-checklist"><a class="header" href="#quick-checklist">Quick Checklist</a></h2>
+<ul>
+<li><input disabled="" type="checkbox"> Code compiles with <code>--release</code></li>
+<li><input disabled="" type="checkbox"> Environment variables set</li>
+<li><input disabled="" type="checkbox"> Database migrations run</li>
+<li><input disabled="" type="checkbox"> Static assets collected</li>
+<li><input disabled="" type="checkbox"> Health check endpoint working</li>
+<li><input disabled="" type="checkbox"> Rate limits configured</li>
+<li><input disabled="" type="checkbox"> IP blacklist populated</li>
+<li><input disabled="" type="checkbox"> Logging configured for production</li>
+</ul>
+<h2 id="recommended-stack"><a class="header" href="#recommended-stack">Recommended Stack</a></h2>
+<p>[Client] → [CloudFlare/CDN] → [nginx] → [GritShield] → [PostgreSQL]
+↓
+[Redis (sessions)]</p>
+<h2 id="health-check-endpoint"><a class="header" href="#health-check-endpoint">Health Check Endpoint</a></h2>
+<p>Implement a health check:</p>
+<pre><code class="language-rust">#[get("/health")]
+async fn health(ctx: RequestContext) -&gt; Response {
+    Response::new(200, Sanitizer::trust("OK"))
+}</code></pre>
+<h2 id="monitoring-metrics"><a class="header" href="#monitoring-metrics">Monitoring Metrics</a></h2>
+<p>Track using telemetry:</p>
+<pre><code class="language-rust">// Export metrics via Prometheus endpoint
+#[get("/metrics")]
+async fn metrics(ctx: RequestContext) -&gt; Response {
+    let metrics = format!(
+        "active_connections {}\ntotal_blocked_ips {}\nrate_limited_reqs {}",
+        ctx.telemetry.active_connections.load(Ordering::SeqCst),
+        ctx.telemetry.total_blocked_ips.load(Ordering::SeqCst),
+        ctx.telemetry.total_rate_limited_reqs.load(Ordering::SeqCst),
+    );
+    Response::new(200, Sanitizer::trust(&amp;metrics))
+}</code></pre>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+        <!-- Livereload script (if served using the cli tool) -->
+        <script>
+            const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsAddress = wsProtocol + "//" + location.host + "/" + "__livereload";
+            const socket = new WebSocket(wsAddress);
+            socket.onmessage = function (event) {
+                if (event.data === "reload") {
+                    socket.close();
+                    location.reload();
+                }
+            };
+
+            window.onbeforeunload = function() {
+                socket.close();
+            }
+        </script>
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr-ef4e11c1.min.js"></script>
+        <script src="mark-09e88c2c.min.js"></script>
+        <script src="searcher-09f2665d.js"></script>
+
+        <script src="clipboard-1626706a.min.js"></script>
+        <script src="highlight-abc7f01d.js"></script>
+        <script src="book-c22b7243.js"></script>
+
+        <!-- Custom JS scripts -->
+
+        <script>
+        window.addEventListener('load', function() {
+            window.setTimeout(window.print, 100);
+        });
+        </script>
+
+
+    </div>
+    </body>
+</html>

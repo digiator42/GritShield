@@ -1,0 +1,10 @@
+[book]
+title = "GritShield Documentation"
+language = "en"
+src = "DOCS_CONTENT"
+
+[output.html.playground]
+editable = false
+copyable = true
+line-numbers = true
+runnable = false

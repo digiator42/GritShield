@@ -1,18 +1,5 @@
-## What is GritShield?
 
 GritShield is an **async-first, security-hardened** web framework for Rust that eliminates the majority of OWASP Top 10 vulnerabilities by design.
-
-## Key Features
-
-- **Native Default Asynchrony** – Built entirely from the ground up on non-blocking `async/await` design patterns, leveraging a multi-threaded Tokio runtime context to sustain massive concurrent execution throughput without thread starvation.
-- **XSS-Safe Templating** – Untrusted data cannot reach HTML without explicit sanitisation.
-- **CSRF Protection** – Automatic token validation for state-changing requests.
-- **Signed Cookies** – Cryptographic HMAC-SHA256 signatures prevent client-side cookie tampering.
-- **Session Management** – Thread-safe, in-memory store protected by asynchronous synchronization locks with automatic expiration hooks.
-- **JWT Support** – Stateless authentication via securely managed HS256 tokens.
-- **Rate Limiting** – Sliding-window rate tracking per IP address, backed by low-overhead atomic counters.
-- **IP Blacklisting** – Instantly drops connection sockets for malicious clients directly at the early middleware layer.
-- **File-Based Routing** – Auto-discovery of structural endpoint handlers mapped straight to your local filesystem hierarchy.
 
 ## Quick Navigation
 
@@ -29,7 +16,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-gritshield = { git = "https://github.com/digiator42/gritshield", version = "0.1" }
+gritshield = { version = "0.1.1" }
 tokio = { version = "1", features = ["full"] }
 ```
 
