@@ -1,15 +1,48 @@
-name: Build mdBook
+name: Build and Deploy mdBook
 
 on:
   push:
     branches: [main]
 
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow one concurrent deployment
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
 jobs:
-  build:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps: deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: peaceiris/actions-mdbook@v1
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup mdBook
+        uses: peaceiris/actions-mdbook@v2
         with:
           mdbook-version: "latest"
-      - run: mdbook build docs
+
+      # This builds your book. mdbook default output is typically `docs/book`
+      - name: Build mdBook
+        run: mdbook build docs
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      # Upload the generated static HTML files (by default mdBook puts them in <book-dir>/book)
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: 'docs/book'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

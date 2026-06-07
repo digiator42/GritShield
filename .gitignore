@@ -28,3 +28,4 @@ target
 *.db
 *.exe
 *.txt
+/docs/book
