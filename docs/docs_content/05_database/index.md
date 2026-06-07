@@ -18,11 +18,6 @@ let db = Database::connect("postgres://user:pass@localhost/mydb").await?;
 let router = Router::new().mound_db(Arc::new(db));
 ```
 
-## Topics
-
-- SeaORM Integration - Detailed usage
-- Migrations - Schema management
-
 ## Entity Example
 
 ```rust

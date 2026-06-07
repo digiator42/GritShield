@@ -48,13 +48,24 @@ Examples:
 - `/docs/guide` → path = "guide"
 - `/docs/guide/getting-started` → path = "guide/getting-started"
 
-## File-Based Routing Syntax
 
-| File Name | Route | Parameter |
-|-----------|-------|-----------|
-| `[id].rs` | `/:id` | `id` |
-| `[slug].rs` | `/:slug` | `slug` |
-| `[..path].rs` | `/*path` | `*path` |
+## File‑Based Routing (Next.js style)
+
+Place your handlers in `src/pages/`:
+
+- `src/pages/index.rs` → route `/`
+- `src/pages/users/[id].rs` → route `/users/:id`
+- `src/pages/api/[..path].rs` → route `/api/**` (catch‑all)
+
+Inside the file, use the `register_page!` macro:
+
+```rust
+use gritshield::prelude::*;
+
+register_page!(HttpMethod::GET, |_| async { "Hello from file route" });
+```
+
+GritShield automatically discovers `.rs` files under `src/pages` and mounts them.
 
 ## Parameter Validation
 

@@ -1,7 +1,5 @@
 # Summary
 
-- [Home](index.md)
-
 - [Getting Started](01_getting-started/index.md)
   - [Configuration](01_getting-started/configuration.md)
 

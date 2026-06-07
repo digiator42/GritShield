@@ -2,6 +2,15 @@
 
 GritShield uses environment variables for configuration with `.env` file support.
 
+
+## Hot Reload (Development)
+
+```rust
+run_server("127.0.0.1", "8080", router, true).await;
+```
+
+Automatically rebuilds and reloads on source changes.
+
 ## Environment Variables
 
 | Variable | Default | Description |

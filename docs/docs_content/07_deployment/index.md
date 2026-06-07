@@ -2,11 +2,6 @@
 
 This section covers deploying GritShield applications to production environments.
 
-## Topics
-
-- [Production Deployment](/docs/deployment/production) - Production setup and hardening
-- [Docker Deployment](/docs/deployment/docker) - Containerization
-
 ## Before You Deploy
 
 ✓ Set `APP_ENV=production`  

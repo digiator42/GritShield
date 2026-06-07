@@ -22,15 +22,19 @@ pub enum MiddlewareResult {
 
 **LoggerMiddleware**
 
+---
+
 Logs each request with method, path, status, duration, and auth info:
 
 ```rust
 router = router.add_middleware(LoggerMiddleware);
 ```
 
-Output: 🗲 [200] GET /dashboard ➔ Size: 2.34 KB | Time: 12ms | Auth: 🍪 Session ID: a1b2c3d4
+> Output: 🗲 [200] GET /dashboard ➔ Size: 2.34 KB | Time: 12ms | Auth: 🍪 Session ID: a1b2c3d4
 
 **RateLimitMiddleware**
+
+---
 
 Prevents abuse with per-IP rate limiting:
 
@@ -41,6 +45,8 @@ router = router.add_middleware(RateLimitMiddleware { limiter });
 
 **IPBlacklistMiddleware**
 
+---
+
 Blocks specific IP addresses:
 
 ```rust
@@ -49,6 +55,8 @@ router = router.add_middleware(blacklist);
 ```
 
 **AuthMiddleware**
+
+---
 
 Handles authentication, sessions, JWT, and CSRF:
 

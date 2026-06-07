@@ -1,10 +1,6 @@
 
-Welcome to the GritShield architecture documentation. This section covers the internal design, kernel structure, and security principles.
+This section covers the internal design, kernel structure, and security principles.
 
-## Topics
-
-- [Kernel Design](/docs/architecture/kernel-design) - Deep dive into the core architecture
-- [Overview](/docs/architecture/overview) - High-level architecture overview
 
 ## Architecture Principles
 
