@@ -19,7 +19,7 @@ jobs:
   deploy:
     environment:
       name: github-pages
-      url: ${{ steps: deployment.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -38,11 +38,11 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v4
 
-      # 2. Upload the generated 'book' folder from inside the 'docs' directory
+      # Upload the generated 'book' folder from inside the 'docs' directory
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: 'docs/book'
+          path: "docs/book"
 
       - name: Deploy to GitHub Pages
         id: deployment
