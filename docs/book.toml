@@ -2,6 +2,10 @@
 title = "GritShield Documentation"
 language = "en"
 src = "docs_content"
+site-url = "/gritshield/"
+
+[build]
+build-dir = "book"
 
 [output.html.playground]
 editable = false

@@ -30,14 +30,15 @@ jobs:
         with:
           mdbook-version: "latest"
 
-      # This builds your book. mdbook default output is typically `docs/book`
       - name: Build mdBook
-        run: mdbook build docs
+        run: |
+          cd docs
+          mdbook build
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
 
-      # Upload the generated static HTML files (by default mdBook puts them in <book-dir>/book)
+      # 2. Upload the generated 'book' folder from inside the 'docs' directory
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
