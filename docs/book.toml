@@ -1,7 +1,7 @@
 [book]
 title = "GritShield Documentation"
 language = "en"
-src = "DOCS_CONTENT"
+src = "docs_content"
 
 [output.html.playground]
 editable = false
