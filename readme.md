@@ -39,4 +39,4 @@ Run with `cargo run` and open `http://localhost:8080`.
 
 ## Documentation
 
-The full documentation is available at [https://digiator42.github.io/gritshield/](https://digiator42.github.io/gritshield/).
+The full documentation is available at [https://digiator42.github.io/gritshield/](https://digiator42.github.io/GritShield/).

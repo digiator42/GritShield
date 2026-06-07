@@ -44,6 +44,10 @@ pub mod prelude {
     pub use crate::routing::trie::{RequestContext, Router};
     pub use crate::security::xss::Sanitizer;
 
+    // Critical functions
+    pub use crate::core::server::run_server;
+    pub use crate::core::env::get_env;
+
     // Re-export macros for the prelude
     pub use crate::{delete, get, patch, post, put};
 
