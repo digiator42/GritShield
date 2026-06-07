@@ -20,7 +20,7 @@ Add GritShield to Cargo.toml:
 
 ```toml
 [dependencies]
-gritshield = { git = "https://github.com/digiator42/gritshield" }
+gritshield = { version = "0.1.1" }
 tokio = { version = "1", features = ["full"] }
 ```
 
