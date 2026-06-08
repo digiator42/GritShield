@@ -1,11 +1,12 @@
 # Configuration
 
-GritShield uses environment variables for configuration with `.env` file support.
+GritShield uses simple environment variables for configuration with `.env` file support, for most of cases configuration is done programmatically.
 
 
 ## Hot Reload (Development)
 
 ```rust
+//          localhost,  port,  router, reloader
 run_server("127.0.0.1", "8080", router, true).await;
 ```
 
@@ -65,3 +66,13 @@ MAILER_DSN=smtp://user:pass@mailhog:1025
 ```
 
 Access them with `get_env()` or `std::env::var()` directly.
+
+## Configure Logger
+
+```rust
+// Adds logger info for each request, status, cookies, ...
+let mut router = Router::new().mount_logger();
+
+//          localhost,  port,  router, reloader
+run_server("127.0.0.1", "8080", router, true).await;
+```

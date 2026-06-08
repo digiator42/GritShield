@@ -102,6 +102,7 @@ How It Works
                         |
                      [Contributor]
 ```
+- **But** `Operator` cann't access `Manager` or it's `childs` content, because they are on different branches!. 
 
 ### Now use built-in functions inside your handlers
 ```rust

@@ -71,10 +71,10 @@ GritShield automatically discovers `.rs` files under `src/pages` and mounts them
 
 ```rust
 #[get("/users/:id")]
-async fn get_user(ctx: RequestContext) -> Result<Response, FrameworkError> {
+async fn get_user(ctx: RequestContext) -> Result<Response, ShieldError> {
     let id_str = ctx.params.get("id").unwrap().as_str();
     let user_id: i32 = id_str.parse()
-        .map_err(|_| FrameworkError::FormParsingError("Invalid user ID".into()))?;
+        .map_err(|_| ShieldError::FormParsingError("Invalid user ID".into()))?;
     
     // Use user_id
     Ok(Response::json(200, &user))

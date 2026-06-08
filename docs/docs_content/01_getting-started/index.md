@@ -48,9 +48,3 @@ cargo run
 ```
 
 Visit http://localhost:8080 to see your app!
-
-## Next Steps
-
-- [Installation Guide](/docs/getting-started/installation) - Detailed setup
-- [Your First Route](/docs/routing/dynamic-routes) - Learn routing
-- [Configuration](/docs/getting-started/configuration) - Environment setup

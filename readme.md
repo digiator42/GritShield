@@ -7,7 +7,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-gritshield = "0.1.0"
+gritshield = "0.1.1"
 tokio = { version = "1", features = ["full"] }
 ```
 

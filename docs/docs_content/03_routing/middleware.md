@@ -1,22 +1,6 @@
 
 Middleware runs before handlers and can modify the request context, add data, or reject requests.
 
-## Middleware Trait
-
-```rust
-pub trait Middleware: Send + Sync {
-    fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult;
-}
-```
-
-## MiddlewareResult
-
-```rust
-pub enum MiddlewareResult {
-    Next(Option<MiddlewareState>),  // Continue to next middleware/handler
-    Error(Response),                 // Stop and return response immediately
-}
-```
 
 ## Built-in Middleware
 
@@ -76,6 +60,23 @@ router = router.add_middleware(auth);
 
 ## Custom Middleware
 
+### Middleware Trait
+
+```rust
+pub trait Middleware: Send + Sync {
+    fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult;
+}
+```
+
+### MiddlewareResult
+
+```rust
+pub enum MiddlewareResult {
+    Next(Option<MiddlewareState>),  // Continue to next middleware/handler
+    Error(Response),                 // Stop and return response immediately
+}
+```
+
 ```rust
 struct TimingMiddleware;
 
@@ -105,7 +106,7 @@ router = router
 
 ## AfterRequestHook
 
-Run code after request completion:
+Middleware runs before requests, `AfterRequestHook` run after request completion.
 
 ```rust
 pub trait AfterRequestHook: Send + Sync {
