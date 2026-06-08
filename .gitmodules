@@ -1,0 +1,3 @@
+[submodule "examples/acc"]
+	path = examples/acc
+	url = https://github.com/digiator42/admin-command-center
