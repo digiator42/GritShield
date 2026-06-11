@@ -15,6 +15,8 @@ pub enum HttpMethod {
     PUT,
     PATCH,
     DELETE,
+    OPTIONS,
+    HEAD,
     UNKNOWN,
 }
 #[derive(Debug, Clone)]
@@ -81,6 +83,8 @@ impl Request {
             "PUT" => HttpMethod::PUT,
             "PATCH" => HttpMethod::PATCH,
             "DELETE" => HttpMethod::DELETE,
+            "OPTIONS" => HttpMethod::OPTIONS,
+            "HEAD" => HttpMethod::HEAD,
             _ => HttpMethod::UNKNOWN,
         };
 

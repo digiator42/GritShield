@@ -87,7 +87,7 @@ impl AuthMiddleware {
 
             let mut matches = true;
             for (i, rule_seg) in rule_segments.iter().enumerate() {
-                // 1. FIXED: Explicitly look for your actual deep catch-all token "**"
+                // FIXED: Explicitly look for your actual deep catch-all token "**"
                 if *rule_seg == "**" || rule_seg.starts_with(":*") {
                     return true;
                 }
@@ -143,7 +143,7 @@ impl Middleware for AuthMiddleware {
         if is_public_route {
             let mut associated_session = None;
 
-            // 1. Try to find an existing session from the browser's cookie jar
+            // Try to find an existing session from the browser's cookie jar
             if let Some(sid) = ctx.get_signed_cookie("GSESSION_ID") {
                 if let Ok(store_guard) = self.store.sessions.lock() {
                     if let Some(session_ptr) = store_guard.get(&sid) {
@@ -310,7 +310,7 @@ impl Middleware for AuthMiddleware {
             {
                 let mut csrf_verified = false;
 
-                // 1. Try extracting token out of custom AJAX headers first
+                // Try extracting token out of custom AJAX headers first
                 let mut incoming_token: Option<String> = ctx
                     .headers
                     .get("x-csrf-token") // Header keys are typically lowercased by default
@@ -591,5 +591,72 @@ impl AfterRequestHook for MetricsTracker {
                 ctx.req.path
             );
         }
+    }
+}
+pub struct CorsMiddleware {
+    allowed_origins: Vec<String>,
+}
+
+impl CorsMiddleware {
+    /// Accept an array or vector of strings during initialization
+    pub fn new(origins: Vec<String>) -> Self {
+        Self {
+            allowed_origins: origins,
+        }
+    }
+}
+
+impl Middleware for CorsMiddleware {
+    fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult {
+        // Extract the origin the browser is currently calling from
+        // (Adjust the header lookup syntax based on GritShield's exact req structure)
+        let inbound_origin = ctx.req.headers.get("Origin").cloned().unwrap_or_default();
+
+        // Determine the target match. If the domain is whitelisted, echo it!
+        // Otherwise, fallback to your primary origin safely.
+        let dynamic_origin = if self.allowed_origins.contains(&inbound_origin) {
+            inbound_origin
+        } else {
+            self.allowed_origins
+                .first()
+                .cloned()
+                .unwrap_or_else(|| "http://localhost:3000".to_string())
+        };
+
+        // Handle preflight checks
+        if ctx.req.method == HttpMethod::OPTIONS || ctx.req.method == HttpMethod::UNKNOWN {
+            let mut res = Response::ok("Preflight Allowed");
+
+            res.headers.push((
+                "Access-Control-Allow-Origin".to_string(),
+                dynamic_origin.clone(),
+            ));
+            res.headers.push((
+                "Access-Control-Allow-Methods".to_string(),
+                "POST, GET, OPTIONS, PUT, DELETE".to_string(),
+            ));
+            res.headers.push((
+                "Access-Control-Allow-Headers".to_string(),
+                "Content-Type, Authorization".to_string(),
+            ));
+            res.headers
+                .push(("Access-Control-Max-Age".to_string(), "86400".to_string()));
+
+            return MiddlewareResult::Error(res);
+        }
+
+        // Handle standard operations
+        ctx.headers
+            .insert("Access-Control-Allow-Origin".to_string(), dynamic_origin);
+        ctx.headers.insert(
+            "Access-Control-Allow-Methods".to_string(),
+            "POST, GET, OPTIONS".to_string(),
+        );
+        ctx.headers.insert(
+            "Access-Control-Allow-Headers".to_string(),
+            "Content-Type, Authorization".to_string(),
+        );
+
+        MiddlewareResult::Next(None)
     }
 }

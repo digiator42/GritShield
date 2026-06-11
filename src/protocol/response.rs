@@ -176,14 +176,24 @@ impl Response {
         }
     }
 
-    /// Serializes the response into raw bytes for the TCP stream
+    /// Serializes the response into raw bytes for the TCP stream safely
     pub fn to_bytes(&self, body_bytes: &[u8], content_type: &str) -> Vec<u8> {
         let mut response = format!("HTTP/1.1 {} OK\r\n", self.status);
 
         response.push_str(&format!("Content-Type: {}\r\n", content_type));
 
-        // Add standard headers
+        // Write the real byte count directly from the byte slice buffer!
+        response.push_str(&format!("Content-Length: {}\r\n", body_bytes.len()));
+
+        // Add standard headers, skipping keys we've already written explicitly (case-insensitive)
         for (key, value) in &self.headers {
+            let normalized_key = key.to_lowercase();
+
+            // Skip duplicates to prevent splitting the browser frame pipeline
+            if normalized_key == "content-type" || normalized_key == "content-length" {
+                continue;
+            }
+
             response.push_str(&format!("{}: {}\r\n", key, value));
         }
 
@@ -206,12 +216,12 @@ impl Response {
                 cookie_str.push_str("; Secure");
             }
 
-            println!("{}", cookie_str);
-
             response.push_str(&format!("{}\r\n", cookie_str));
         }
 
+        // Terminate header parsing sequence cleanly
         response.push_str("\r\n");
+
         let mut raw = response.into_bytes();
         raw.extend_from_slice(body_bytes);
 
