@@ -19,8 +19,12 @@ macro_rules! register_page {
     ($method:expr, $handler:expr) => {
         #[$crate::ctor::ctor(unsafe)]
         fn register_route() {
-            // file!() to guarantee the key perfectly matches the filesystem path!
-            let raw_file_path = file!().replace("\\", "/");
+            let mut raw_file_path = file!().replace("\\", "/");
+
+            // Normalize path to anchor from "src/" onwards to fix Cargo Workspace prefixes
+            if let Some(src_idx) = raw_file_path.find("src/") {
+                raw_file_path = raw_file_path[src_idx..].to_string();
+            }
 
             if let Ok(mut registry) = $crate::routing::file_system::FILE_ROUTING_REGISTRY.lock() {
                 registry.insert(
@@ -54,9 +58,8 @@ macro_rules! register_ws {
     ($path:expr, $handler:expr) => {
         #[$crate::ctor::ctor(unsafe)]
         fn init_ws_route() {
-            let wrapped: $crate::routing::websocket::WsHandlerFn = |stream, ctx| {
-                Box::pin($handler(stream, ctx))
-            };
+            let wrapped: $crate::routing::websocket::WsHandlerFn =
+                |stream, ctx| Box::pin($handler(stream, ctx));
             $crate::routing::websocket::register_ws_route($path, wrapped);
         }
     };

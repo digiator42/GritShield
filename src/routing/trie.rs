@@ -316,6 +316,10 @@ impl RequestContext {
 
     /// Dynamic recursive tree climber to check if a user role inherits the target role
     fn check_inheritance(&self, current_role: &str, target_role: &str) -> bool {
+        println!(
+            "[RBAC CHECK] Evaluating role '{}' against target '{}'",
+            current_role, target_role
+        );
         if current_role == target_role {
             return true;
         }
