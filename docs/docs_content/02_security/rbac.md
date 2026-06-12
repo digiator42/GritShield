@@ -108,19 +108,19 @@ How It Works
 ```rust
 pub async fn manage_users(ctx: RequestContext) -> Response {
     // Check with inheritance tree
-    if !ctx.has_inherited_role("Manager") {
+    if !ctx.has_role("Manager") {
         return Response::forbidden("Manager role or higher required");
     }
 
     // Strict version with ? (Recommended)
-    ctx.require_inherited_role("Manager")?; // needs ShieldResult, or use unwrap
+    ctx.require_role("Manager")?; // needs ShieldResult, or use unwrap
 
     // Handler logic...
 }
 
 pub async fn edit_post(ctx: RequestContext) -> ShieldResult<Response> {
     // This will return true for: Editor, Manager, Admin
-    ctx.require_inherited_role("Editor")?;
+    ctx.require_role("Editor")?;
 
     // Only users with Editor role or higher can proceed
     Ok(Response::ok("Post edited successfully"))

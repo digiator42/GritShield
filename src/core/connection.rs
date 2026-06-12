@@ -195,12 +195,12 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
 
                 // copy all accumulated middleware response headers 
                 // from ctx.headers into the final outbound response object!
-                // for (key, value) in ctx.headers.iter() {
-                //     // Only push if the handler hasn't already explicitly overwritten it
-                //     if !response.headers.iter().any(|(k, _)| k == key) {
-                //         response.headers.push((key.clone(), value.clone()));
-                //     }
-                // }
+                for (key, value) in ctx.headers.iter() {
+                    // Only push if the handler hasn't already explicitly overwritten it
+                    if !response.headers.iter().any(|(k, _)| k == key) {
+                        response.headers.push((key.clone(), value.clone()));
+                    }
+                }
 
                 if router_clone.use_logger {
                     router_clone.log_lifecycle(&ctx, response.status, start_time.elapsed());
