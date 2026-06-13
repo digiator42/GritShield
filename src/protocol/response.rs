@@ -339,6 +339,16 @@ impl Response {
     pub fn not_found<B: IntoResponseBody>(payload: B) -> Self {
         Self::build(404, payload)
     }
+    
+    /// 409 Conflict — Request conflict with the current state of the target resource.
+    pub fn conflict<B: IntoResponseBody>(payload: B) -> Self {
+        Self::build(409, payload)
+    }
+
+    /// 429 Too Many Requests — client has sent too many requests in a given amount of time
+    pub fn too_many_requests<B: IntoResponseBody>(payload: B) -> Self {
+        Self::build(429, payload)
+    }
 
     // --- 5xx SERVER ERRORS ---
 
