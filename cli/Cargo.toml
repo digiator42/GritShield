@@ -1,8 +1,8 @@
 [package]
 name = "gritshield_cli"
 version = "0.1.0"
-edition = "2024"
-authors = ["Your Name <you@example.com>"]
+edition = "2021"
+authors = ["Ahmed Hassan"]
 description = "Command line interface tool for scaffolding secure web engines under the GritShield framework."
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/digiator42/gritshield"
