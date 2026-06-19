@@ -1,12 +1,8 @@
-use sea_orm::{ConnectOptions, Database, DatabaseConnection, DbErr, ConnectionTrait, Statement};
+use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbErr, Statement};
 use std::fs;
 use std::path::Path;
+use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-
-pub async fn connect(url: &str) -> Result<DatabaseConnection, DbErr> {
-    println!("[GRITSHIELD] Connecting to database at {}...", url);
-    Database::connect(url).await
-}
 
 /// Framework database options wrapper to enforce structural safety
 pub struct DbConfig {
@@ -33,12 +29,32 @@ impl Default for DbConfig {
     }
 }
 
+impl DbConfig {
+    pub fn init(
+        max_connections: u32,
+        min_connections: u32,
+        connect_timeout: Duration,
+        idle_timeout: Duration,
+    ) -> Self {
+        let url = std::env::var("DATABASE_URL")
+            .unwrap_or_else(|_| "sqlite://app.db?mode=rwc".to_string());
+
+        Self {
+            url,
+            max_connections,
+            min_connections,
+            connect_timeout,
+            idle_timeout,
+        }
+    }
+}
+
 /// Core Database Manager for GritShield
 pub struct DbManager;
 
 impl DbManager {
     /// Connects to the database using configured framework safeguards
-    pub async fn connect(config: DbConfig) -> Result<DatabaseConnection, DbErr> {
+    pub async fn connect(config: DbConfig) -> Result<Arc<DatabaseConnection>, DbErr> {
         println!("[GRITSHIELD] Initializing secure database cluster link...");
 
         let mut opt = ConnectOptions::new(config.url);
@@ -62,7 +78,7 @@ impl DbManager {
             );
         }
 
-        Ok(connection)
+        Ok(Arc::new(connection))
     }
 
     /// Automatically scans the local directory for migrations and applies them

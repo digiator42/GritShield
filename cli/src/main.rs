@@ -2,7 +2,7 @@
 use clap::{Parser, Subcommand};
 use dialoguer::Select;
 use heck::{AsPascalCase, AsSnakeCase};
-use std::fs::{File, OpenOptions, create_dir_all};
+use std::fs::{create_dir_all, File, OpenOptions};
 use std::io::Write;
 use std::path::Path;
 
@@ -38,25 +38,22 @@ enum Blueprints {
 }
 
 fn main() {
-    let cli = Cli::parse(); //
+    let cli = Cli::parse();
 
     match &cli.command {
-        //
         Commands::New { name } => {
-            //
-            create_project(name); //
+            create_project(name);
         }
         Commands::Generate { blueprint } => match blueprint {
-            //
-            Blueprints::Controller { name } => generate_controller(name), //
-            Blueprints::Model { name } => generate_model(name),           //
-            Blueprints::Migration { description } => generate_migration(description), //
+            Blueprints::Controller { name } => generate_controller(name),
+            Blueprints::Model { name } => generate_model(name),
+            Blueprints::Migration { description } => generate_migration(description),
         },
     }
 }
 
 // =========================================================================
-// 🚀 COMMAND: NEW PROJECT SCAFFOLDER
+// COMMAND: NEW PROJECT SCAFFOLDER
 // =========================================================================
 fn create_project(name: &str) {
     //
@@ -68,7 +65,12 @@ fn create_project(name: &str) {
     ); //
 
     // 1. Interactive Database Selection Prompt
-    let db_options = vec!["SQLite (Embedded)", "PostgreSQL (Production)", "MySQL"]; //
+    let db_options = vec![
+        "SQLite (Embedded)",
+        "PostgreSQL (Production)",
+        "MySQL",
+        "Memory",
+    ];
     let db_selection = Select::new() //
         .with_prompt("Choose database engine layout") //
         .items(&db_options) //
@@ -77,20 +79,13 @@ fn create_project(name: &str) {
         .unwrap(); //
 
     // Determine features based on user selection to prevent "no supporting driver" panics
-    let (db_url, gritshield_features) = match db_selection {
+    let (_db_url, toml_package) = match db_selection {
         //
-        0 => ("sqlite://app.db?mode=rwc", "features = [\"sqlite\"]"), //
-        1 => (
-            //
-            "postgres://postgres:password@localhost:5432/app_db", //
-            "features = [\"postgres\"]",                          //
-        ), //
-        _ => (
-            //
-            "mysql://root:password@127.0.0.1:3306/app_db", //
-            "features = [\"mysql\"]",                      //
-        ), //
-    }; //
+        0 => ("sqlite://app.db?mode=rwc", "sea-orm = { version = \"1.0\", features = [\"sqlx-sqlite\", \"runtime-tokio-native-tls\", \"macros\"] }"),
+        1 => ("postgres://postgres:password@localhost:5432/app_db", "sea-orm = { version = \"1.0\", features = [\"sqlx-postgres\", \"runtime-tokio-native-tls\", \"macros\"] }"),
+        2 => ("mysql://root:password@127.0.0.1:3306/app_db", "sea-orm = { version = \"1.0\", features = [\"sqlx-mysql\", \"runtime-tokio-native-tls\", \"macros\"] }"),
+        _ => ("", ""),
+    };
 
     // Scaffold Directory Tree
     create_dir_all(base_path.join("src/controllers")).unwrap(); //
@@ -104,16 +99,16 @@ fn create_project(name: &str) {
         r#"[package]
 name = "{}"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 
 [dependencies]
-gritshield = {{ version = "0.1.2", {} }}
+gritshield = "0.1.1"
 tokio = {{ version = "1.0", features = ["full"] }}
 maud = "0.25"
 serde = {{ version = "1.0", features = ["derive"] }}
-"#,
-        name,
-        gritshield_features //
+{}
+        "#,
+        name, toml_package,
     ); //
     write_file(&base_path.join("Cargo.toml"), &cargo_toml); //
 
@@ -123,51 +118,46 @@ serde = {{ version = "1.0", features = ["derive"] }}
     // Write boilerplate info controller
     let info_ctrl = r#"use gritshield::prelude::*;
 
-#[get("/api/info")]
-pub async fn system_info(_ctx: RequestContext) -> Response {
-    Response::ok("GritShield Engine Core Node Online.")
-}
-"#;
+        #[get("/api/info")]
+        pub async fn system_info(_ctx: RequestContext) -> Response {
+            Response::ok("GritShield Engine Core Node Online.")
+        }
+        "#;
     write_file(&base_path.join("src/controllers/info.rs"), info_ctrl); //
 
     // Write main.rs utilizing clean framework database abstractions
     let main_rs = format!(
         //
-        r#"mod controllers;
-mod models;
+        r#"
+        use gritshield::prelude::*;
+        use gritshield::security::db::{{DbManager, DbConfig}};
+        use std::sync::Arc;
 
-use gritshield::prelude::*;
-use gritshield::security::db::{{DbManager, DbConfig}};
-use std::sync::Arc;
+        mod controllers;
 
-#[get("/")]
-async fn index(_ctx: RequestContext) -> Response {{
-    Response::new(200, Sanitizer::trust("<h1>Shield Operational</h1><p>GritShield application is successfully running.</p>"))
-}}
+        #[get("/")]
+        async fn index(_ctx: RequestContext) -> Response {{
+            Response::ok(Sanitizer::trust(
+                "<h1>Shield Operational</h1><p>GritShield application is successfully running.</p>",
+            ))
+        }}
 
-#[tokio::main]
-async fn main() {{
-    // Explicit environment variable tracking fallback configuration block
-    std::env::set_var("DATABASE_URL", "{}");
+        #[tokio::main]
+        async fn main() {{
+            // Initialize the engine configuration setup matrix
+            let db_config = DbConfig::default();
 
-    // Initialize the engine configuration setup matrix
-    let db_config = DbConfig::default();
+            // Fire connection pool parameters and run pending dynamic migrations automatically!
+            let shared_db = DbManager::connect(db_config).await.unwrap();
 
-    // Fire connection pool parameters and run pending dynamic migrations automatically!
-    let db_connection = DbManager::connect(db_config).await.unwrap();
-    let shared_db = Arc::new(db_connection);
+            // Mount database pool directly onto the context router pipeline bounds
+            let router = Router::new()
+                .mount_db(shared_db);
 
-    // Mount database pool directly onto the context router pipeline bounds
-    let router = Router::new()
-        .mount_db(shared_db);
-
-    println!("\x1b[32m[GRITSHIELD] Booting cluster link on http://127.0.0.1:8080\x1b[0m");
-    
-    // Clean, parameter-compliant execution invocation
-    gritshield::core::server::run_server("127.0.0.1", "8080", router, true).await;
-}}
-"#,
-        db_url //
+            // Run server
+            run_server("127.0.0.1", "8080", router, true).await;
+        }}
+        "#
     ); //
     write_file(&base_path.join("src/main.rs"), &main_rs); //
 
@@ -203,19 +193,18 @@ fn generate_controller(name: &str) {
     }
 
     let template = format!(
-        //
         r#"use gritshield::prelude::*;
 
-#[get("/{}")]
-pub async fn list(_ctx: RequestContext) -> Response {{
-    Response::ok("List data for {}")
-}}
+        #[get("/{}")]
+        pub async fn list(_ctx: RequestContext) -> Response {{
+            Response::ok("List data for {}")
+        }}
 
-#[post("/{}")]
-pub async fn create(_ctx: RequestContext) -> Response {{
-    Response::ok("Entity created.")
-}}
-"#,
+        #[post("/{}")]
+        pub async fn create(_ctx: RequestContext) -> Response {{
+            Response::ok("Entity created.")
+        }}
+        "#,
         snake_name,
         snake_name,
         snake_name //
@@ -250,16 +239,16 @@ fn generate_model(name: &str) {
         //
         r#"use serde::{{Serialize, Deserialize}};
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct {} {{
-    pub id: i64,
-    pub created_at: i64,
-}}
+        #[derive(Debug, Serialize, Deserialize, Clone)]
+        pub struct {} {{
+            pub id: i64,
+            pub created_at: i64,
+        }}
 
-impl {} {{
-    // Implement data map queries here
-}}
-"#,
+        impl {} {{
+            // Implement data map queries here
+        }}
+        "#,
         pascal_name,
         pascal_name //
     );
@@ -286,14 +275,14 @@ fn generate_migration(description: &str) {
     let template = format!(
         //
         r#"-- Migration: {}
--- Created at: {}
+        -- Created at: {}
 
--- -- Up: Write execution updates here
--- CREATE TABLE sample (id INTEGER PRIMARY KEY);
+        -- -- Up: Write execution updates here
+        -- CREATE TABLE sample (id INTEGER PRIMARY KEY);
 
--- -- Down: Write rollback steps here
--- DROP TABLE sample;
-"#,
+        -- -- Down: Write rollback steps here
+        -- DROP TABLE sample;
+        "#,
         description,
         timestamp //
     );
