@@ -633,7 +633,7 @@ impl Middleware for CorsMiddleware {
             ));
             res.headers.push((
                 "Access-Control-Allow-Methods".to_string(),
-                "POST, GET, OPTIONS, PUT, DELETE".to_string(),
+                "POST, GET, OPTIONS, PUT, PATCH, DELETE".to_string(),
             ));
             res.headers.push((
                 "Access-Control-Allow-Headers".to_string(),
@@ -650,7 +650,7 @@ impl Middleware for CorsMiddleware {
             .insert("Access-Control-Allow-Origin".to_string(), dynamic_origin);
         ctx.headers.insert(
             "Access-Control-Allow-Methods".to_string(),
-            "POST, GET, OPTIONS".to_string(),
+            "GET, POST, PUT, PATCH, DELETE, OPTIONS".to_string(),
         );
         ctx.headers.insert(
             "Access-Control-Allow-Headers".to_string(),
