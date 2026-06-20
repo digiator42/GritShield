@@ -9,6 +9,8 @@ pub struct RegisteredFileRoute {
     pub method: HttpMethod,
     // We store a factory function pointer that generates our boxed handler trait object
     pub handler_factory: fn() -> Box<dyn IntoHandler>,
+    /// Stateless Role Claim constraint required to unlock this specific file-system endpoint
+    pub required_role: Option<&'static str>,
 }
 
 pub static FILE_ROUTING_REGISTRY: Lazy<Mutex<HashMap<String, RegisteredFileRoute>>> =
@@ -16,7 +18,8 @@ pub static FILE_ROUTING_REGISTRY: Lazy<Mutex<HashMap<String, RegisteredFileRoute
 
 #[macro_export]
 macro_rules! register_page {
-    ($method:expr, $handler:expr) => {
+    // Pattern 1: With explicit named role verification tracking (e.g., role = "Admin")
+    ($method:expr, $handler:expr, role = $role:expr $(,)?) => {
         #[$crate::ctor::ctor(unsafe)]
         fn register_route() {
             let mut raw_file_path = file!().replace("\\", "/");
@@ -32,6 +35,30 @@ macro_rules! register_page {
                     $crate::routing::file_system::RegisteredFileRoute {
                         method: $method,
                         handler_factory: || Box::new($handler),
+                        required_role: Some($role), // Bound cleanly into runtime ledger
+                    },
+                );
+            }
+        }
+    };
+
+    // Pattern 2: Default fallback matching variant with no specified role constraint
+    ($method:expr, $handler:expr $(,)?) => {
+        #[$crate::ctor::ctor(unsafe)]
+        fn register_route() {
+            let mut raw_file_path = file!().replace("\\", "/");
+
+            if let Some(src_idx) = raw_file_path.find("src/") {
+                raw_file_path = raw_file_path[src_idx..].to_string();
+            }
+
+            if let Ok(mut registry) = $crate::routing::file_system::FILE_ROUTING_REGISTRY.lock() {
+                registry.insert(
+                    raw_file_path,
+                    $crate::routing::file_system::RegisteredFileRoute {
+                        method: $method,
+                        handler_factory: || Box::new($handler),
+                        required_role: None,
                     },
                 );
             }
