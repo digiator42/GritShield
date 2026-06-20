@@ -2,7 +2,7 @@ use crate::{
     core::env::get_env,
     protocol::{request::Request, response::Response},
     routing::{
-        trie::{GLOBAL_FALLBACK, RequestContext, Router, RoutingResult},
+        trie::{RequestContext, Router, RoutingResult, GLOBAL_FALLBACK},
         websocket::WS_REGISTRY,
     },
     security::{
@@ -41,7 +41,7 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
 
     // Match the route early to extract dynamic params for middleware use, even if the final handler isn't found
     let params = match router.match_route(&req.method, &req.path) {
-        RoutingResult::Found(_, dynamic_params) => dynamic_params.clone(),
+        RoutingResult::Found(_, _, dynamic_params) => dynamic_params.clone(),
         _ => HashMap::new(),
     };
 
@@ -170,10 +170,10 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
     let response_future = async move {
         // router_clone is ultra short-lived and never crosses an outer function boundary.
         match router_clone.match_route(&ctx.req.method, &ctx.req.path) {
-            RoutingResult::Found(handler, _) => {
+            RoutingResult::Found(handler, required_role, _) => {
                 // AUTOMATED ACCESS CONTROL MATRIX (RBAC Guard)
                 // Look up if this matching URL route path has an explicit role requirement attached
-                if let Some(required_role) = router_clone.role_registry.get(&ctx.req.path) {
+                if let Some(required_role) = required_role {
                     // Evaluates Fixed Engine rules FIRST, falling back to Dynamic tree links seamlessly
                     if !ctx.has_role(required_role) {
                         println!(
@@ -193,7 +193,7 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
 
                 let mut response: Response = handler.call(ctx.clone()).await;
 
-                // copy all accumulated middleware response headers 
+                // copy all accumulated middleware response headers
                 // from ctx.headers into the final outbound response object!
                 for (key, value) in ctx.headers.iter() {
                     // Only push if the handler hasn't already explicitly overwritten it

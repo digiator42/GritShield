@@ -4,7 +4,7 @@ use crate::protocol::request::{HttpMethod, Request};
 use crate::protocol::response::{Cookie, Response};
 use crate::routing::file_system::FILE_ROUTING_REGISTRY;
 use crate::security::cookies::CookieJar;
-use crate::security::errors::{GlobalErrorHandler, ShieldError, default_framework_error_handler};
+use crate::security::errors::{default_framework_error_handler, GlobalErrorHandler, ShieldError};
 use crate::security::jwt::Claims;
 use crate::security::middleware::{
     AfterRequestHook, Middleware, MiddlewareResult, MiddlewareState,
@@ -12,6 +12,7 @@ use crate::security::middleware::{
 use crate::security::session::{Session, SessionStore};
 use crate::security::telemetry::SystemTelemetry;
 use crate::security::xss::{Sanitizer, UntrustedString};
+use colored::*;
 use futures::future::{BoxFuture, FutureExt};
 use lazy_static::lazy_static;
 use sea_orm::DatabaseConnection;
@@ -23,6 +24,17 @@ use std::path::Path;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+
+fn method_color(method: &str) -> ColoredString {
+    match method {
+        "GET" => method.green(),
+        "POST" => method.blue(),
+        "PUT" => method.yellow(),
+        "DELETE" => method.red(),
+        "PATCH" => method.magenta(),
+        _ => method.white(),
+    }
+}
 
 pub type BoxedResponse = BoxFuture<'static, Response>;
 pub type Handler = fn(RequestContext) -> BoxedResponse;
@@ -440,10 +452,16 @@ pub struct AutoRoute {
 // Tell the compiler to create a tracking registry for AutoRoute elements
 inventory::collect!(AutoRoute);
 
+// A unified tracking entry for execution RBAC and security parameters
+pub struct RouteTarget {
+    pub handler: Box<dyn IntoHandler>,
+    pub required_role: Option<&'static str>,
+}
+
 pub struct Node {
     pub children: HashMap<String, Node>,
     pub is_end: bool,
-    pub methods: HashMap<HttpMethod, Box<dyn IntoHandler>>,
+    pub methods: HashMap<HttpMethod, RouteTarget>,
     pub parameter_name: Option<String>,
 }
 
@@ -459,7 +477,11 @@ impl Node {
 }
 
 pub enum RoutingResult<'a> {
-    Found(&'a dyn IntoHandler, HashMap<String, UntrustedString>),
+    Found(
+        &'a dyn IntoHandler,
+        Option<&'static str>,
+        HashMap<String, UntrustedString>,
+    ),
     MethodNotAllowed,
     NotFound,
 }
@@ -516,11 +538,13 @@ impl Router {
 
         for route in inventory::iter::<AutoRoute> {
             println!(
-                "[AUTO-ROUTING] Registering {} {:?}",
-                route.path, route.method
+                "[DYN-ROUTER] Registering: {:<30} {} [{:<6}]",
+                route.path,
+                format!("->").green(),
+                method_color(&format!("{:?}", route.method))
             );
 
-            // Capture role properties globally at framework startup
+            // Capture role properties globally at framework startup, this is DEPRECATED for now
             if let Some(role) = route.required_role {
                 println!(
                     "\x1b[33m[RBAC SHIELD] Detected role requirement for path: {} | Required role: {}\x1b[0m",
@@ -530,7 +554,7 @@ impl Router {
             }
 
             // Route standard mapping execution
-            router.add_route(route.method, route.path, route.handler);
+            router.add_route(route.method, route.path, route.handler, route.required_role);
         }
 
         router
@@ -547,8 +571,8 @@ impl Router {
         self
     }
 
-    pub fn mount(&mut self, route_info: (&str, HttpMethod, Handler)) {
-        self.add_route(route_info.1, route_info.0, route_info.2);
+    pub fn route(&mut self, route_info: (&str, HttpMethod, Handler)) {
+        self.add_route(route_info.1, route_info.0, route_info.2, None);
     }
 
     /// Register a global pipeline middleware by moving ownership
@@ -607,8 +631,14 @@ impl Router {
         MiddlewareResult::Next(Some(accumulated_state))
     }
 
-    pub fn add_route<H>(&mut self, method: HttpMethod, path: &str, handler: H)
-    where
+    // Update the basic registration engine signature
+    pub fn add_route<H>(
+        &mut self,
+        method: HttpMethod,
+        path: &str,
+        handler: H,
+        required_role: Option<&'static str>,
+    ) where
         H: IntoHandler,
     {
         let mut current = &mut self.root;
@@ -621,7 +651,14 @@ impl Router {
         }
 
         current.is_end = true;
-        current.methods.insert(method, Box::new(handler));
+        // Inject both operational layers into the target method bucket
+        current.methods.insert(
+            method,
+            RouteTarget {
+                handler: Box::new(handler),
+                required_role,
+            },
+        );
     }
 
     pub fn match_route<'a>(&'a self, method: &HttpMethod, path: &str) -> RoutingResult<'a> {
@@ -676,7 +713,7 @@ impl Router {
         }
 
         match current.methods.get(method) {
-            Some(handler) => RoutingResult::Found(&**handler, params),
+            Some(target) => RoutingResult::Found(&*target.handler, target.required_role, params),
             None => {
                 if !current.methods.is_empty() {
                     RoutingResult::MethodNotAllowed
@@ -720,12 +757,9 @@ impl Router {
         Ok(())
     }
 
+    // Update file-system crawlers to pass down macro role parameters
     fn process_page_file(&mut self, file_path: &Path, base_dir: &Path) {
-        // 1. Convert filesystem paths to absolute lookup keys
-        // Example: "src/pages/api/users.rs"
         let file_key = file_path.to_string_lossy().replace("\\", "/");
-
-        // 2. Compute the dynamic URL Route path
         let relative = file_path.strip_prefix(base_dir).unwrap().with_extension("");
         let relative_str = relative.to_string_lossy().replace("\\", "/");
 
@@ -736,32 +770,34 @@ impl Router {
         } else {
             format!("/{}", relative_str)
         };
-        // Converts "docs/[..path]" -> "docs/:*path"
+
         if url_route.contains('[') && url_route.contains(']') {
             url_route = url_route
-                .replace("[..", ":*") // Handles the Next.js catch-all style
-                .replace("[", ":*") // Fallback for standard dynamic brackets
+                .replace("[..", ":*")
+                .replace("[", ":*")
                 .replace("]", "");
         }
-
-        // Converts folder/foo/_path_ to folder/foo/:*path (Alternative layout)
         if url_route.contains('_') {
             url_route = url_route.replace("_", ":*");
         }
 
-        // Extract the handler out of our pre-compiled global registry map safely
         if let Ok(registry) = FILE_ROUTING_REGISTRY.lock() {
             if let Some(registered) = registry.get(&file_key) {
                 println!(
-                    "[GRITSHIELD FS-ROUTER] Mapping File System Asset: {} ➡️  Route: [{:?}] {}",
-                    file_key, registered.method, url_route
+                    "[FBS-ROUTER] Registering: {:<30} {} [{:<6}] {}",
+                    file_key,
+                    format!("->").green(),
+                    method_color(&format!("{:?}", registered.method)),
+                    url_route
                 );
                 let handler_instance = (registered.handler_factory)();
-                self.add_route(registered.method, &url_route, handler_instance);
-            } else {
-                eprintln!(
-                    "[WARN] Discovered file '{}', but no `register_page!` statement was found inside it.",
-                    file_key
+
+                // Seamless integration: file-system pages now pipe their macro roles straight into the trie!
+                self.add_route(
+                    registered.method,
+                    &url_route,
+                    handler_instance,
+                    registered.required_role,
                 );
             }
         }

@@ -290,6 +290,31 @@ impl Response {
         }
     }
 
+    /// Return a proper HTTP 302 response with the right headers and a simple HTML body
+    /// forcing the browser to seamlessly navigate to a target destination URL.
+    pub fn navigate_to(location: &str) -> Response {
+        Response {
+            status: 302, // standard redirect status
+            headers: vec![
+                ("Location".to_string(), location.to_string()),
+                (
+                    "Content-Type".to_string(),
+                    "text/html; charset=utf-8".to_string(),
+                ),
+                ("X-Content-Type-Options".to_string(), "nosniff".to_string()),
+                ("X-Frame-Options".to_string(), "DENY".to_string()),
+            ],
+            cookies: Vec::new(),
+            body: ResponseBody::Html(Sanitizer::trust(
+                format!(
+                    "Redirecting to <a href=\"{}\">{}</a>...",
+                    location, location
+                )
+                .as_str(),
+            )),
+        }
+    }
+
     /// Core polymorphic base constructor utilizing the IntoResponseBody converter pipeline
     pub fn build<B: IntoResponseBody>(status: u16, payload: B) -> Self {
         let (body, content_type) = payload.convert();
@@ -339,7 +364,7 @@ impl Response {
     pub fn not_found<B: IntoResponseBody>(payload: B) -> Self {
         Self::build(404, payload)
     }
-    
+
     /// 409 Conflict — Request conflict with the current state of the target resource.
     pub fn conflict<B: IntoResponseBody>(payload: B) -> Self {
         Self::build(409, payload)
