@@ -106,6 +106,7 @@ gritshield = "0.1.1"
 tokio = {{ version = "1.0", features = ["full"] }}
 maud = "0.25"
 serde = {{ version = "1.0", features = ["derive"] }}
+ctor = "1.0.7"
 {}
         "#,
         name, toml_package,
