@@ -134,6 +134,20 @@ where
     }
 }
 
+// Support for Maud Templates Integration
+impl IntoResponseBody for maud::PreEscaped<String> {
+    fn convert(self) -> (ResponseBody, String) {
+        // Maud guarantees its compiled payload buffer is already clean of XSS vulnerabilities.
+        // We unpack the inner string out of the tuple struct wrapper safely.
+        let compiled_html = self.0;
+
+        (
+            ResponseBody::Html(Sanitizer::trust(&compiled_html)),
+            "text/html; charset=utf-8".to_string(),
+        )
+    }
+}
+
 pub struct Response {
     pub status: u16,
     pub headers: Vec<(String, String)>,
