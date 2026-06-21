@@ -13,7 +13,7 @@ macro_rules! render {
     }};
 
     // Mode B: Raw HTML String Injection via explicit token flag
-    (raw, $ctx:expr, $title:expr, $html_string:expr) => {{
+    ($ctx:expr, $title:expr, raw $html_string:expr) => {{
         let raw_wrapper = maud::PreEscaped($html_string);
         let final_html = crate::root::layout::main_layout($title, raw_wrapper, &$ctx).into_string();
 
