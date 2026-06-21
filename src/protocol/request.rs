@@ -44,7 +44,7 @@ impl Request {
 
         let mut buffer = vec![0; MAX_REQUEST_SIZE];
 
-        let bytes_read = match timeout(Duration::from_secs(5), stream.read(&mut buffer)).await {
+        let bytes_read = match timeout(Duration::from_secs(10), stream.read(&mut buffer)).await {
             Ok(Ok(n)) => n,
             Ok(Err(e)) => return Err(format!("I/O Error: {}", e)),
             Err(_) => return Err("Request timeout exceeded".to_string()),

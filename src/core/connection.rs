@@ -85,7 +85,12 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
                 }
             }
         }
-        MiddlewareResult::Error(err_res) => {
+        MiddlewareResult::Error(mut err_res) => {
+            // Securely commit the jar state to intercept redirects with cookies!
+            if let Ok(locked_jar) = jar.lock() {
+                err_res = locked_jar.clone().commit(err_res);
+            }
+
             let (bytes, mime) = err_res.resolve();
             let _ = stream.write_all(&err_res.to_bytes(&bytes, &mime)).await;
 
