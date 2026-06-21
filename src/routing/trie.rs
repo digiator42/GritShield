@@ -256,32 +256,107 @@ impl RequestContext {
 
     /// Write a key-value attribute directly into the active session instance
     pub fn set_session_data(&self, key: &str, value: &str) {
-        if let Some(ref session_arc) = self.session {
-            if let Ok(mut session) = session_arc.lock() {
-                session.data.insert(key.to_string(), value.to_string());
+        match &self.session {
+            Some(session_arc) => match session_arc.lock() {
+                Ok(mut session) => {
+                    session.data.insert(key.to_string(), value.to_string());
+                    println!(
+                        "[SESSION] Set key '{}' = '{}' in session {}",
+                        key, value, session.id
+                    );
+                }
+                Err(e) => {
+                    eprintln!("[SESSION ERROR] Failed to lock session for write: {}", e);
+                }
+            },
+            None => {
+                eprintln!(
+                    "[SESSION ERROR] Cannot set session data: session is None. \
+                     This usually means the middleware didn't initialize it properly."
+                );
             }
         }
     }
 
-    /// Read an attribute value out of the active session instance
     pub fn get_session_data(&self, key: &str) -> Option<String> {
         let session_arc = self.session.as_ref()?;
-        let session = session_arc.lock().ok()?;
-        session.data.get(key).cloned()
+        match session_arc.lock() {
+            Ok(session) => {
+                let value = session.data.get(key).cloned();
+                if value.is_some() {
+                    println!("[SESSION] Read key '{}' from session", key);
+                } else {
+                    println!("[SESSION] Key '{}' not found in session", key);
+                }
+                value
+            }
+            Err(e) => {
+                eprintln!("[SESSION ERROR] Failed to lock session for read: {}", e);
+                None
+            }
+        }
     }
 
     /// Explicitly tag the session as authenticated to a specific User Entity ID
     pub fn login_user_id(&self, user_id: &str) {
-        if let Some(ref session_arc) = self.session {
-            if let Ok(mut session) = session_arc.lock() {
-                session.user_id = Some(user_id.to_string());
+        println!("[AUTH] Attempting to login user: {}", user_id);
+        println!("[DEBUG] ctx.session is: {:?}", self.session.is_some());
+
+        match &self.session {
+            Some(session_arc) => {
+                match session_arc.lock() {
+                    Ok(mut session) => {
+                        // Set in both places for redundancy
+                        session.user_id = Some(user_id.to_string());
+                        session
+                            .data
+                            .insert("user_id".to_string(), user_id.to_string());
+
+                        println!(
+                            "[AUTH] ✓ Successfully logged in user {} to session {}",
+                            user_id, session.id
+                        );
+                    }
+                    Err(e) => {
+                        eprintln!("[AUTH ERROR] Failed to lock session during login: {}", e);
+                    }
+                }
+            }
+            None => {
+                eprintln!(
+                    "[AUTH ERROR] CRITICAL: Cannot login user - ctx.session is None! \
+                     The middleware MUST initialize a session before handler execution."
+                );
             }
         }
     }
 
     /// Explicitly check if the current request context belongs to a logged-in user
     pub fn is_user_authenticated(&self) -> bool {
-        self.get_session_data("user_id").is_some()
+        match &self.session {
+            Some(session_arc) => match session_arc.lock() {
+                Ok(session) => {
+                    let has_user_id = session.user_id.is_some();
+                    let has_user_data = session.data.get("user_id").is_some();
+
+                    if has_user_id || has_user_data {
+                        println!("[AUTH] User authenticated in session {}", session.id);
+                        return true;
+                    }
+
+                    println!("[AUTH] Session {} has no user_id", session.id);
+                    false
+                }
+                Err(e) => {
+                    eprintln!("[AUTH ERROR] Failed to lock session for auth check: {}", e);
+                    false
+                }
+            },
+            None => {
+                println!("[AUTH] No session available - user is not authenticated");
+                false
+            }
+        }
     }
 
     /// Extracts the cached role string natively out of GritShield's hybrid state store.
@@ -289,61 +364,109 @@ impl RequestContext {
     pub fn get_user_role(&self) -> Option<String> {
         // Check stateful session storage first
         if let Some(ref session_arc) = self.session {
-            if let Ok(session) = session_arc.lock() {
-                if let Some(role) = session.data.get("role") {
-                    return Some(role.clone());
+            match session_arc.lock() {
+                Ok(session) => {
+                    if let Some(role) = session.data.get("role") {
+                        println!("[RBAC] Retrieved role '{}' from session", role);
+                        return Some(role.clone());
+                    }
+                }
+                Err(e) => {
+                    eprintln!("[RBAC ERROR] Failed to lock session for role check: {}", e);
                 }
             }
         }
 
         // Stateless Fallback: Read the role field embedded inside the cryptographically validated JWT
         if let Some(ref claims) = self.claims {
+            println!("[RBAC] Retrieved role '{}' from JWT claims", claims.role);
             return Some(claims.role.clone());
         }
 
+        println!("[RBAC] No role found in session or claims");
         None
     }
 
-    /// Non-blocking check evaluating security roles using hierarchical permissions (Admin, Operator, Auditor) bypassing.
+    /// Non-blocking check evaluating security roles using hierarchical permissions
     pub fn has_fixed_role(&self, target_role: &str) -> bool {
         match self.get_user_role() {
             Some(role) => {
                 // If an exact match is found, allow entry immediately
                 if role == target_role {
+                    println!("[RBAC] Role '{}' matches target '{}'", role, target_role);
                     return true;
                 }
 
                 // Hierarchical authorization structure bypass rules
-                match (role.as_str(), target_role) {
+                let allowed = match (role.as_str(), target_role) {
                     ("Admin", _) => true, // Admins bypass all lower operational barriers
                     ("Operator", "Admin") => false,
                     ("Operator", _) => true, // Operators access standard and low tier pathways
                     ("Auditor", "Auditor") => true,
                     _ => false,
+                };
+
+                if allowed {
+                    println!(
+                        "[RBAC] Role '{}' is permitted access to '{}'",
+                        role, target_role
+                    );
+                } else {
+                    println!(
+                        "[RBAC] Role '{}' is DENIED access to '{}'",
+                        role, target_role
+                    );
                 }
+
+                allowed
             }
-            None => false,
+            None => {
+                println!("[RBAC] No role found - access to '{}' denied", target_role);
+                false
+            }
         }
     }
 
     /// Dynamic recursive tree climber to check if a user role inherits the target role
     fn check_inheritance(&self, current_role: &str, target_role: &str) -> bool {
         println!(
-            "[RBAC CHECK] Evaluating role '{}' against target '{}'",
+            "[RBAC TREE] Checking if '{}' inherits '{}'",
             current_role, target_role
         );
+
         if current_role == target_role {
+            println!(
+                "[RBAC TREE] ✓ Direct match: '{}' == '{}'",
+                current_role, target_role
+            );
             return true;
         }
 
         // Search the map stored natively inside the request context
         if let Some(children) = self.role_inheritance.get(current_role) {
+            println!(
+                "[RBAC TREE] Found {} children for role '{}'",
+                children.len(),
+                current_role
+            );
+
             for child in children {
-                if child == target_role || self.check_inheritance(child, target_role) {
+                if child == target_role {
+                    println!("[RBAC TREE] ✓ Found direct child match: '{}'", child);
+                    return true;
+                }
+
+                if self.check_inheritance(child, target_role) {
+                    println!("[RBAC TREE] ✓ Found inherited match through '{}'", child);
                     return true;
                 }
             }
         }
+
+        println!(
+            "[RBAC TREE] ✗ No inheritance path from '{}' to '{}'",
+            current_role, target_role
+        );
         false
     }
 
@@ -368,10 +491,12 @@ impl RequestContext {
     /// Checks if the user has the required role, and if not, returns a Forbidden error
     pub fn require_role(&self, target_role: &str) -> ShieldResult<()> {
         if self.has_role(target_role) {
+            println!("[RBAC] ✓ Role check passed for target '{}'", target_role);
             Ok(())
         } else {
             println!(
-                "\x1b[33m[SECURITY EXCEPTION] Inline unified RBAC guard tripped: Missing role '{}'\x1b[0m",
+                "\x1b[33m[SECURITY EXCEPTION] Inline unified RBAC guard tripped: \
+                 Missing role '{}'\x1b[0m",
                 target_role
             );
             Err(ShieldError::Forbidden)
@@ -382,35 +507,44 @@ impl RequestContext {
     /// If a session exists but lacks a token, it initializes one on-the-fly dynamically.
     pub fn get_csrf_token(&self) -> String {
         if let Some(ref session_arc) = self.session {
-            let mut session = session_arc.lock().unwrap();
+            match session_arc.lock() {
+                Ok(mut session) => {
+                    // If it exists, return it immediately
+                    if let Some(token) = session.data.get("csrf_token") {
+                        println!(
+                            "[CSRF] Retrieved existing token from session {}",
+                            session.id
+                        );
+                        return token.clone();
+                    }
 
-            // If it exists, return it immediately
-            if let Some(token) = session.data.get("csrf_token") {
-                return token.clone();
+                    // If the session exists but lacks a token, mint it right now!
+                    let fresh_token = uuid::Uuid::new_v4().to_string();
+                    session
+                        .data
+                        .insert("csrf_token".to_string(), fresh_token.clone());
+
+                    println!(
+                        "[CSRF KERNEL] Lazy-initialized token on first context read: {}",
+                        fresh_token
+                    );
+                    return fresh_token;
+                }
+                Err(e) => {
+                    eprintln!("[CSRF ERROR] Failed to lock session: {}", e);
+                    return String::new();
+                }
             }
-
-            // If the session exists but lacks a token, mint it right now!
-            let fresh_token = uuid::Uuid::new_v4().to_string();
-            session
-                .data
-                .insert("csrf_token".to_string(), fresh_token.clone());
-
-            println!(
-                "[CSRF KERNEL] Lazy-initialized token on first context read: {}",
-                fresh_token
-            );
-            return fresh_token;
         }
 
         // Fallback catch if no session is mounted at all
+        eprintln!("[CSRF ERROR] No session available for CSRF token generation");
         String::new()
     }
 
     /// Safely extracts and decodes a query parameter value by key.
     /// Converts hex escape sequences (like %20) back into clean UTF-8 text.
     pub fn get_query_param_decoded(&self, key: &str) -> Option<String> {
-        // Assuming your request object has a query map or parses raw params
-        // Adjust `self.req.query.get(key)` to match how your Request parser tracks URL params
         let raw_val = self.query.get(key)?;
 
         let mut decoded = String::new();
