@@ -1,8 +1,7 @@
 [package]
 name = "gritshield_macros"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
-authors = ["Your Name <you@example.com>"]
 description = "Procedural attribute routing macros for the GritShield secure web framework."
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/digiator42/gritshield"

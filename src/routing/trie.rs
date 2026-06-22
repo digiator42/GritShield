@@ -4,7 +4,7 @@ use crate::protocol::request::{HttpMethod, Request};
 use crate::protocol::response::{Cookie, Response};
 use crate::routing::file_system::FILE_ROUTING_REGISTRY;
 use crate::security::cookies::CookieJar;
-use crate::security::errors::{default_framework_error_handler, GlobalErrorHandler, ShieldError};
+use crate::security::errors::{GlobalErrorHandler, ShieldError, default_framework_error_handler};
 use crate::security::jwt::Claims;
 use crate::security::middleware::{
     AfterRequestHook, Middleware, MiddlewareResult, MiddlewareState,
@@ -705,8 +705,28 @@ impl Router {
         self
     }
 
-    pub fn route(&mut self, route_info: (&str, HttpMethod, Handler)) {
+    /// Register routes using tuples for a clean, declarative style.
+    ///
+    /// ### Example
+    /// You can declare a matrix of routes in one place:
+    /// ```rust
+    /// let app_routes = vec![
+    ///     ("/login",    HttpMethod::GET,  handle_login),
+    ///     ("/register", HttpMethod::POST, handle_register),
+    ///     ("/dashboard",HttpMethod::GET,  handle_dashboard),
+    /// ];
+    /// ```
+    ///
+    /// Then register them all elegantly in a single line:
+    /// ```rust
+    /// app_routes.into_iter().for_each(|r| router.route(r));
+    /// ```
+    pub fn route<H>(mut self, route_info: (&str, HttpMethod, H)) -> Self
+    where
+        H: IntoHandler,
+    {
         self.add_route(route_info.1, route_info.0, route_info.2, None);
+        self
     }
 
     /// Register a global pipeline middleware by moving ownership

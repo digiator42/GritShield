@@ -13,6 +13,7 @@ pub mod utils;
 pub use ctor;
 
 // pub use gritshield_macros::*;
+pub use gritshield_macros::controller;
 pub use gritshield_macros::{get, post, put, patch, delete};
 
 // -----------------------------------------------------------------
@@ -49,6 +50,7 @@ pub mod prelude {
     pub use crate::core::env::get_env;
 
     // Re-export macros for the prelude
+    pub use crate::controller;
     pub use crate::{delete, get, patch, post, put};
 
     // External essentials the developer will always need

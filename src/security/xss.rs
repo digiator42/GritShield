@@ -15,6 +15,11 @@ impl UntrustedString {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    /// Converts an UntrustedString into a String.
+    pub fn to_string(self) -> String {
+        self.0
+    }
 }
 
 impl fmt::Display for UntrustedString {
