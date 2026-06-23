@@ -29,9 +29,6 @@ pub fn initialize_env() {
 
 /// An environment variable getter with strict hierarchical system lookups and defaults.
 pub fn get_env(key: &str, default: &str) -> String {
-    // Ensure the initialization has run
-    initialize_env();
-
     // Query process memory. std::env::var automatically checks BOTH:
     //    a) Values injected via dotenvy from a local file
     //    b) Actual native OS system variables (e.g. DATABASE_URL set via bash/docker env flags)

@@ -4,6 +4,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use crate::core::env::{get_env, initialize_env};
 use crate::{debug, error, info, warn};
 
 /// Framework database options wrapper to enforce structural safety
@@ -18,8 +19,9 @@ pub struct DbConfig {
 impl Default for DbConfig {
     fn default() -> Self {
         // Fallback to environment variable or standard secure defaults
-        let url = std::env::var("DATABASE_URL")
-            .unwrap_or_else(|_| "sqlite://app.db?mode=rwc".to_string());
+        let url = get_env("DATABASE_URL", "");
+
+        initialize_env();
 
         Self {
             url,
@@ -38,8 +40,9 @@ impl DbConfig {
         connect_timeout: Duration,
         idle_timeout: Duration,
     ) -> Self {
-        let url = std::env::var("DATABASE_URL")
-            .unwrap_or_else(|_| "sqlite://app.db?mode=rwc".to_string());
+        let url = get_env("DATABASE_URL", "");
+
+        initialize_env();
 
         Self {
             url,
@@ -59,7 +62,14 @@ impl DbManager {
     pub async fn connect(config: DbConfig) -> Result<Arc<DatabaseConnection>, DbErr> {
         info!("[GRITSHIELD] Initializing secure database cluster link...");
 
-        let mut opt = ConnectOptions::new(config.url);
+        let database_url = if config.url.trim().is_empty() {
+            warn!("[GRITSHIELD] DATABASE_URL is empty, falling back to in-memory SQLite.");
+            "sqlite::memory:".to_string()
+        } else {
+            config.url.clone()
+        };
+
+        let mut opt = ConnectOptions::new(database_url);
 
         // Enforce connection limits and health checks automatically
         opt.max_connections(config.max_connections)
