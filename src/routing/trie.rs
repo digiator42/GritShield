@@ -1,10 +1,10 @@
-use crate::core::logger::log_request_summary;
+use crate::core::logger::{self, LogLevel, log_request_summary};
 use crate::protocol::form::FormData;
 use crate::protocol::request::{HttpMethod, Request};
 use crate::protocol::response::{Cookie, Response};
 use crate::routing::file_system::FILE_ROUTING_REGISTRY;
 use crate::security::cookies::CookieJar;
-use crate::security::errors::{GlobalErrorHandler, ShieldError, default_framework_error_handler};
+use crate::security::errors::{default_framework_error_handler, GlobalErrorHandler, ShieldError};
 use crate::security::jwt::Claims;
 use crate::security::middleware::{
     AfterRequestHook, Middleware, MiddlewareResult, MiddlewareState,
@@ -12,6 +12,7 @@ use crate::security::middleware::{
 use crate::security::session::{Session, SessionStore};
 use crate::security::telemetry::SystemTelemetry;
 use crate::security::xss::{Sanitizer, UntrustedString};
+use crate::{debug, error, info, trace, warn};
 use colored::*;
 use futures::future::{BoxFuture, FutureExt};
 use lazy_static::lazy_static;
@@ -266,11 +267,11 @@ impl RequestContext {
                     );
                 }
                 Err(e) => {
-                    eprintln!("[SESSION ERROR] Failed to lock session for write: {}", e);
+                    error!("[SESSION ERROR] Failed to lock session for write: {}", e);
                 }
             },
             None => {
-                eprintln!(
+                error!(
                     "[SESSION ERROR] Cannot set session data: session is None. \
                      This usually means the middleware didn't initialize it properly."
                 );
@@ -284,14 +285,14 @@ impl RequestContext {
             Ok(session) => {
                 let value = session.data.get(key).cloned();
                 if value.is_some() {
-                    println!("[SESSION] Read key '{}' from session", key);
+                    debug!("[SESSION] Read key '{}' from session", key);
                 } else {
-                    println!("[SESSION] Key '{}' not found in session", key);
+                    debug!("[SESSION] Key '{}' not found in session", key);
                 }
                 value
             }
             Err(e) => {
-                eprintln!("[SESSION ERROR] Failed to lock session for read: {}", e);
+                error!("[SESSION ERROR] Failed to lock session for read: {}", e);
                 None
             }
         }
@@ -299,8 +300,8 @@ impl RequestContext {
 
     /// Explicitly tag the session as authenticated to a specific User Entity ID
     pub fn login_user_id(&self, user_id: &str) {
-        println!("[AUTH] Attempting to login user: {}", user_id);
-        println!("[DEBUG] ctx.session is: {:?}", self.session.is_some());
+        debug!("[AUTH] Attempting to login user: {}", user_id);
+        debug!("[DEBUG] ctx.session is: {:?}", self.session.is_some());
 
         match &self.session {
             Some(session_arc) => {
@@ -312,18 +313,18 @@ impl RequestContext {
                             .data
                             .insert("user_id".to_string(), user_id.to_string());
 
-                        println!(
+                        debug!(
                             "[AUTH] ✓ Successfully logged in user {} to session {}",
                             user_id, session.id
                         );
                     }
                     Err(e) => {
-                        eprintln!("[AUTH ERROR] Failed to lock session during login: {}", e);
+                        error!("[AUTH ERROR] Failed to lock session during login: {}", e);
                     }
                 }
             }
             None => {
-                eprintln!(
+                error!(
                     "[AUTH ERROR] CRITICAL: Cannot login user - ctx.session is None! \
                      The middleware MUST initialize a session before handler execution."
                 );
@@ -340,20 +341,20 @@ impl RequestContext {
                     let has_user_data = session.data.get("user_id").is_some();
 
                     if has_user_id || has_user_data {
-                        println!("[AUTH] User authenticated in session {}", session.id);
+                        debug!("[AUTH] User authenticated in session {}", session.id);
                         return true;
                     }
 
-                    println!("[AUTH] Session {} has no user_id", session.id);
+                    debug!("[AUTH] Session {} has no user_id", session.id);
                     false
                 }
                 Err(e) => {
-                    eprintln!("[AUTH ERROR] Failed to lock session for auth check: {}", e);
+                    error!("[AUTH ERROR] Failed to lock session for auth check: {}", e);
                     false
                 }
             },
             None => {
-                println!("[AUTH] No session available - user is not authenticated");
+                warn!("[AUTH] No session available - user is not authenticated");
                 false
             }
         }
@@ -367,23 +368,23 @@ impl RequestContext {
             match session_arc.lock() {
                 Ok(session) => {
                     if let Some(role) = session.data.get("role") {
-                        println!("[RBAC] Retrieved role '{}' from session", role);
+                        debug!("[RBAC] Retrieved role '{}' from session", role);
                         return Some(role.clone());
                     }
                 }
                 Err(e) => {
-                    eprintln!("[RBAC ERROR] Failed to lock session for role check: {}", e);
+                    error!("[RBAC ERROR] Failed to lock session for role check: {}", e);
                 }
             }
         }
 
         // Stateless Fallback: Read the role field embedded inside the cryptographically validated JWT
         if let Some(ref claims) = self.claims {
-            println!("[RBAC] Retrieved role '{}' from JWT claims", claims.role);
+            debug!("[RBAC] Retrieved role '{}' from JWT claims", claims.role);
             return Some(claims.role.clone());
         }
 
-        println!("[RBAC] No role found in session or claims");
+        warn!("[RBAC] No role found in session or claims");
         None
     }
 
@@ -429,22 +430,24 @@ impl RequestContext {
 
     /// Dynamic recursive tree climber to check if a user role inherits the target role
     fn check_inheritance(&self, current_role: &str, target_role: &str) -> bool {
-        println!(
+        trace!(
             "[RBAC TREE] Checking if '{}' inherits '{}'",
-            current_role, target_role
+            current_role,
+            target_role
         );
 
         if current_role == target_role {
-            println!(
+            trace!(
                 "[RBAC TREE] ✓ Direct match: '{}' == '{}'",
-                current_role, target_role
+                current_role,
+                target_role
             );
             return true;
         }
 
         // Search the map stored natively inside the request context
         if let Some(children) = self.role_inheritance.get(current_role) {
-            println!(
+            trace!(
                 "[RBAC TREE] Found {} children for role '{}'",
                 children.len(),
                 current_role
@@ -452,18 +455,18 @@ impl RequestContext {
 
             for child in children {
                 if child == target_role {
-                    println!("[RBAC TREE] ✓ Found direct child match: '{}'", child);
+                    trace!("[RBAC TREE] ✓ Found direct child match: '{}'", child);
                     return true;
                 }
 
                 if self.check_inheritance(child, target_role) {
-                    println!("[RBAC TREE] ✓ Found inherited match through '{}'", child);
+                    trace!("[RBAC TREE] ✓ Found inherited match through '{}'", child);
                     return true;
                 }
             }
         }
 
-        println!(
+        warn!(
             "[RBAC TREE] ✗ No inheritance path from '{}' to '{}'",
             current_role, target_role
         );
@@ -491,12 +494,12 @@ impl RequestContext {
     /// Checks if the user has the required role, and if not, returns a Forbidden error
     pub fn require_role(&self, target_role: &str) -> ShieldResult<()> {
         if self.has_role(target_role) {
-            println!("[RBAC] ✓ Role check passed for target '{}'", target_role);
+            debug!("[RBAC] ✓ Role check passed for target '{}'", target_role);
             Ok(())
         } else {
-            println!(
-                "\x1b[33m[SECURITY EXCEPTION] Inline unified RBAC guard tripped: \
-                 Missing role '{}'\x1b[0m",
+            warn!(
+                "[SECURITY EXCEPTION] Inline unified RBAC guard tripped: \
+                 Missing role '{}'",
                 target_role
             );
             Err(ShieldError::Forbidden)
@@ -511,7 +514,7 @@ impl RequestContext {
                 Ok(mut session) => {
                     // If it exists, return it immediately
                     if let Some(token) = session.data.get("csrf_token") {
-                        println!(
+                        debug!(
                             "[CSRF] Retrieved existing token from session {}",
                             session.id
                         );
@@ -524,21 +527,21 @@ impl RequestContext {
                         .data
                         .insert("csrf_token".to_string(), fresh_token.clone());
 
-                    println!(
+                    debug!(
                         "[CSRF KERNEL] Lazy-initialized token on first context read: {}",
                         fresh_token
                     );
                     return fresh_token;
                 }
                 Err(e) => {
-                    eprintln!("[CSRF ERROR] Failed to lock session: {}", e);
+                    error!("[CSRF ERROR] Failed to lock session: {}", e);
                     return String::new();
                 }
             }
         }
 
         // Fallback catch if no session is mounted at all
-        eprintln!("[CSRF ERROR] No session available for CSRF token generation");
+        error!("[CSRF ERROR] No session available for CSRF token generation");
         String::new()
     }
 
@@ -640,7 +643,6 @@ pub struct Router {
     pub middlewares: Vec<Box<dyn Middleware>>, // A list of dynamic trait objects
     pub db: Option<Arc<DatabaseConnection>>,   // An optional database connection
     pub after_hooks: Vec<Box<dyn AfterRequestHook>>,
-    pub use_logger: bool,
     pub global_error_handler: GlobalErrorHandler,
     pub telemetry: SystemTelemetry,
     pub fallback_handler: Option<PageHandlerFn>,
@@ -650,6 +652,8 @@ pub struct Router {
 
 impl Router {
     pub fn new() -> Self {
+        logger::init_from_env();
+
         let fallback = if let Ok(guard) = GLOBAL_FALLBACK.lock() {
             guard.clone()
         } else {
@@ -659,7 +663,6 @@ impl Router {
             root: Node::new(),
             middlewares: Vec::new(),
             db: None,
-            use_logger: false,
             after_hooks: Vec::new(),
             global_error_handler: GlobalErrorHandler {
                 handler: Some(default_framework_error_handler),
@@ -671,7 +674,7 @@ impl Router {
         };
 
         for route in inventory::iter::<AutoRoute> {
-            println!(
+            info!(
                 "[DYN-ROUTER] Registering: {:<30} {} [{:<6}]",
                 route.path,
                 format!("->").green(),
@@ -680,8 +683,8 @@ impl Router {
 
             // Capture role properties globally at framework startup, this is DEPRECATED for now
             if let Some(role) = route.required_role {
-                println!(
-                    "\x1b[33m[RBAC SHIELD] Detected role requirement for path: {} | Required role: {}\x1b[0m",
+                info!(
+                    "[RBAC-SHIELD] Detected role requirement for path: {} | Required role: {}",
                     route.path, role
                 );
                 router.role_registry.insert(route.path.to_string(), role);
@@ -700,8 +703,8 @@ impl Router {
     }
 
     /// Premium builder to switch on detailed diagnostic server logs
-    pub fn mount_logger(mut self) -> Self {
-        self.use_logger = true;
+    pub fn mount_logger(self, level: LogLevel) -> Self {
+        logger::init(level);
         self
     }
 
@@ -937,7 +940,7 @@ impl Router {
 
         if let Ok(registry) = FILE_ROUTING_REGISTRY.lock() {
             if let Some(registered) = registry.get(&file_key) {
-                println!(
+                info!(
                     "[FBS-ROUTER] Registering: {:<30} {} [{:<6}] {}",
                     file_key,
                     format!("->").green(),

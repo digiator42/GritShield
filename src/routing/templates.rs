@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use crate::core::env::get_env;
+use crate::error;
 
 static TEMPLATE_CACHE: Lazy<Mutex<HashMap<String, String>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
@@ -91,7 +92,7 @@ impl TemplateEngine {
             match fs::read_to_string(&file_path) {
                 Ok(html) => html,
                 Err(e) => {
-                    eprintln!(
+                    error!(
                         "[TEMPLATE ERROR] Failed to read disk asset '{}': {}",
                         file_path.display(),
                         e

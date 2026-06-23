@@ -1,5 +1,6 @@
 use crate::{
     core::env::get_env,
+    debug, error,
     protocol::{request::Request, response::Response},
     routing::{
         trie::{RequestContext, Router, RoutingResult, GLOBAL_FALLBACK},
@@ -8,6 +9,7 @@ use crate::{
     security::{
         cookies::CookieJar, errors::ShieldError, middleware::MiddlewareResult, xss::Sanitizer,
     },
+    warn,
 };
 use colored::Colorize;
 use futures::future::FutureExt;
@@ -31,7 +33,7 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
     let req = match Request::parse(&mut stream).await {
         Ok(parsed_req) => parsed_req,
         Err(e) => {
-            eprintln!("{} {}", "Security Warning:".red().bold(), e);
+            warn!("{} {}", "Security Warning:".red().bold(), e);
             let err_res = Response::new(400, Sanitizer::trust("<h1>Bad Request</h1>"));
             let (bytes, mime) = err_res.resolve();
             let _ = stream.write_all(&err_res.to_bytes(&bytes, &mime)).await;
@@ -94,9 +96,7 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
             let (bytes, mime) = err_res.resolve();
             let _ = stream.write_all(&err_res.to_bytes(&bytes, &mime)).await;
 
-            if router.use_logger {
-                router.log_lifecycle(&ctx, err_res.status, start_time.elapsed());
-            }
+            router.log_lifecycle(&ctx, err_res.status, start_time.elapsed());
             router.run_after_hooks(ctx, err_res.status, start_time.elapsed());
             return;
         }
@@ -115,7 +115,7 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
         };
 
         if let Some(ws_handler) = target_ws_handler {
-            println!("[CORE ENGINE] Upgrading socket connection path to WebSocket stream.");
+            debug!("[CORE ENGINE] Upgrading socket connection path to WebSocket stream.");
 
             // Manually build the WebSocket Handshake Accept response using the parsed headers
             if let Some(key) = ctx.req.headers.get("sec-websocket-key") {
@@ -134,7 +134,7 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
 
                 // Write the handshake directly to the open TCP socket
                 if let Err(e) = stream.write_all(handshake_response.as_bytes()).await {
-                    eprintln!("[WS ERROR] Failed to send handshake response: {:?}", e);
+                    error!("[WS ERROR] Failed to send handshake response: {:?}", e);
                     return;
                 }
 
@@ -148,16 +148,16 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
 
                 // Hand off the completely active stream to telemetry worker loop
                 tokio::spawn(async move {
-                    println!("[ACC TELEMETRY] Live Monitoring Operator Connected!");
+                    debug!("[ACC TELEMETRY] Live Monitoring Operator Connected!");
                     ws_handler(ws_stream, ctx).await;
                 });
 
                 return;
             } else {
-                eprintln!("[WS ERROR] Missing Sec-WebSocket-Key header.");
+                error!("[WS ERROR] Missing Sec-WebSocket-Key header.");
             }
         }
-        println!(
+        warn!(
             "[WS WARN] WebSocket upgrade requested for unregistered path: {}",
             ctx.req.path
         );
@@ -181,8 +181,8 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
                 if let Some(required_role) = required_role {
                     // Evaluates Fixed Engine rules FIRST, falling back to Dynamic tree links seamlessly
                     if !ctx.has_role(required_role) {
-                        println!(
-                            "\x1b[31m[RBAC SHIELD] Blocked Unauthorized Access attempt to {} | Missing operational clearance: {}\x1b[0m",
+                        error!(
+                            "[RBAC SHIELD] Blocked Unauthorized Access attempt to {} | Missing operational clearance: {}",
                             ctx.req.path, required_role
                         );
 
@@ -207,9 +207,7 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
                     }
                 }
 
-                if router_clone.use_logger {
-                    router_clone.log_lifecycle(&ctx, response.status, start_time.elapsed());
-                }
+                router_clone.log_lifecycle(&ctx, response.status, start_time.elapsed());
                 router_clone.run_after_hooks(ctx, response.status, start_time.elapsed());
 
                 response
@@ -260,7 +258,7 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
                 "Unknown framework thread panic occurred.".to_string()
             };
 
-            eprintln!("[PANIC INFRASTRUCTURE SHIELD] Caught: {}", panic_msg);
+            error!("[PANIC INFRASTRUCTURE SHIELD] Caught: {}", panic_msg);
 
             if let Some(custom_err_hook) = error_handler_ptr {
                 // let fallback_ctx = RequestContext::new();

@@ -4,6 +4,8 @@ use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::channel;
 use std::time::{Duration, Instant};
 
+use crate::{error, info, warn};
+
 pub struct HotReloader;
 
 impl HotReloader {
@@ -14,7 +16,7 @@ impl HotReloader {
 
         let project_root =
             std::env::current_dir().expect("Failed to get current working directory");
-        println!(
+        info!(
             "[HOT-RELOAD] Supervisor active anchoring at: {:?}",
             project_root
         );
@@ -28,7 +30,7 @@ impl HotReloader {
         if src_dir.exists() {
             watcher.watch(&src_dir, RecursiveMode::Recursive).unwrap();
         } else {
-            println!(
+            warn!(
                 "[HOT-RELOAD] WARNING: Could not find developer 'src' at {:?}",
                 src_dir
             );
@@ -70,7 +72,7 @@ impl HotReloader {
 
             // Trigger execution ONLY when a change is pending AND the user has stopped saving/typing
             if change_pending && last_event_time.elapsed() >= debounce_duration {
-                println!(
+                info!(
                     "[HOT-RELOAD] triggered. Rebuilding application..."
                 );
                 child_process = Self::rebuild_and_spawn(&project_root, child_process);
@@ -101,7 +103,7 @@ impl HotReloader {
 
         match build_status {
             Ok(status) if status.success() => {
-                println!("[HOT-RELOAD] Build successful. Launching server executable...");
+                info!("[HOT-RELOAD] Build successful. Launching server executable...");
 
                 let new_child = Command::new("cargo")
                     .args(["run", "--quiet"])
@@ -116,7 +118,7 @@ impl HotReloader {
                 Some(new_child)
             }
             _ => {
-                eprintln!("[HOT-RELOAD] Compilation failed. Waiting for code corrections...");
+                error!("[HOT-RELOAD] Compilation failed. Waiting for code corrections...");
                 None
             }
         }

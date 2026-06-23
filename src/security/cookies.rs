@@ -1,6 +1,6 @@
 use crate::{
     core::env::get_env,
-    protocol::response::{Cookie, Response, SameSite},
+    protocol::response::{Cookie, Response, SameSite}, warn,
 };
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
@@ -60,8 +60,8 @@ impl CookieJar {
         if self.verify_signature(value, signature) {
             Some(value.to_string())
         } else {
-            println!(
-                "\x1b[31m[SECURITY WARNING] Cookie tampering detected for: {}\x1b[0m",
+            warn!(
+                "[SECURITY WARNING] Cookie tampering detected for: {}",
                 name
             );
             None

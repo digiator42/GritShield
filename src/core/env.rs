@@ -1,6 +1,8 @@
 use colored::*;
 use std::sync::Once;
 
+use crate::{info, warn};
+
 static INIT_ENV: Once = Once::new();
 
 /// Automatically initializes the .env configuration system exactly once on boot.
@@ -8,14 +10,14 @@ static INIT_ENV: Once = Once::new();
 pub fn initialize_env() {
     INIT_ENV.call_once(|| {
         if dotenvy::dotenv().is_ok() {
-            println!(
+            info!(
                 "{}",
                 "[CONFIG] Successfully loaded .env configurations into memory."
                     .bold()
                     .green()
             );
         } else {
-            println!(
+            warn!(
                 "{}",
                 "[CONFIG] No .env file detected. Falling back to system environment variables."
                     .bold()

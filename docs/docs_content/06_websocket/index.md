@@ -1,4 +1,3 @@
-
 GritShield provides built-in WebSocket support using a simple macro for route registration.
 
 ## Overview
@@ -33,7 +32,7 @@ use tokio::net::TcpStream;
 use tokio_tungstenite::WebSocketStream;
 
 async fn echo_handler(
-    mut stream:  WebSocketStream<TcpStream>, 
+    mut stream:  WebSocketStream<TcpStream>,
     ctx: RequestContext
 ) {
     println!("New WebSocket connection from: {}", ctx.peer_addr);
@@ -47,7 +46,7 @@ async fn echo_handler(
                 }
             }
             Err(e) => {
-                eprintln!("WebSocket error: {}", e);
+                error!("WebSocket error: {}", e);
                 break;
             }
         }

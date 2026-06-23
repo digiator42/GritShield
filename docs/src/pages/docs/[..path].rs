@@ -292,7 +292,7 @@ fn compile_markdown_to_html(markdown_input: &str) -> String {
                             ));
                         }
                         Err(e) => {
-                            eprintln!("Syntax highlighting failed: {}", e);
+                            error!("Syntax highlighting failed: {}", e);
                             html_output.push_str(&format!(
                                 "<pre><code>{}</code></pre>",
                                 html_escape::encode_text(&code_buffer)

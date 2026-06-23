@@ -8,7 +8,7 @@ use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 use tokio::time::{Duration, sleep};
 
-use crate::core::connection::handle_connection;
+use crate::{core::connection::handle_connection, error, info};
 use crate::routing::trie::Router;
 use crate::utils::reloader::HotReloader;
 
@@ -25,7 +25,7 @@ pub async fn run_server(host: &str, port: &str, router: Router, use_reloader: bo
         .await
         .unwrap();
 
-    println!(
+    info!(
         "{} {}:{}",
         "[GRITSHIELD] Server Online at".green().bold(),
         host,
@@ -43,7 +43,7 @@ pub async fn run_server(host: &str, port: &str, router: Router, use_reloader: bo
     loop {
         tokio::select! {
             _ = tokio::signal::ctrl_c() => {
-                println!(
+                info!(
                     "{}",
                     "[GRITSHIELD] Shutdown signal received"
                         .yellow()
@@ -99,7 +99,7 @@ pub async fn run_server(host: &str, port: &str, router: Router, use_reloader: bo
                     }
 
                     Err(e) => {
-                        eprintln!(
+                        error!(
                             "Accept error: {}",
                             e
                         );
@@ -110,11 +110,11 @@ pub async fn run_server(host: &str, port: &str, router: Router, use_reloader: bo
     }
 
     // Drain active requests
-    println!("{}", "[GRITSHIELD] Draining active connections...".yellow());
+    info!("{}", "[GRITSHIELD] Draining active connections...".yellow());
 
     while active_connections.load(Ordering::SeqCst) > 0 {
         sleep(Duration::from_millis(100)).await;
     }
 
-    println!("{}", "[GRITSHIELD] Shutdown complete".green().bold());
+    info!("{}", "[GRITSHIELD] Shutdown complete".green().bold());
 }

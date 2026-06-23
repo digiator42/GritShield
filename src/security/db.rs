@@ -4,6 +4,8 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use crate::{debug, error, info, warn};
+
 /// Framework database options wrapper to enforce structural safety
 pub struct DbConfig {
     pub url: String,
@@ -55,7 +57,7 @@ pub struct DbManager;
 impl DbManager {
     /// Connects to the database using configured framework safeguards
     pub async fn connect(config: DbConfig) -> Result<Arc<DatabaseConnection>, DbErr> {
-        println!("[GRITSHIELD] Initializing secure database cluster link...");
+        info!("[GRITSHIELD] Initializing secure database cluster link...");
 
         let mut opt = ConnectOptions::new(config.url);
 
@@ -64,18 +66,14 @@ impl DbManager {
             .min_connections(config.min_connections)
             .connect_timeout(config.connect_timeout)
             .idle_timeout(config.idle_timeout)
-            .sqlx_logging(true) // Enable telemetry logging for security audits
-            .sqlx_logging_level(log::LevelFilter::Debug);
+            .sqlx_logging(true); // Enable telemetry logging for security audits
 
         let connection = Database::connect(opt).await?;
-        println!("[GRITSHIELD] Database connection pool online and verified.");
+        info!("[GRITSHIELD] Database connection pool online and verified.");
 
         // Framework responsibility: Run pending structural schema changes
         if let Err(e) = Self::run_pending_migrations(&connection).await {
-            println!(
-                "\x1b[31m[GRITSHIELD] Migration failure warning: {}\x1b[0m",
-                e
-            );
+            error!("[GRITSHIELD] Migration failure warning: {}", e);
         }
 
         Ok(Arc::new(connection))
@@ -88,7 +86,7 @@ impl DbManager {
             return Ok(()); // No migrations directory found, skip silently
         }
 
-        println!("\x1b[34m[GRITSHIELD] Checking schema migration ledgers...\x1b[0m");
+        info!("[GRITSHIELD] Checking schema migration ledgers...");
         let backend = db.get_database_backend();
 
         // 1. Ensure the framework's tracking ledger table exists
@@ -144,10 +142,7 @@ impl DbManager {
                 continue;
             }
 
-            println!(
-                "\x1b[33m[MIGRATION] Applying pending delta: {}...\x1b[0m",
-                file_name
-            );
+            debug!("[MIGRATION] Applying pending delta: {}...", file_name);
 
             // 4. Read file content and extract the script block under "-- Up:"
             let content = fs::read_to_string(entry.path())
@@ -156,8 +151,8 @@ impl DbManager {
             let up_script = extract_up_sql(&content);
 
             if up_script.trim().is_empty() {
-                println!(
-                    "\x1b[35m[MIGRATION] Warning: File {} has an empty execution block.\x1b[0m",
+                warn!(
+                    "[MIGRATION] Warning: File {} has an empty execution block.",
                     file_name
                 );
             } else {
@@ -184,13 +179,13 @@ impl DbManager {
                 .await
                 .map_err(|e| format!("Failed to log migration status for {}: {}", file_name, e))?;
 
-            println!(
+            debug!(
                 "\x1b[32m[MIGRATION] Successfully executed: {}\x1b[0m",
                 file_name
             );
         }
 
-        println!("[GRITSHIELD] Database schema sync finalized.");
+        debug!("[GRITSHIELD] Database schema sync finalized.");
         Ok(())
     }
 }
