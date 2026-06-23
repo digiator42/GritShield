@@ -2,7 +2,7 @@ extern crate proc_macro;
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::parse::{Parse, ParseStream, Result};
-use syn::{parse_macro_input, Ident, ItemFn, LitStr, Token, ImplItem, ItemImpl};
+use syn::{parse_macro_input, DeriveInput, Ident, ImplItem, ItemFn, ItemImpl, LitStr, Token};
 
 /// Storage container for parsed macro metadata arguments
 struct RouteArgs {
@@ -86,7 +86,6 @@ generate_route_macro!(put, PUT);
 generate_route_macro!(patch, PATCH);
 generate_route_macro!(delete, DELETE);
 
-
 #[proc_macro_attribute]
 pub fn controller(attr: TokenStream, item: TokenStream) -> TokenStream {
     // 1. Parse the base prefix route string: #[request("/auth")]
@@ -96,7 +95,7 @@ pub fn controller(attr: TokenStream, item: TokenStream) -> TokenStream {
     // 2. Parse the impl block target
     let mut input_impl = parse_macro_input!(item as ItemImpl);
     let self_ty = &input_impl.self_ty;
-    
+
     let mut inventory_submissions = vec![];
 
     // 3. Look through all items inside the impl block
@@ -109,9 +108,14 @@ pub fn controller(attr: TokenStream, item: TokenStream) -> TokenStream {
             // Check if this method has one of your routing attributes
             method.attrs.retain(|attr| {
                 let path = attr.path();
-                if path.is_ident("get") || path.is_ident("post") || path.is_ident("put") || path.is_ident("patch") || path.is_ident("delete") {
+                if path.is_ident("get")
+                    || path.is_ident("post")
+                    || path.is_ident("put")
+                    || path.is_ident("patch")
+                    || path.is_ident("delete")
+                {
                     matched_method = Some(path.get_ident().unwrap().to_string().to_uppercase());
-                    
+
                     // Parse arguments using your exact pre-existing `RouteArgs` structure!
                     if let Ok(args) = attr.parse_args::<RouteArgs>() {
                         route_args = Some(args);
@@ -164,6 +168,44 @@ pub fn controller(attr: TokenStream, item: TokenStream) -> TokenStream {
         const _: () = {
             #(#inventory_submissions)*
         };
+    };
+
+    TokenStream::from(expanded)
+}
+
+#[proc_macro_derive(GritRepository, attributes(repository))]
+pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    let name = &input.ident; // e.g., UserRepository
+
+    // Parse helper attributes like #[repository(entity = "user")]
+    // to map the database entities dynamically
+    let entity_module = quote! { crate::models::user };
+
+    let expanded = quote! {
+        #[gritshield::deps::async_trait]
+        impl gritshield::database::repository::GritRepository for #name {
+            type Entity = #entity_module::Entity;
+            type Model = #entity_module::Model;
+            type Column = #entity_module::Column; // Added the associated column type!
+            type ActiveModel = #entity_module::ActiveModel;
+
+            fn get_db(&self) -> &sea_orm::DatabaseConnection {
+                &self.db
+            }
+
+            // Map the generic email column to this entity's specific column variant!
+            fn email_column() -> Self::Column {
+                #entity_module::Column::Email
+            }
+        }
+
+        impl gritshield::database::repository::ConvertFromModel<#entity_module::Model> for #entity_module::ActiveModel {
+            fn from_model(model: #entity_module::Model) -> Self {
+                use sea_orm::IntoActiveModel;
+                model.into_active_model()
+            }
+        }
     };
 
     TokenStream::from(expanded)

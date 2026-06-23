@@ -108,7 +108,7 @@ pub fn init_from_env() {
     eprintln!(
         "[{}] {}: [KERNEL-LOGGER] init logger with level '{:?}'",
         chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
-        format!("{:?}", level).cyan(),
+        format!("{:?}", level).blue(),
         level
     );
 }

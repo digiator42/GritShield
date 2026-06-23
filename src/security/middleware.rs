@@ -4,7 +4,6 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use crate::core::env::get_env;
-use crate::{debug, error};
 use crate::protocol::request::HttpMethod;
 use crate::protocol::response::Response;
 use crate::protocol::response::{Cookie, SameSite};
@@ -13,6 +12,7 @@ use crate::security::jwt::{Claims, JwtHandler};
 use crate::security::rate_limit::RateLimiter;
 use crate::security::session::{Session, SessionStore};
 use crate::security::xss::Sanitizer;
+use crate::{debug, error};
 use chrono::Local;
 use colored::*;
 use uuid::Uuid;
@@ -170,13 +170,10 @@ impl Middleware for AuthMiddleware {
         // If it's a public route (like /auth/login, /auth/register, or static assets),
         // bypass CSRF and strict auth redirect gates completely!
         if is_public_route {
-            debug!("[AUTH MIDDLEWARE] PUBLIC ROUTE DETECTED: {}", ctx.req.path);
             let mut associated_session = None;
 
             // Try to find an existing session from the browser's cookie jar
-            debug!("[AUTH MIDDLEWARE] Looking for GSESSION_ID cookie...");
             if let Some(sid) = ctx.get_signed_cookie("GSESSION_ID") {
-                debug!("[AUTH MIDDLEWARE] Found GSESSION_ID cookie: {}", sid);
                 if let Ok(store_guard) = self.store.sessions.lock() {
                     if let Some(session_ptr) = store_guard.get(&sid) {
                         debug!("[AUTH MIDDLEWARE] ✓ Found session in store: {}", sid);
@@ -206,10 +203,6 @@ impl Middleware for AuthMiddleware {
                     }));
 
                     store_guard.insert(new_sid.clone(), Arc::clone(&new_session));
-                    debug!(
-                        "[AUTH MIDDLEWARE] ✓ Inserted session into store: {}",
-                        new_sid
-                    );
 
                     let is_production = get_env("APP_ENV", "development") == "production";
                     let session_cookie = Cookie::new("GSESSION_ID", &new_sid)
@@ -217,7 +210,10 @@ impl Middleware for AuthMiddleware {
                         .set_same_site(SameSite::Lax);
 
                     ctx.set_signed_cookie(session_cookie);
-                    debug!("[AUTH MIDDLEWARE] ✓ Set GSESSION_ID cookie: {}", new_sid);
+                    debug!(
+                        "[AUTH MIDDLEWARE] ✓ Set GSESSION_ID cookie & into store: {}",
+                        new_sid
+                    );
                     associated_session = Some(new_session);
                 }
             } else if associated_session.is_some() {
@@ -225,20 +221,8 @@ impl Middleware for AuthMiddleware {
             }
 
             // Sync context request state seamlessly
-            debug!(
-                "[AUTH MIDDLEWARE] Setting ctx.session (before: {:?})",
-                ctx.session.is_some()
-            );
             ctx.session = associated_session.clone();
-            debug!(
-                "[AUTH MIDDLEWARE] ✓ ctx.session set (after: {:?})",
-                ctx.session.is_some()
-            );
 
-            debug!(
-                "[AUTH MIDDLEWARE] Returning MiddlewareState with session: {:?}",
-                associated_session.is_some()
-            );
             return MiddlewareResult::Next(Some(MiddlewareState {
                 session: associated_session,
                 claims: None,
