@@ -1,26 +1,17 @@
 use colored::*;
 
 use std::sync::{
-    Arc,
     atomic::{AtomicUsize, Ordering},
+    Arc,
 };
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
-use tokio::time::{Duration, sleep};
+use tokio::time::{sleep, Duration};
 
-use crate::{core::connection::handle_connection, error, info};
 use crate::routing::trie::Router;
-use crate::utils::reloader::HotReloader;
+use crate::{core::connection::handle_connection, error, info};
 
-pub async fn run_server(host: &str, port: &str, router: Router, use_reloader: bool) {
-    if use_reloader {
-        HotReloader::start();
-
-        if std::env::var("RUNNING_UNDER_RELOADER").is_err() {
-            std::process::exit(0);
-        }
-    }
-
+pub async fn run_server(host: &str, port: &str, router: Router) {
     let listener = TcpListener::bind(format!("{}:{}", host, port))
         .await
         .unwrap();
