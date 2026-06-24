@@ -29,4 +29,4 @@ target
 *.exe
 *.txt
 /docs/book
-Cargo.lock
+*.lock
