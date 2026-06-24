@@ -402,6 +402,23 @@ pub trait GritRepository {
         let count = Self::Entity::find_by_id(id).count(self.get_db()).await?;
         Ok(count > 0)
     }
+
+    // Inside GritRepository in repository.rs
+    async fn global_search(
+        &self,
+        query: &str,
+        columns: Vec<Self::Column>,
+    ) -> Result<Vec<Self::Model>, sea_orm::DbErr> {
+        let mut search_query = Self::Entity::find();
+
+        // Group filters together using an ANY/OR condition
+        let mut condition = sea_orm::Condition::any();
+        for column in columns {
+            condition = condition.add(column.contains(query));
+        }
+
+        search_query.filter(condition).all(self.get_db()).await
+    }
 }
 
 // =============================================================================

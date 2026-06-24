@@ -3,6 +3,7 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::parse::{Parse, ParseStream, Result};
 use syn::{parse_macro_input, DeriveInput, Ident, ImplItem, ItemFn, ItemImpl, LitStr, Token};
+use syn::{Expr, ExprArray, ExprLit, Lit};
 
 /// Storage container for parsed macro metadata arguments
 struct RouteArgs {
@@ -178,9 +179,40 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let name = &input.ident; // e.g., UserRepository
 
-    // Parse helper attributes like #[repository(entity = "user")]
-    // to map the database entities dynamically
     let entity_module = quote! { crate::models::user };
+    let mut searchable_columns = Vec::new();
+
+    // Clean and modern syn 2.0 helper attribute parsing
+    for attr in &input.attrs {
+        if attr.path().is_ident("repository") {
+            let _ = attr.parse_nested_meta(|meta| {
+                if meta.path.is_ident("admin_searchable") {
+                    // Parse the value assignment (=)
+                    let value = meta.value()?;
+                    // Parse the expression (e.g., ["email", "username"])
+                    if let Ok(Expr::Array(ExprArray { elems, .. })) = value.parse::<Expr>() {
+                        for elem in elems {
+                            if let Expr::Lit(ExprLit {
+                                lit: Lit::Str(lit_str),
+                                ..
+                            }) = elem
+                            {
+                                searchable_columns.push(lit_str.value());
+                            }
+                        }
+                    }
+                }
+                Ok(())
+            });
+        }
+    }
+
+    // map collected string values to their Sea-ORM column variants
+    let _column_tokens = searchable_columns.iter().map(|col| {
+        // e.g., converts "email" string into Column::Email identifier
+        let col_ident = syn::Ident::new(&format_ident_name(col), proc_macro2::Span::call_site());
+        quote! { #entity_module::Column::#col_ident }
+    });
 
     let expanded = quote! {
         #[gritshield::deps::async_trait]
@@ -189,8 +221,6 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
             type Model = #entity_module::Model;
             type Column = #entity_module::Column;
             type ActiveModel = #entity_module::ActiveModel;
-
-            // Extract the Primary Key Value Type directly from the generated Sea-ORM Entity
             type Id = <<#entity_module::Entity as sea_orm::EntityTrait>::PrimaryKey as sea_orm::PrimaryKeyTrait>::ValueType;
 
             fn get_db(&self) -> &sea_orm::DatabaseConnection {
@@ -201,9 +231,8 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
                 #entity_module::Column::Id
             }
 
-            // Map the generic email column to this entity's specific column variant!
-            fn email_column() -> Self::Column {
-                #entity_module::Column::Email
+            fn email_column() -> std::option::Option<Self::Column> {
+                std::option::Option::Some(#entity_module::Column::Email)
             }
         }
 
@@ -216,4 +245,14 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
     };
 
     TokenStream::from(expanded)
+}
+
+/// Helper to convert a string field like "email" to standard PascalCase/CamelCase variant if needed,
+/// or keep it matched with Sea-ORM's column casing rules (usually CamelCase).
+fn format_ident_name(s: &str) -> String {
+    let mut c = s.chars();
+    match c.next() {
+        None => String::new(),
+        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+    }
 }

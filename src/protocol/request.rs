@@ -258,4 +258,8 @@ impl Request {
 
         form_data
     }
+
+    pub fn has_header(&self, key: &str) -> bool {
+        self.headers.contains_key(&key.to_lowercase())
+    }
 }

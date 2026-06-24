@@ -1,5 +1,3 @@
-pub use futures;
-pub use inventory;
 pub mod core;
 pub mod database;
 pub mod routing;
@@ -11,7 +9,10 @@ pub mod protocol {
 pub mod macros;
 pub mod security;
 pub mod utils;
+
 pub use ctor;
+pub use futures;
+pub use inventory;
 
 // pub use gritshield_macros::*;
 pub use gritshield_macros::controller;
