@@ -30,3 +30,4 @@ target
 *.txt
 /docs/book
 *.lock
+.env

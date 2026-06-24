@@ -18,10 +18,9 @@ pub struct DbConfig {
 
 impl Default for DbConfig {
     fn default() -> Self {
+        initialize_env();
         // Fallback to environment variable or standard secure defaults
         let url = get_env("DATABASE_URL", "");
-
-        initialize_env();
 
         Self {
             url,
@@ -40,9 +39,9 @@ impl DbConfig {
         connect_timeout: Duration,
         idle_timeout: Duration,
     ) -> Self {
-        let url = get_env("DATABASE_URL", "");
-
         initialize_env();
+
+        let url = get_env("DATABASE_URL", "");
 
         Self {
             url,

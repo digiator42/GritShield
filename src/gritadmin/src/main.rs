@@ -14,8 +14,54 @@ async fn main() {
 
     let shared_db = DbManager::connect(db_config).await.unwrap();
 
-    let router = Router::new().mount_db(shared_db);
+    let router = Router::new().mount_db(shared_db.clone());
+
+    seed_test_users_if_empty(shared_db.as_ref()).await;
 
     // Fire the framework runtime loop
     run_server("127.0.0.1", "8080", router).await;
+}
+
+// gritadmin/src/main.rs (or where you initialize your database connection)
+use crate::models::user;
+use sea_orm::{ActiveModelTrait, ConnectionTrait, DatabaseConnection, EntityTrait, PaginatorTrait}; // Adjust path to your user entity module
+
+async fn seed_test_users_if_empty(db: &DatabaseConnection) {
+    // 1. Force execute our strict structural migration schema layout
+    let schema_sql = r#"
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL,
+            email TEXT NOT NULL UNIQUE,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+    "#;
+
+    // Execute DDL statement directly
+    let _ = db
+        .execute(sea_orm::Statement::from_string(
+            db.get_database_backend(),
+            schema_sql.to_string(),
+        ))
+        .await;
+
+    // 2. Now run your existing check and insert loop safely!
+    let count = user::Entity::find().count(db).await.unwrap_or(0);
+    if count == 0 {
+        println!("🌱 Database table verified via migration! Seeding 40 users...");
+        for i in 1..=40 {
+            let mock_user = user::ActiveModel {
+                username: sea_orm::Set(format!("test_user_{}", i)),
+                email: sea_orm::Set(format!("user_{}@gritshield.io", i)),
+                ..Default::default()
+            };
+
+            // CHANGE THIS: Don't discard the result with let _ =
+            match mock_user.insert(db).await {
+                Ok(_) => println!("Inserted user {}", i),
+                Err(err) => eprintln!("❌ Seeding failed at user {}: {:?}", i, err),
+            }
+        }
+        println!("✅ Seeding complete.");
+    }
 }
