@@ -187,11 +187,18 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
         impl gritshield::database::repository::GritRepository for #name {
             type Entity = #entity_module::Entity;
             type Model = #entity_module::Model;
-            type Column = #entity_module::Column; // Added the associated column type!
+            type Column = #entity_module::Column;
             type ActiveModel = #entity_module::ActiveModel;
+
+            // Extract the Primary Key Value Type directly from the generated Sea-ORM Entity
+            type Id = <<#entity_module::Entity as sea_orm::EntityTrait>::PrimaryKey as sea_orm::PrimaryKeyTrait>::ValueType;
 
             fn get_db(&self) -> &sea_orm::DatabaseConnection {
                 &self.db
+            }
+
+            fn id_column() -> Self::Column {
+                #entity_module::Column::Id
             }
 
             // Map the generic email column to this entity's specific column variant!

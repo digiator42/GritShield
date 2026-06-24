@@ -1,4 +1,5 @@
 use std::fmt;
+use std::str::FromStr;
 
 /// A wrapper around a String that has NOT been sanitized.
 /// It cannot be printed or converted to a byte array directly.
@@ -19,6 +20,17 @@ impl UntrustedString {
     /// Converts an UntrustedString into a String.
     pub fn to_string(self) -> String {
         self.0
+    }
+
+    /// Parses the untrusted string into any target type that implements `FromStr`.
+    ///
+    /// This delegates directly to standard string parsing, returning a `Result`
+    /// containing the target type or the type's associated parsing error.
+    pub fn parse<T>(&self) -> Result<T, T::Err>
+    where
+        T: FromStr,
+    {
+        self.0.parse::<T>()
     }
 }
 

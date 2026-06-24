@@ -1,4 +1,3 @@
-
 GritShield is an **async-first, security-hardened** web framework for Rust that eliminates the majority of OWASP Top 10 vulnerabilities by design.
 
 ## Installation
@@ -29,7 +28,7 @@ async fn hello(_: RequestContext) -> &'static str {
 async fn main() {
     let router = Router::new().mount_logger();
 
-    run_server("127.0.0.1", "8080", router, true).await;
+    run_server("127.0.0.1", "8080", router).await;
 }
 ```
 

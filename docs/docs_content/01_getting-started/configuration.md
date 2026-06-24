@@ -2,23 +2,22 @@
 
 GritShield uses simple environment variables for configuration with `.env` file support, for most of cases configuration is done programmatically.
 
-
 ## Hot Reload (Development)
 
 ```rust
-//          localhost,  port,  router, reloader
-run_server("127.0.0.1", "8080", router, true).await;
+//          localhost,  port,  router
+run_server("127.0.0.1", "8080", router).await;
 ```
 
 Automatically rebuilds and reloads on source changes.
 
 ## Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `APP_ENV` | `development` | `development` or `production` |
-| `JWT_SECRET` | `fallback_secure_key_string` | Secret for JWT and signed cookies |
-| `DATABASE_URL` | None | Database connection string |
+| Variable       | Default                      | Description                       |
+| -------------- | ---------------------------- | --------------------------------- |
+| `APP_ENV`      | `development`                | `development` or `production`     |
+| `JWT_SECRET`   | `fallback_secure_key_string` | Secret for JWT and signed cookies |
+| `DATABASE_URL` | None                         | Database connection string        |
 
 ## .env File
 
@@ -73,6 +72,6 @@ Access them with `get_env()` or `std::env::var()` directly.
 // Adds logger info for each request, status, cookies, ...
 let mut router = Router::new().mount_logger();
 
-//          localhost,  port,  router, reloader
-run_server("127.0.0.1", "8080", router, true).await;
+//          localhost,  port,  router
+run_server("127.0.0.1", "8080", router).await;
 ```
