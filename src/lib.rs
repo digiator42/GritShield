@@ -8,7 +8,7 @@ pub mod protocol {
     pub mod request;
     pub mod response;
 }
-pub mod render;
+pub mod macros;
 pub mod security;
 pub mod utils;
 pub use ctor;
@@ -43,7 +43,7 @@ pub mod prelude {
     pub use crate::protocol::form::{FormData, UploadedFile};
     pub use crate::protocol::request::Request;
     pub use crate::protocol::response::Response;
-    pub use crate::render;
+    pub use crate::macros;
     pub use crate::routing::templates::TemplateEngine;
     pub use crate::routing::trie::{RequestContext, Router};
     pub use crate::security::xss::Sanitizer;

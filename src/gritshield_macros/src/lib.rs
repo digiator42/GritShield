@@ -24,7 +24,7 @@ impl Parse for RouteArgs {
 
             // Look for specific named parameter blocks, e.g., "role"
             let key: Ident = input.parse()?;
-            if key == "role" {
+            if key == "role" || key == "required_role" {
                 input.parse::<Token![=]>()?;
                 required_role = Some(input.parse::<LitStr>()?);
             }

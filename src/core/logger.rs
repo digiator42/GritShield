@@ -1,3 +1,4 @@
+use crate::info;
 use crate::protocol::request::Request;
 use colored::*;
 use std::fmt;
@@ -111,57 +112,6 @@ pub fn init_from_env() {
         format!("{:?}", level).blue(),
         level
     );
-}
-
-// Public logger macros
-#[macro_export]
-macro_rules! error {
-    ($($arg:tt)*) => {
-        $crate::core::logger::get_logger().log(
-            $crate::core::logger::LogLevel::Error,
-            format_args!($($arg)*)
-        )
-    };
-}
-
-#[macro_export]
-macro_rules! warn {
-    ($($arg:tt)*) => {
-        $crate::core::logger::get_logger().log(
-            $crate::core::logger::LogLevel::Warn,
-            format_args!($($arg)*)
-        )
-    };
-}
-
-#[macro_export]
-macro_rules! info {
-    ($($arg:tt)*) => {
-        $crate::core::logger::get_logger().log(
-            $crate::core::logger::LogLevel::Info,
-            format_args!($($arg)*)
-        )
-    };
-}
-
-#[macro_export]
-macro_rules! debug {
-    ($($arg:tt)*) => {
-        $crate::core::logger::get_logger().log(
-            $crate::core::logger::LogLevel::Debug,
-            format_args!($($arg)*)
-        )
-    };
-}
-
-#[macro_export]
-macro_rules! trace {
-    ($($arg:tt)*) => {
-        $crate::core::logger::get_logger().log(
-            $crate::core::logger::LogLevel::Trace,
-            format_args!($($arg)*)
-        )
-    };
 }
 
 pub fn log_request_summary(
