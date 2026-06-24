@@ -41,11 +41,36 @@ pub fn admin_shell(title: &str, content: Markup, is_htmx: bool) -> Response {
                         }
                     }
 
+                    // Hidden overlay container that reveals itself via JavaScript toggle or simple CSS classes
+                    div id="command-palette" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-start justify-center pt-20" {
+                        div class="bg-gray-900 border border-gray-800 w-full max-w-2xl rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150" {
+                            div class="p-4 border-b border-gray-800 flex items-center" {
+                                span class="text-xl mr-3 text-gray-500" { "🔍" }
+                                input type="text"
+                                    name="q"
+                                    placeholder="Search tables, settings, records..."
+                                    hx-get="/admin/api/search-palette"
+                                    hx-trigger="keyup changed delay:150ms"
+                                    hx-target="#palette-results"
+                                    class="bg-transparent text-lg text-white w-full focus:outline-none";
+                                kbd class="text-xs bg-gray-800 text-gray-400 px-2 py-1 rounded shadow" { "ESC" }
+                            }
+                            // Dynamic results container populated instantly by HTMX
+                            div id="palette-results" class="max-h-96 overflow-y-auto p-2 space-y-1 text-sm text-gray-300" {
+                                div class="p-4 text-center text-gray-500" { "Type to begin navigating..." }
+                            }
+                        }
+                    }
+
                     // The SPA Main Target Content Window Workspace
                     main id="main-content" class="flex-1 overflow-y-auto p-8" {
                         (content)
                     }
                 }
+            }
+            // Small clean Global Event Listener script to intercept Cmd + K
+            script {
+                (maud::PreEscaped(include_str!("static/admin_palette.js")))
             }
         }
     };

@@ -19,6 +19,11 @@ pub use gritshield_macros::controller;
 pub use gritshield_macros::GritRepository;
 pub use gritshield_macros::{delete, get, patch, post, put};
 
+// explicit module namespace for startup macros
+pub mod startup {
+    pub use ctor::ctor;
+}
+
 // -----------------------------------------------------------------
 // DEPENDENCY ISOLATION HUB
 // Expose locked framework dependencies to prevent version conflict mismatch errors.

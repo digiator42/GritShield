@@ -6,6 +6,27 @@ use sea_orm::{
 };
 use sea_orm_migration::async_trait::async_trait;
 
+use crate::deps::once_cell::sync::Lazy;
+use std::collections::HashMap;
+use std::sync::Mutex;
+
+#[derive(Clone, Debug)]
+pub struct ModelMetadata {
+    pub table_name: &'static str,
+    pub route_path: &'static str,
+    pub searchable_columns: Vec<&'static str>,
+}
+
+// A global registry that repositories register into at startup
+pub static ADMIN_REGISTRY: Lazy<Mutex<HashMap<&'static str, ModelMetadata>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+
+pub fn register_model(table: &'static str, meta: ModelMetadata) {
+    if let Ok(mut registry) = ADMIN_REGISTRY.lock() {
+        registry.insert(table, meta);
+    }
+}
+
 // =============================================================================
 // PAGINATION & SORTING
 // =============================================================================

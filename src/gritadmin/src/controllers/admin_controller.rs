@@ -1,5 +1,5 @@
 use crate::{repository::admin_repository::UserRepository, shell};
-use gritshield::{database::repository::GritRepository, prelude::*};
+use gritshield::{database::repository::{ADMIN_REGISTRY, GritRepository}, prelude::*};
 
 pub struct AdminUserController;
 
@@ -84,5 +84,52 @@ impl AdminUserController {
         } else {
             Response::not_found("Record missing")
         }
+    }
+
+    #[get("/api/search-palette")]
+    pub async fn command_palette_search(ctx: RequestContext) -> Response {
+        let query = ctx
+            .form
+            .fields
+            .get("q")
+            .map(|v| v.to_string().to_lowercase())
+            .unwrap_or_default();
+
+        if query.is_empty() {
+            return Response::ok(""); // Return empty state if nothing is typed
+        }
+
+        let registry = ADMIN_REGISTRY.lock().unwrap();
+        let mut matching_results = html! {};
+
+        // 1. Check for structural table navigation commands (e.g., typing "users" or "settings")
+        for (table_name, meta) in registry.iter() {
+            if table_name.contains(&query) {
+                matching_results = html! {
+                    (matching_results)
+                    a href=(meta.route_path)
+                       hx-get=(meta.route_path)
+                       hx-target="#main-content"
+                       class="flex items-center justify-between p-3 hover:bg-gray-800 rounded transition text-emerald-400" {
+                           span class="text-gray-400" { "📋  Go to table: " }
+                           span class="font-semibold" { (table_name) }
+                    }
+                };
+            }
+        }
+
+        // 2. Fallback checking for general system views
+        if "settings".contains(&query) || "system".contains(&query) {
+            matching_results = html! {
+                (matching_results)
+                a href="/admin/settings" hx-get="/admin/settings" hx-target="#main-content"
+                   class="flex items-center justify-between p-3 hover:bg-gray-800 rounded transition text-blue-400" {
+                       span class="text-gray-400" { "⚙️ Action: " }
+                       span class="font-semibold" { "System Settings" }
+                }
+            };
+        }
+
+        Response::ok(matching_results.into_string())
     }
 }

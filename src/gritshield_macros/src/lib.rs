@@ -177,19 +177,16 @@ pub fn controller(attr: TokenStream, item: TokenStream) -> TokenStream {
 #[proc_macro_derive(GritRepository, attributes(repository))]
 pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
-    let name = &input.ident; // e.g., UserRepository
+    let name = &input.ident;
 
     let entity_module = quote! { crate::models::user };
     let mut searchable_columns = Vec::new();
 
-    // Clean and modern syn 2.0 helper attribute parsing
     for attr in &input.attrs {
         if attr.path().is_ident("repository") {
             let _ = attr.parse_nested_meta(|meta| {
                 if meta.path.is_ident("admin_searchable") {
-                    // Parse the value assignment (=)
                     let value = meta.value()?;
-                    // Parse the expression (e.g., ["email", "username"])
                     if let Ok(Expr::Array(ExprArray { elems, .. })) = value.parse::<Expr>() {
                         for elem in elems {
                             if let Expr::Lit(ExprLit {
@@ -207,52 +204,64 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
         }
     }
 
-    // map collected string values to their Sea-ORM column variants
-    let _column_tokens = searchable_columns.iter().map(|col| {
-        // e.g., converts "email" string into Column::Email identifier
-        let col_ident = syn::Ident::new(&format_ident_name(col), proc_macro2::Span::call_site());
-        quote! { #entity_module::Column::#col_ident }
-    });
+    let repo_name_lower = name.to_string().replace("Repository", "").to_lowercase();
+    let route_path_str = format!("/admin/{}", repo_name_lower);
+
+    let initializer_name = syn::Ident::new(
+        &format!("init_meta_{}", repo_name_lower),
+        proc_macro2::Span::call_site(),
+    );
 
     let expanded = quote! {
-        #[gritshield::deps::async_trait]
-        impl gritshield::database::repository::GritRepository for #name {
-            type Entity = #entity_module::Entity;
-            type Model = #entity_module::Model;
-            type Column = #entity_module::Column;
-            type ActiveModel = #entity_module::ActiveModel;
-            type Id = <<#entity_module::Entity as sea_orm::EntityTrait>::PrimaryKey as sea_orm::PrimaryKeyTrait>::ValueType;
+        const _: () = {
+            use ::gritshield::deps::sea_orm;
 
-            fn get_db(&self) -> &sea_orm::DatabaseConnection {
-                &self.db
+            #[::gritshield::deps::async_trait]
+            impl ::gritshield::database::repository::GritRepository for #name {
+                type Entity = #entity_module::Entity;
+                type Model = #entity_module::Model;
+                type Column = #entity_module::Column;
+                type ActiveModel = #entity_module::ActiveModel;
+                type Id = <<#entity_module::Entity as sea_orm::EntityTrait>::PrimaryKey as sea_orm::PrimaryKeyTrait>::ValueType;
+
+                fn get_db(&self) -> &sea_orm::DatabaseConnection {
+                    &self.db
+                }
+
+                fn id_column() -> Self::Column {
+                    #entity_module::Column::Id
+                }
+
+                fn email_column() -> std::option::Option<Self::Column> {
+                    std::option::Option::Some(#entity_module::Column::Email)
+                }
             }
 
-            fn id_column() -> Self::Column {
-                #entity_module::Column::Id
+            impl ::gritshield::database::repository::ConvertFromModel<#entity_module::Model> for #entity_module::ActiveModel {
+                fn from_model(model: #entity_module::Model) -> Self {
+                    use sea_orm::IntoActiveModel;
+                    model.into_active_model()
+                }
             }
 
-            fn email_column() -> std::option::Option<Self::Column> {
-                std::option::Option::Some(#entity_module::Column::Email)
-            }
-        }
+            // FIXED: Using the local crate's direct ctor dependency instead of going through gritshield!
+            #[::ctor::ctor]
+            fn #initializer_name() {
+                use sea_orm::EntityName;
 
-        impl gritshield::database::repository::ConvertFromModel<#entity_module::Model> for #entity_module::ActiveModel {
-            fn from_model(model: #entity_module::Model) -> Self {
-                use sea_orm::IntoActiveModel;
-                model.into_active_model()
+                let table_name_str = <#entity_module::Entity as sea_orm::EntityName>::table_name(&#entity_module::Entity);
+
+                ::gritshield::database::repository::register_model(
+                    table_name_str,
+                    ::gritshield::database::repository::ModelMetadata {
+                        table_name: table_name_str,
+                        route_path: #route_path_str,
+                        searchable_columns: vec![ #(#searchable_columns),* ],
+                    }
+                );
             }
-        }
+        };
     };
 
     TokenStream::from(expanded)
-}
-
-/// Helper to convert a string field like "email" to standard PascalCase/CamelCase variant if needed,
-/// or keep it matched with Sea-ORM's column casing rules (usually CamelCase).
-fn format_ident_name(s: &str) -> String {
-    let mut c = s.chars();
-    match c.next() {
-        None => String::new(),
-        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
-    }
 }
