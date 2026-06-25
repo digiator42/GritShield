@@ -17,6 +17,14 @@ pub struct ModelMetadata {
     pub searchable_columns: Vec<&'static str>,
 }
 
+// 🌟 NEW COLUMN METADATA CONTAINER STRUCT
+#[derive(Clone, Debug)]
+pub struct GridColumn {
+    pub name: &'static str,
+    pub label: &'static str,
+    pub is_editable: bool,
+}
+
 // A global registry that repositories register into at startup
 pub static ADMIN_REGISTRY: Lazy<Mutex<HashMap<&'static str, ModelMetadata>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
@@ -148,7 +156,6 @@ pub trait Specification<E: EntityTrait> {
 
 #[async_trait]
 pub trait GritRepository {
-    // Core Sea-ORM Entity Type Mapping Relationships
     type Entity: EntityTrait<Model = Self::Model, Column = Self::Column>;
     type Model: ModelTrait + FromQueryResult + IntoActiveModel<Self::ActiveModel> + Send + Sync;
     type Column: ColumnTrait + Send + Sync;
@@ -159,17 +166,46 @@ pub trait GritRepository {
         + Send
         + Sync;
 
-    // Bind Id directly to the actual underlying Sea-ORM Primary Key value type
     type Id: Into<<<Self::Entity as EntityTrait>::PrimaryKey as PrimaryKeyTrait>::ValueType>
         + Send
         + Sync
         + Clone
         + std::fmt::Debug;
+
     // =========================================================================
     // CORE DATABASE ACCESS
     // =========================================================================
 
     fn get_db(&self) -> &DatabaseConnection;
+
+    fn table_name(&self) -> String {
+        use sea_orm::EntityName;
+        <Self::Entity as Default>::default()
+            .table_name()
+            .to_string()
+    }
+
+    /// Declares the display order, names, labels, and edit permissions for spreadsheet columns
+    fn grid_columns(&self) -> Vec<GridColumn> {
+        vec![]
+    }
+
+    /// Pulls a field's string representation dynamically out of a Model instance safely
+    fn get_field_as_string(&self, _model: &Self::Model, _column_name: &str) -> String {
+        String::new()
+    }
+
+    /// Performs updates directly onto records dynamically by string field names
+    async fn update_column_value(
+        &self,
+        _id: Self::Id,
+        _column_name: &str,
+        _value: String,
+    ) -> Result<Self::Model, sea_orm::DbErr> {
+        Err(sea_orm::DbErr::Custom(
+            "Dynamic update not implemented for this repository".to_string(),
+        ))
+    }
 
     // =========================================================================
     // COLUMN MAPPING (for dynamic queries)
@@ -177,7 +213,7 @@ pub trait GritRepository {
 
     fn id_column() -> Self::Column;
     fn email_column() -> Option<Self::Column> {
-        None // Override if your entity has an email field
+        None
     }
     fn created_at_column() -> Option<Self::Column> {
         None
@@ -190,17 +226,14 @@ pub trait GritRepository {
     // BASIC CRUD OPERATIONS (JPA Style)
     // =========================================================================
 
-    /// Find entity by its primary key
     async fn find_by_id(&self, id: Self::Id) -> Result<Option<Self::Model>, sea_orm::DbErr> {
         Self::Entity::find_by_id(id).one(self.get_db()).await
     }
 
-    /// Find all entities
     async fn find_all(&self) -> Result<Vec<Self::Model>, sea_orm::DbErr> {
         Self::Entity::find().all(self.get_db()).await
     }
 
-    /// Find all entities with sorting
     async fn find_all_sorted(&self, sorts: Vec<Sort>) -> Result<Vec<Self::Model>, sea_orm::DbErr> {
         let mut query = Self::Entity::find();
         for sort in sorts {
@@ -212,17 +245,13 @@ pub trait GritRepository {
         query.all(self.get_db()).await
     }
 
-    /// Helper to get column from string name
     fn get_column(name: &str) -> Result<Self::Column, sea_orm::DbErr> {
-        // This is a placeholder - in real implementation, you'd use reflection
-        // or a mapping. For now, just return an error if you try to use it.
         Err(sea_orm::DbErr::Custom(format!(
             "Column '{}' not found",
             name
         )))
     }
 
-    /// Find entities with pagination
     async fn find_all_paginated(
         &self,
         page_request: PageRequest,
@@ -252,7 +281,6 @@ pub trait GritRepository {
     // FIND BY FIELD (Dynamic Field Queries)
     // =========================================================================
 
-    /// Find entities where a field equals a value
     async fn find_by_field<F>(
         &self,
         column: Self::Column,
@@ -267,7 +295,6 @@ pub trait GritRepository {
             .await
     }
 
-    /// Find single entity where a field equals a value
     async fn find_one_by_field<F>(
         &self,
         column: Self::Column,
@@ -282,7 +309,6 @@ pub trait GritRepository {
             .await
     }
 
-    /// Find entities where a field contains a substring (LIKE query)
     async fn find_by_field_contains(
         &self,
         column: Self::Column,
@@ -298,7 +324,6 @@ pub trait GritRepository {
     // EMAIL SPECIFIC METHODS (Optional)
     // =========================================================================
 
-    /// Find by email (requires email_column to be implemented)
     async fn find_by_email(&self, email: &str) -> Result<Option<Self::Model>, sea_orm::DbErr> {
         if let Some(column) = Self::email_column() {
             Self::Entity::find()
@@ -312,7 +337,6 @@ pub trait GritRepository {
         }
     }
 
-    /// Check if email exists
     async fn exists_by_email(&self, email: &str) -> Result<bool, sea_orm::DbErr> {
         if let Some(column) = Self::email_column() {
             let count = Self::Entity::find()
@@ -331,7 +355,6 @@ pub trait GritRepository {
     // SAVE / UPDATE OPERATIONS (JPA Style)
     // =========================================================================
 
-    /// Save (insert) an entity
     async fn save(&self, model: Self::Model) -> Result<Self::Model, sea_orm::DbErr> {
         let active_model = <Self::ActiveModel as ConvertFromModel<Self::Model>>::from_model(model);
         let inserted_active = active_model.insert(self.get_db()).await?;
@@ -340,7 +363,6 @@ pub trait GritRepository {
         })
     }
 
-    /// Save multiple entities in a batch
     async fn save_all(&self, models: Vec<Self::Model>) -> Result<Vec<Self::Model>, sea_orm::DbErr> {
         let mut results = Vec::new();
         for model in models {
@@ -349,7 +371,6 @@ pub trait GritRepository {
         Ok(results)
     }
 
-    /// Update an entity (assumes it already exists)
     async fn update(&self, model: Self::Model) -> Result<Self::Model, sea_orm::DbErr> {
         let active_model = <Self::ActiveModel as ConvertFromModel<Self::Model>>::from_model(model);
         let updated_active = active_model.update(self.get_db()).await?;
@@ -362,13 +383,11 @@ pub trait GritRepository {
     // DELETE OPERATIONS (JPA Style)
     // =========================================================================
 
-    /// Delete by primary key
     async fn delete_by_id(&self, id: Self::Id) -> Result<u64, sea_orm::DbErr> {
         let res = Self::Entity::delete_by_id(id).exec(self.get_db()).await?;
         Ok(res.rows_affected)
     }
 
-    /// Delete an entity
     async fn delete(&self, model: &Self::Model) -> Result<u64, sea_orm::DbErr> {
         let active_model =
             <Self::ActiveModel as ConvertFromModel<Self::Model>>::from_model(model.clone());
@@ -376,13 +395,11 @@ pub trait GritRepository {
         Ok(res.rows_affected)
     }
 
-    /// Delete all entities
     async fn delete_all(&self) -> Result<u64, sea_orm::DbErr> {
         let res = Self::Entity::delete_many().exec(self.get_db()).await?;
         Ok(res.rows_affected)
     }
 
-    /// Delete by condition
     async fn delete_by_field<F>(
         &self,
         column: Self::Column,
@@ -402,12 +419,10 @@ pub trait GritRepository {
     // COUNT & EXISTENCE METHODS
     // =========================================================================
 
-    /// Count all entities
     async fn count(&self) -> Result<u64, sea_orm::DbErr> {
         Self::Entity::find().count(self.get_db()).await
     }
 
-    /// Count entities by field
     async fn count_by_field<F>(&self, column: Self::Column, value: F) -> Result<u64, sea_orm::DbErr>
     where
         F: Into<sea_orm::Value> + Send + Sync,
@@ -418,33 +433,24 @@ pub trait GritRepository {
             .await
     }
 
-    /// Check if entity exists by id
     async fn exists_by_id(&self, id: Self::Id) -> Result<bool, sea_orm::DbErr> {
         let count = Self::Entity::find_by_id(id).count(self.get_db()).await?;
         Ok(count > 0)
     }
 
-    // Inside GritRepository in repository.rs
     async fn global_search(
         &self,
         query: &str,
         columns: Vec<Self::Column>,
     ) -> Result<Vec<Self::Model>, sea_orm::DbErr> {
         let mut search_query = Self::Entity::find();
-
-        // Group filters together using an ANY/OR condition
         let mut condition = sea_orm::Condition::any();
         for column in columns {
             condition = condition.add(column.contains(query));
         }
-
         search_query.filter(condition).all(self.get_db()).await
     }
 }
-
-// =============================================================================
-// CONVERT FROM MODEL TRAIT
-// =============================================================================
 
 pub trait ConvertFromModel<M> {
     fn from_model(model: M) -> Self;
