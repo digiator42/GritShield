@@ -33,6 +33,7 @@ notify = "4.0"
 sea-orm = { version = "1.1", default-features = false, features = [
     "runtime-tokio-native-tls",
     "macros",
+    "with-chrono",
 ] }
 sea-orm-migration = "1.1.20"
 tokio = { version = "1.0", features = ["full"] }
@@ -47,3 +48,4 @@ ctor = "1.0"
 chrono = "0.4"
 lazy_static = "1.4"
 html-escape = "0.2.13"
+rust_decimal = "1.39.0"

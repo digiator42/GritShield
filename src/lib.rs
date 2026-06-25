@@ -40,6 +40,8 @@ pub mod deps {
     pub use tokio;
     pub use tokio_tungstenite;
     pub use uuid;
+    pub use rust_decimal;
+    pub use rust_decimal::Decimal;
 }
 
 /// The Prelude module contains everything a developer needs to build an app.

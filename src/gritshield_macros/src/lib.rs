@@ -181,11 +181,12 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
     let entity_module = quote! { crate::models::user };
     let mut searchable_columns = Vec::new();
     let mut grid_columns = Vec::new();
+    let mut read_only_columns = Vec::new(); // 💡 Track read-only column names
 
     for attr in &input.attrs {
         if attr.path().is_ident("repository") {
             let _ = attr.parse_nested_meta(|meta| {
-                if meta.path.is_ident("admin_searchable") {
+                if meta.path.is_ident("searchable") {
                     let value = meta.value()?;
                     if let Ok(Expr::Array(ExprArray { elems, .. })) = value.parse::<Expr>() {
                         for elem in elems {
@@ -211,6 +212,20 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
                             }
                         }
                     }
+                } else if meta.path.is_ident("read_only") {
+                    // 💡 Parse the read-only attributes
+                    let value = meta.value()?;
+                    if let Ok(Expr::Array(ExprArray { elems, .. })) = value.parse::<Expr>() {
+                        for elem in elems {
+                            if let Expr::Lit(ExprLit {
+                                lit: Lit::Str(lit_str),
+                                ..
+                            }) = elem
+                            {
+                                read_only_columns.push(lit_str.value());
+                            }
+                        }
+                    }
                 }
                 Ok(())
             });
@@ -233,7 +248,8 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
     let mut update_field_tokens = Vec::new();
 
     for col in &grid_columns {
-        let is_editable = col != "id";
+        // 💡 Dynamic Rule: A column is editable if it's NOT "id" AND NOT explicitly specified as read-only
+        let is_editable = col != "id" && !read_only_columns.contains(col);
 
         // Capitalize the first letter of the column for the display label
         let label_str = if col.is_empty() {
@@ -280,7 +296,7 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
         const _: () = {
             use ::gritshield::deps::sea_orm;
 
-            // Local traits ensuring stable formatting/parsing of database primitives and Option fields
+            // 1. Local traits ensuring stable formatting/parsing of database fields
             trait AdminFieldFormat {
                 fn to_display_str(&self) -> ::std::string::String;
             }
@@ -288,6 +304,7 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
                 fn parse_field(s: &str) -> ::std::result::Result<Self, ::std::string::String> where Self: ::std::marker::Sized;
             }
 
+            // 2. Lightweight macro: ONLY for basic primitives relying on standard Display + FromStr
             macro_rules! impl_admin_field {
                 ($t:ty) => {
                     impl AdminFieldFormat for $t {
@@ -298,27 +315,10 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
                             s.parse().map_err(|e| ::std::format!("{}", e))
                         }
                     }
-                    impl AdminFieldFormat for ::std::option::Option<$t> {
-                        fn to_display_str(&self) -> ::std::string::String {
-                            match self {
-                                ::std::option::Option::Some(v) => ::std::format!("{}", v),
-                                ::std::option::Option::None => ::std::string::String::new(),
-                            }
-                        }
-                    }
-                    impl AdminFieldParse for ::std::option::Option<$t> {
-                        fn parse_field(s: &str) -> ::std::result::Result<Self, ::std::string::String> {
-                            if s.trim().is_empty() {
-                                ::std::result::Result::Ok(::std::option::Option::None)
-                            } else {
-                                let v = s.parse().map_err(|e| ::std::format!("{}", e))?;
-                                ::std::result::Result::Ok(::std::option::Option::Some(v))
-                            }
-                        }
-                    }
                 };
             }
 
+            // 3. Batch register standard primitive types safely
             impl_admin_field!(::std::string::String);
             impl_admin_field!(i16);
             impl_admin_field!(i32);
@@ -329,6 +329,61 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
             impl_admin_field!(f32);
             impl_admin_field!(f64);
             impl_admin_field!(bool);
+            impl_admin_field!(::gritshield::deps::chrono::NaiveDate);
+            impl_admin_field!(::gritshield::deps::uuid::Uuid);
+            impl_admin_field!(::gritshield::deps::rust_decimal::Decimal);
+
+            // 4. ONE GLOBAL BLANKET IMPL: Covers ALL Option<T> pairs automatically (No duplication!)
+            impl<T> AdminFieldFormat for ::std::option::Option<T>
+            where
+                T: AdminFieldFormat,
+            {
+                fn to_display_str(&self) -> ::std::string::String {
+                    match self {
+                        ::std::option::Option::Some(val) => val.to_display_str(),
+                        ::std::option::Option::None => ::std::string::String::new(),
+                    }
+                }
+            }
+
+            impl<T> AdminFieldParse for ::std::option::Option<T>
+            where
+                T: AdminFieldParse,
+            {
+                fn parse_field(s: &str) -> ::std::result::Result<Self, ::std::string::String> {
+                    if s.trim().is_empty() {
+                        ::std::result::Result::Ok(::std::option::Option::None)
+                    } else {
+                        let parsed = T::parse_field(s)?;
+                        ::std::result::Result::Ok(::std::option::Option::Some(parsed))
+                    }
+                }
+            }
+
+            // 5. Unique Type Implementations (Compiled exactly once outside the macro loop)
+            impl AdminFieldFormat for ::gritshield::deps::chrono::NaiveDateTime {
+                fn to_display_str(&self) -> ::std::string::String {
+                    self.format("%Y-%m-%d %H:%M:%S").to_string()
+                }
+            }
+            impl AdminFieldParse for ::gritshield::deps::chrono::NaiveDateTime {
+                fn parse_field(s: &str) -> ::std::result::Result<Self, ::std::string::String> {
+                    ::gritshield::deps::chrono::NaiveDateTime::parse_from_str(s.trim(), "%Y-%m-%d %H:%M:%S")
+                        .or_else(|_| ::gritshield::deps::chrono::NaiveDateTime::parse_from_str(s.trim(), "%Y-%m-%dT%H:%M:%S"))
+                        .map_err(|e| ::std::format!("Invalid datetime format: {}", e))
+                }
+            }
+
+            impl AdminFieldFormat for ::gritshield::deps::serde_json::Value {
+                fn to_display_str(&self) -> ::std::string::String {
+                    self.to_string()
+                }
+            }
+            impl AdminFieldParse for ::gritshield::deps::serde_json::Value {
+                fn parse_field(s: &str) -> ::std::result::Result<Self, ::std::string::String> {
+                    ::gritshield::deps::serde_json::from_str(s).map_err(|e| ::std::format!("Invalid JSON syntax: {}", e))
+                }
+            }
 
             #[::gritshield::deps::async_trait]
             impl ::gritshield::database::repository::GritRepository for #name {
@@ -372,6 +427,10 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
                             #(#update_field_tokens)*
                             _ => return ::std::result::Result::Err(::gritshield::deps::sea_orm::DbErr::Custom(::std::format!("Column '{}' is not editable", column_name))),
                         };
+
+                        // 💡 Optional enhancement: If the model has updated_at, touch it on any successful save
+                        // active_model.updated_at = ::gritshield::deps::sea_orm::Set(::chrono::Utc::now().naive_utc());
+
                         let updated_model = active_model.update(self.get_db()).await?;
                         ::std::result::Result::Ok(updated_model)
                     } else {
@@ -381,13 +440,80 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
             }
 
             impl #name {
-                pub fn find() -> ::gritshield::deps::sea_orm::Select<<Self as ::gritshield::database::repository::GritRepository>::Entity> {
+                pub fn find() -> ::gritshield::deps::sea_orm::Select<#entity_module::Entity> {
                     use ::gritshield::deps::sea_orm::EntityTrait;
-                    <Self as ::gritshield::database::repository::GritRepository>::Entity::find()
+                    #entity_module::Entity::find()
                 }
 
-                pub fn id_col() -> <Self as ::gritshield::database::repository::GritRepository>::Column {
-                    <Self as ::gritshield::database::repository::GritRepository>::id_column()
+                pub fn id_col() -> #entity_module::Column {
+                    #entity_module::Column::Id
+                }
+
+                pub fn column_names() -> ::std::vec::Vec<::std::string::String> {
+                    use ::gritshield::deps::sea_orm::{Iterable, Iden};
+                    <#entity_module::Column as Iterable>::iter()
+                        .map(|col| col.to_string())
+                        .collect()
+                }
+
+                pub fn column_from_str(name: &str) -> ::std::option::Option<#entity_module::Column> {
+                    use ::gritshield::deps::sea_orm::{Iterable, Iden};
+                    for col in <#entity_module::Column as Iterable>::iter() {
+                        if col.to_string() == name {
+                            return ::std::option::Option::Some(col);
+                        }
+                    }
+                    ::std::option::Option::None
+                }
+
+                /// Fetch a single entity instance by its Primary Key
+                pub async fn find_by_id(&self, id: <<#entity_module::Entity as ::gritshield::deps::sea_orm::EntityTrait>::PrimaryKey as ::gritshield::deps::sea_orm::PrimaryKeyTrait>::ValueType) -> ::std::result::Result<::std::option::Option<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr> {
+                    use ::gritshield::deps::sea_orm::EntityTrait;
+                    let db = <Self as ::gritshield::database::repository::GritRepository>::get_db(self);
+                    #entity_module::Entity::find_by_id(id).one(db).await
+                }
+
+                pub async fn total_count(&self) -> ::std::result::Result<u64, ::gritshield::deps::sea_orm::DbErr> {
+                    use ::gritshield::deps::sea_orm::PaginatorTrait;
+                    let db = <Self as ::gritshield::database::repository::GritRepository>::get_db(self);
+                    Self::find().count(db).await
+                }
+
+                pub async fn delete_by_id(&self, id: <<#entity_module::Entity as ::gritshield::deps::sea_orm::EntityTrait>::PrimaryKey as ::gritshield::deps::sea_orm::PrimaryKeyTrait>::ValueType) -> ::std::result::Result<::gritshield::deps::sea_orm::DeleteResult, ::gritshield::deps::sea_orm::DbErr> {
+                    use ::gritshield::deps::sea_orm::EntityTrait;
+                    let db = <Self as ::gritshield::database::repository::GritRepository>::get_db(self);
+                    #entity_module::Entity::delete_by_id(id).exec(db).await
+                }
+
+                pub async fn search_admin_fields(&self, text: &str) -> ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr> {
+                    use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait, Iterable, Iden};
+                    let db = <Self as ::gritshield::database::repository::GritRepository>::get_db(self);
+
+                    let mut query = #entity_module::Entity::find();
+                    if text.trim().is_empty() {
+                        return query.all(db).await;
+                    }
+
+                    let mut condition = ::gritshield::deps::sea_orm::Condition::any();
+                    let configured_search_strings = ::std::vec![ #(#searchable_columns),* ];
+
+                    for col in <#entity_module::Column as Iterable>::iter() {
+                        if configured_search_strings.contains(&col.to_string().as_str()) {
+                            condition = condition.add(col.contains(text));
+                        }
+                    }
+
+                    query.filter(condition).all(db).await
+                }
+
+                pub async fn fetch_page_slice(&self, page: u64, page_size: u64) -> ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr> {
+                    use ::gritshield::deps::sea_orm::{QueryOrder, PaginatorTrait};
+                    let db = <Self as ::gritshield::database::repository::GritRepository>::get_db(self);
+                    Self::find()
+                        .order_by_desc(Self::id_col())
+                        .paginate(db, page_size)
+                        .fetch_page(page)
+                        .await
                 }
             }
 
@@ -401,7 +527,6 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
             #[::ctor::ctor]
             fn #initializer_name() {
                 use sea_orm::EntityName;
-
                 let table_name_str = <#entity_module::Entity as sea_orm::EntityName>::table_name(&#entity_module::Entity);
 
                 ::gritshield::database::repository::register_model(
