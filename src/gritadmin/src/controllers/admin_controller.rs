@@ -35,6 +35,7 @@ impl AdminUserController {
             .paginate(db, page_size);
 
         let total_pages = user_paginator.num_pages().await.unwrap_or(0);
+        let total_items = user_paginator.num_items().await.unwrap_or(0);
         let users = user_paginator.fetch_page(page).await.unwrap_or_default();
 
         // Trace block if it's completely empty to prevent silent failing
@@ -54,42 +55,41 @@ impl AdminUserController {
 
         // Render the dynamic spreadsheet row matrix
         let rows_html = html! {
-                    @for (index, user) in users.iter().enumerate() {
-                        @let is_last_row = index == (users.len() - 1) && (page + 1) < total_pages;
+                @for (index, user) in users.iter().enumerate() {
+                    @let is_last_row = index == (users.len() - 1) && (page + 1) < total_pages;
 
-                        tr
-                            hx-get=[is_last_row.then(|| format!("/admin/users?page={}", page + 1))]
-                            hx-trigger=[is_last_row.then_some("intersect once")]
-                            hx-swap=[is_last_row.then_some("afterend")]
-                            hx-indicator=[is_last_row.then_some("#infinite-scroll-spinner")]
-                            class="divide-x divide-gray-800 hover:bg-gray-900/40 transition"
-                        {
-                            td class="p-4 text-gray-500 font-mono text-xs" { (user.id) }
-                            td class="p-3" {
-                                input type="text"
-                                value=(user.username)
-                                name="username"
-                                hx-patch="/admin/api/inline-edit/update-cell"
-                                hx-trigger="change"
-                                hx-target="this"
-                                hx-swap="outerHTML"
-                                hx-vals=(format!("{{\"id\": {}, \"column\": \"username\", \"table_to_modify\": \"users\"}}", user.id))
+                    tr
+                        hx-get=[is_last_row.then(|| format!("/admin/users?page={}", page + 1))]
+                        hx-trigger=[is_last_row.then_some("intersect once")]
+                        hx-swap=[is_last_row.then_some("afterend")]
+                        hx-indicator=[is_last_row.then_some("#infinite-scroll-spinner")]
+                        class="divide-x divide-gray-800 hover:bg-gray-900/40 transition"
+                    {
+                        td class="p-4 text-gray-500 font-mono text-xs" { (user.id) }
+                        td class="p-3" {
+                            input type="text"
+                            value=(user.username)
+                            name="username"
+                            hx-patch="/admin/api/inline-edit/update-cell"
+                            hx-trigger="change"
+                            hx-target="this"
+                            hx-swap="outerHTML"
+                            hx-vals=(format!("{{\"id\": {}, \"column\": \"username\", \"table_to_modify\": \"users\"}}", user.id))
+                            class="bg-transparent hover:bg-gray-850 focus:bg-gray-800 px-2 py-1 rounded focus:outline-none w-full border border-transparent focus:border-emerald-600 transition";
+                        }
+                        td class="p-3" {
+                            input type="text" value=(user.email) name="email"
+                                hx-patch="/admin/api/inline-edit/update-cell" hx-trigger="change" hx-target="this" hx-swap="outerHTML"
+                                hx-vals=(format!("{{\"id\": {}, \"column\": \"email\", \"table_to_modify\": \"users\"}}", user.id))
                                 class="bg-transparent hover:bg-gray-850 focus:bg-gray-800 px-2 py-1 rounded focus:outline-none w-full border border-transparent focus:border-emerald-600 transition";
-                            }
-                            td class="p-3" {
-                                input type="text" value=(user.email) name="email"
-                                    hx-patch="/admin/api/inline-edit/update-cell" hx-trigger="change" hx-target="this" hx-swap="outerHTML"
-                                    hx-vals=(format!("{{\"id\": {}, \"column\": \"email\", \"table_to_modify\": \"users\"}}", user.id))
-                                    class="bg-transparent hover:bg-gray-850 focus:bg-gray-800 px-2 py-1 rounded focus:outline-none w-full border border-transparent focus:border-emerald-600 transition";
-                            }
                         }
                     }
-                    // IF this batch is a lazy HTMX load request and there's more data coming, append a transient loading row
-                    @if is_htmx && (page + 1) < total_pages {
-            // Keep this clean as a structural table row container
+                }
+
+                // IF this batch is a lazy HTMX load request and there's more data coming, append a transient loading row
+        @if is_htmx && (page + 1) < total_pages {
             tr id="infinite-scroll-spinner" class="border-t border-gray-900 bg-gray-950/50 animate-pulse" {
                 td colspan="3" class="p-4" {
-                    // FIX: Place the htmx-indicator class right here on the layout flex container!
                     div class="htmx-indicator flex items-center justify-center space-x-2" {
                         svg class="animate-spin h-4 w-4 text-emerald-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" {
                             circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" {}
@@ -100,7 +100,26 @@ impl AdminUserController {
                 }
             }
         }
-                };
+
+        // FIX: Wrap the OOB element inside a valid table element wrapper ('tr')
+        @if is_htmx {
+            tr id="pagination-stats-target" hx-swap-oob="outerHTML" {
+                td colspan="3" class="p-4 bg-gray-950/90 backdrop-blur border-t border-gray-800 text-xs font-medium" {
+                    div class="flex justify-between items-center w-full" {
+                        span class="text-gray-400" {
+                            "Viewing Page Slice "
+                            span class="text-emerald-400 font-mono font-semibold" { (&(page + 1)) }
+                            " of "
+                            span class="text-gray-400 font-mono" { (total_pages) }
+                        }
+                        span class="text-xs text-gray-500 font-medium tracking-wide bg-gray-900 px-2.5 py-1 rounded-md border border-gray-800" {
+                            "Total Matched Rows: " span class="text-gray-300 font-mono" { (total_items) }
+                        }
+                    }
+                }
+            }
+        }
+            };
 
         // If HTMX requested this, it's a scroll pagination hit!
         // Just return the raw incremental rows; HTMX swaps them right into place.
@@ -110,51 +129,69 @@ impl AdminUserController {
 
         // Otherwise, wrap the structural components inside the master dashboard envelope shell
         let complete_view = html! {
-            div class="space-y-6" {
-                div class="flex justify-between items-center" {
-                    div {
-                        h1 class="text-2xl font-bold tracking-tight" { "User Spreadsheet Matrix" }
-                        p class="text-xs text-gray-500 mt-1" { "Double-click field inputs to execute reactive backend inline-edits dynamically." }
+                div class="space-y-6" {
+                    div class="flex justify-between items-center" {
+                        div {
+                            h1 class="text-2xl font-bold tracking-tight" { "User Spreadsheet Matrix" }
+                            p class="text-xs text-gray-500 mt-1" { "Double-click field inputs to execute reactive backend inline-edits dynamically." }
+                        }
+
+                        input type="text"
+                            name="q"
+                            placeholder="Type Alt+K to look up tables, or search records..."
+                            hx-get="/admin/users/search"
+                            hx-trigger="keyup changed delay:300ms"
+                            hx-target="#table-body"
+                            hx-indicator="#search-loading"
+                            class="bg-gray-950 border border-gray-800 rounded px-4 py-2 w-80 text-sm focus:outline-none focus:border-emerald-500 transition";
                     }
 
-                    input type="text"
-                        name="q"
-                        placeholder="Type Alt+K to look up tables, or search records..."
-                        hx-get="/admin/users/search"
-                        hx-trigger="keyup changed delay:300ms"
-                        hx-target="#table-body"
-                        hx-indicator="#search-loading"
-                        class="bg-gray-950 border border-gray-800 rounded px-4 py-2 w-80 text-sm focus:outline-none focus:border-emerald-500 transition";
-                }
-
-                div class="bg-gray-950 border border-gray-800 rounded-xl overflow-hidden shadow-xl relative" {
-                    // Loading overlay that appears during search
-                    div id="search-loading"
-                        class="htmx-indicator absolute inset-0 bg-gray-950/80 backdrop-blur-sm flex items-center justify-center z-10 rounded-xl" {
-                        div class="flex flex-col items-center space-y-3" {
-                            svg class="animate-spin h-8 w-8 text-emerald-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" {
-                                circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" {}
-                                path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" {}
-                            }
-                            span class="text-sm text-gray-400" { "Searching..." }
-                        }
-                    }
-
-                    table class="w-full text-left border-collapse" {
-                        thead class="bg-gray-900/80 backdrop-blur border-b border-gray-800 text-xs font-semibold uppercase tracking-wider text-gray-400" {
-                            tr class="divide-x divide-gray-800" {
-                                th class="p-4 w-20" { "DB ID" }
-                                th class="p-4" { "Username String Field" }
-                                th class="p-4" { "Registered Email Address" }
+                    div class="bg-gray-950 border border-gray-800 rounded-xl overflow-hidden shadow-xl relative" {
+                        // Loading overlay that appears during search
+                        div id="search-loading"
+                            class="htmx-indicator absolute inset-0 bg-gray-950/80 backdrop-blur-sm flex items-center justify-center z-10 rounded-xl" {
+                            div class="flex flex-col items-center space-y-3" {
+                                svg class="animate-spin h-8 w-8 text-emerald-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" {
+                                    circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" {}
+                                    path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" {}
+                                }
+                                span class="text-sm text-gray-400" { "Searching..." }
                             }
                         }
-                        tbody id="table-body" class="divide-y divide-gray-800" {
-                            (rows_html)
+
+                        table class="w-full text-left border-collapse" {
+                            thead class="bg-gray-900/80 backdrop-blur border-b border-gray-800 text-xs font-semibold uppercase tracking-wider text-gray-400" {
+                                tr class="divide-x divide-gray-800" {
+                                    th class="p-4 w-20" { "DB ID" }
+                                    th class="p-4" { "Username String Field" }
+                                    th class="p-4" { "Registered Email Address" }
+                                }
+                            }
+                            tbody id="table-body" class="divide-y divide-gray-800" {
+                                (rows_html)
+                            }
+                            // Structural Table Footnotes Component Grid Pinned at bottom
+                            tfoot {
+            tr id="pagination-stats-target" class="bg-gray-950 border-t border-gray-800 text-xs font-medium" {
+                td colspan="3" class="p-4 bg-gray-950/90 backdrop-blur" {
+                    div class="flex justify-between items-center w-full" {
+                        span class="text-gray-400" {
+                            "Viewing Page Slice "
+                            span class="text-emerald-400 font-mono font-semibold" { (&(page + 1)) }
+                            " of "
+                            span class="text-gray-400 font-mono" { (total_pages) }
+                        }
+                        span class="text-xs text-gray-500 font-medium tracking-wide bg-gray-900 px-2.5 py-1 rounded-md border border-gray-800" {
+                            "Total Matched Rows: " span class="text-gray-300 font-mono" { (total_items) }
                         }
                     }
                 }
             }
-        };
+        }
+                        }
+                    }
+                }
+            };
 
         shell::admin_shell("Manage Users", complete_view, is_htmx)
     }
