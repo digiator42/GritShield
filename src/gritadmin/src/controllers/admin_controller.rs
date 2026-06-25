@@ -87,7 +87,7 @@ impl AdminUserController {
                     hx-trigger="intersect once"
                     hx-target="#infinite-scroll-spinner"
                     hx-swap="outerHTML"
-                    class="border-t border-gray-900 bg-gray-950/50 animate-pulse" 
+                    class="border-t border-gray-900 bg-gray-950/50 animate-pulse"
                 {
                     td colspan="3" class="p-4" {
                         div class="flex items-center justify-center space-x-2" {
@@ -126,19 +126,33 @@ impl AdminUserController {
             // Returns ONLY rows + new spinner + OOB component
             Response::ok(rows_html.into_string())
         } else {
+            // This invokes the EntityName trait implementation directly
+            let raw_table_name = user_repo.table_name();
+
+            // Capitalize the first letter safely without needing an external helper function
+            let display_title = format!(
+                "{} Matrix Matrix",
+                raw_table_name
+                    .chars()
+                    .next()
+                    .map(|c| c.to_uppercase().to_string())
+                    .unwrap_or_default()
+                    + &raw_table_name[1..]
+            );
+
             // Page 0 loads the structural dashboard outline interface
             let complete_view = html! {
                 div class="space-y-6" {
                     div class="flex justify-between items-center" {
-                        div {
-                            h1 class="text-2xl font-bold tracking-tight" { "User Spreadsheet Matrix" }
-                            p class="text-xs text-gray-500 mt-1" { "Double-click field inputs to execute reactive backend inline-edits dynamically." }
-                        }
+                        h1 class="text-2xl font-bold tracking-tight" { (display_title) }
+                            p class="text-xs text-gray-500 mt-1" {
+                                (format!("Double-click field inputs to execute reactive backend inline-edits dynamically on table '{}'.", raw_table_name))
+                            }
 
                         input type="text"
                             name="q"
                             placeholder="Type Alt+K to look up tables, or search records..."
-                            hx-get="/admin/users/search"
+                            hx-get=(format!("/admin/{}/search", raw_table_name))
                             hx-trigger="keyup changed delay:300ms"
                             hx-target="#table-body"
                             hx-indicator="#search-loading"
@@ -310,21 +324,17 @@ impl AdminUserController {
             .map(|v| v.to_string())
             .unwrap_or_default();
 
-        // 2. Fetch records: If query is empty, return a clean state or fetch the first page slice.
-        // Otherwise, execute the repository's dynamic global search.
         let users = if query.is_empty() {
-            <UserRepository as GritRepository>::Entity::find()
-                .order_by_desc(<UserRepository as GritRepository>::id_column())
+            UserRepository::find()
+                .order_by_desc(UserRepository::id_column())
                 .all(db)
                 .await
                 .unwrap_or_default()
         } else {
-            // Use the columns you want searchable (e.g., username, email)
             let searchable_columns = vec![
                 crate::models::user::Column::Username,
                 crate::models::user::Column::Email,
             ];
-
             user_repo
                 .global_search(&query, searchable_columns)
                 .await
