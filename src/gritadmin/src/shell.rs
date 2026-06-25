@@ -21,17 +21,17 @@ pub fn admin_shell(title: &str, content: Markup, is_htmx: bool) -> Response {
                 script src="https://unpkg.com/htmx.org@1.9.10" {}
                 script src="https://cdn.tailwindcss.com" {}
                 style {
-    "
-    .htmx-indicator {
-        display: none !important;
-    }
-    /* When an active request is running, reveal elements inside or marked by it */
-    .htmx-request .htmx-indicator, 
-    .htmx-request.htmx-indicator {
-        display: flex !important;
-    }
-    "
-}
+                    "
+                    .htmx-indicator {
+                        display: none !important;
+                    }
+                    /* When an active request is running, reveal elements inside or marked by it */
+                    .htmx-request .htmx-indicator, 
+                    .htmx-request.htmx-indicator {
+                        display: flex !important;
+                    }
+                    "
+                }
             }
             body class="bg-gray-900 text-gray-100 font-sans" {
                 div class="flex h-screen overflow-hidden" {
