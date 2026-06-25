@@ -173,7 +173,6 @@ pub fn controller(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     TokenStream::from(expanded)
 }
-
 #[proc_macro_derive(GritRepository, attributes(repository))]
 pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -181,6 +180,7 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
 
     let entity_module = quote! { crate::models::user };
     let mut searchable_columns = Vec::new();
+    let mut grid_columns = Vec::new();
 
     for attr in &input.attrs {
         if attr.path().is_ident("repository") {
@@ -198,8 +198,72 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
                             }
                         }
                     }
+                } else if meta.path.is_ident("grid_columns") {
+                    let value = meta.value()?;
+                    if let Ok(Expr::Array(ExprArray { elems, .. })) = value.parse::<Expr>() {
+                        for elem in elems {
+                            if let Expr::Lit(ExprLit {
+                                lit: Lit::Str(lit_str),
+                                ..
+                            }) = elem
+                            {
+                                grid_columns.push(lit_str.value());
+                            }
+                        }
+                    }
                 }
                 Ok(())
+            });
+        }
+    }
+
+    // Fallback default: if grid_columns isn't provided, use ID + searchable items
+    if grid_columns.is_empty() {
+        grid_columns.push("id".to_string());
+        for col in &searchable_columns {
+            if col != "id" {
+                grid_columns.push(col.clone());
+            }
+        }
+    }
+
+    // Build token vectors for our three trait methods
+    let mut grid_column_tokens = Vec::new();
+    let mut get_field_tokens = Vec::new();
+    let mut update_field_tokens = Vec::new();
+
+    for col in &grid_columns {
+        let is_editable = col != "id";
+
+        // Capitalize the first letter of the column for the display label
+        let label_str = if col.is_empty() {
+            String::new()
+        } else {
+            let mut chars = col.chars();
+            chars.next().unwrap().to_uppercase().collect::<String>() + chars.as_str()
+        };
+
+        grid_column_tokens.push(quote! {
+            ::gritshield::database::repository::GridColumn {
+                name: #col,
+                label: #label_str,
+                is_editable: #is_editable,
+            }
+        });
+
+        let field_ident = syn::Ident::new(col, proc_macro2::Span::call_site());
+
+        get_field_tokens.push(quote! {
+            #col => AdminFieldFormat::to_display_str(&model.#field_ident),
+        });
+
+        if is_editable {
+            update_field_tokens.push(quote! {
+                #col => {
+                    let parsed_val = AdminFieldParse::parse_field(&value)
+                        .map_err(|e| ::gritshield::deps::sea_orm::DbErr::Custom(::std::format!("Failed to parse column '{}': {}", #col, e)))?;
+                    active_model.#field_ident = ::gritshield::deps::sea_orm::Set(parsed_val);
+                }
             });
         }
     }
@@ -215,6 +279,56 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
     let expanded = quote! {
         const _: () = {
             use ::gritshield::deps::sea_orm;
+
+            // Local traits ensuring stable formatting/parsing of database primitives and Option fields
+            trait AdminFieldFormat {
+                fn to_display_str(&self) -> ::std::string::String;
+            }
+            trait AdminFieldParse {
+                fn parse_field(s: &str) -> ::std::result::Result<Self, ::std::string::String> where Self: ::std::marker::Sized;
+            }
+
+            macro_rules! impl_admin_field {
+                ($t:ty) => {
+                    impl AdminFieldFormat for $t {
+                        fn to_display_str(&self) -> ::std::string::String { ::std::format!("{}", self) }
+                    }
+                    impl AdminFieldParse for $t {
+                        fn parse_field(s: &str) -> ::std::result::Result<Self, ::std::string::String> {
+                            s.parse().map_err(|e| ::std::format!("{}", e))
+                        }
+                    }
+                    impl AdminFieldFormat for ::std::option::Option<$t> {
+                        fn to_display_str(&self) -> ::std::string::String {
+                            match self {
+                                ::std::option::Option::Some(v) => ::std::format!("{}", v),
+                                ::std::option::Option::None => ::std::string::String::new(),
+                            }
+                        }
+                    }
+                    impl AdminFieldParse for ::std::option::Option<$t> {
+                        fn parse_field(s: &str) -> ::std::result::Result<Self, ::std::string::String> {
+                            if s.trim().is_empty() {
+                                ::std::result::Result::Ok(::std::option::Option::None)
+                            } else {
+                                let v = s.parse().map_err(|e| ::std::format!("{}", e))?;
+                                ::std::result::Result::Ok(::std::option::Option::Some(v))
+                            }
+                        }
+                    }
+                };
+            }
+
+            impl_admin_field!(::std::string::String);
+            impl_admin_field!(i16);
+            impl_admin_field!(i32);
+            impl_admin_field!(i64);
+            impl_admin_field!(u16);
+            impl_admin_field!(u32);
+            impl_admin_field!(u64);
+            impl_admin_field!(f32);
+            impl_admin_field!(f64);
+            impl_admin_field!(bool);
 
             #[::gritshield::deps::async_trait]
             impl ::gritshield::database::repository::GritRepository for #name {
@@ -232,8 +346,48 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
                     #entity_module::Column::Id
                 }
 
-                fn email_column() -> std::option::Option<Self::Column> {
-                    std::option::Option::Some(#entity_module::Column::Email)
+                fn grid_columns(&self) -> ::std::vec::Vec<::gritshield::database::repository::GridColumn> {
+                    ::std::vec![
+                        #(#grid_column_tokens),*
+                    ]
+                }
+
+                fn get_field_as_string(&self, model: &Self::Model, column_name: &str) -> ::std::string::String {
+                    match column_name {
+                        #(#get_field_tokens)*
+                        _ => ::std::string::String::new(),
+                    }
+                }
+
+                async fn update_column_value(
+                    &self,
+                    id: Self::Id,
+                    column_name: &str,
+                    value: ::std::string::String
+                ) -> ::std::result::Result<Self::Model, ::gritshield::deps::sea_orm::DbErr> {
+                    use ::gritshield::deps::sea_orm::ActiveModelTrait;
+                    if let ::std::option::Option::Some(record) = self.find_by_id(id).await? {
+                        let mut active_model = <Self::ActiveModel as ::gritshield::database::repository::ConvertFromModel<Self::Model>>::from_model(record);
+                        match column_name {
+                            #(#update_field_tokens)*
+                            _ => return ::std::result::Result::Err(::gritshield::deps::sea_orm::DbErr::Custom(::std::format!("Column '{}' is not editable", column_name))),
+                        };
+                        let updated_model = active_model.update(self.get_db()).await?;
+                        ::std::result::Result::Ok(updated_model)
+                    } else {
+                        ::std::result::Result::Err(::gritshield::deps::sea_orm::DbErr::Custom("Target row record not found".to_string()))
+                    }
+                }
+            }
+
+            impl #name {
+                pub fn find() -> ::gritshield::deps::sea_orm::Select<<Self as ::gritshield::database::repository::GritRepository>::Entity> {
+                    use ::gritshield::deps::sea_orm::EntityTrait;
+                    <Self as ::gritshield::database::repository::GritRepository>::Entity::find()
+                }
+
+                pub fn id_col() -> <Self as ::gritshield::database::repository::GritRepository>::Column {
+                    <Self as ::gritshield::database::repository::GritRepository>::id_column()
                 }
             }
 
@@ -244,7 +398,6 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
                 }
             }
 
-            // FIXED: Using the local crate's direct ctor dependency instead of going through gritshield!
             #[::ctor::ctor]
             fn #initializer_name() {
                 use sea_orm::EntityName;
