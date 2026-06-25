@@ -3,8 +3,9 @@ use gritshield::{
     database::repository::{GritRepository, ADMIN_REGISTRY},
     prelude::*,
 };
-use sea_orm::{EntityTrait, PaginatorTrait, QueryOrder, QuerySelect, IntoActiveModel, ActiveModelTrait};
-
+use sea_orm::{
+    ActiveModelTrait, EntityTrait, IntoActiveModel, PaginatorTrait, QueryOrder, QuerySelect,
+};
 
 pub struct AdminUserController;
 
@@ -53,43 +54,53 @@ impl AdminUserController {
 
         // Render the dynamic spreadsheet row matrix
         let rows_html = html! {
-            @for (index, user) in users.iter().enumerate() {
-                @let is_last_row = index == (users.len() - 1) && (page + 1) < total_pages;
+                    @for (index, user) in users.iter().enumerate() {
+                        @let is_last_row = index == (users.len() - 1) && (page + 1) < total_pages;
 
-                // Use Maud's clean conditional attribute syntax:
-                // [attribute] will only render if the variable inside is true!
-                tr
-                    hx-get=[is_last_row.then(|| format!("/admin/users?page={}", page + 1))]
-                    hx-trigger=[is_last_row.then_some("intersect once")]
-                    hx-swap=[is_last_row.then_some("afterend")]
-                    class="divide-x divide-gray-800 hover:bg-gray-900/40 transition"
-                {
-                    td class="p-4 text-gray-500 font-mono text-xs" { (user.id) }
-                    td class="p-3" {
-                        input type="text"
-                               value=(user.username)
-                               hx-patch="/admin/api/inline-edit/update-cell"
-                               hx-trigger="change"
-                               name="username"
-                               hx-target="this"
-                               hx-swap="outerHTML"
-                               hx-vals=(format!("{{\"id\": {}, \"column\": \"username\", \"table_to_modify\": \"users\"}}", user.id))
-                               class="bg-transparent hover:bg-gray-850 focus:bg-gray-800 px-2 py-1 rounded focus:outline-none w-full border border-transparent focus:border-emerald-600 transition";
+                        tr
+                            hx-get=[is_last_row.then(|| format!("/admin/users?page={}", page + 1))]
+                            hx-trigger=[is_last_row.then_some("intersect once")]
+                            hx-swap=[is_last_row.then_some("afterend")]
+                            hx-indicator=[is_last_row.then_some("#infinite-scroll-spinner")]
+                            class="divide-x divide-gray-800 hover:bg-gray-900/40 transition"
+                        {
+                            td class="p-4 text-gray-500 font-mono text-xs" { (user.id) }
+                            td class="p-3" {
+                                input type="text"
+                                value=(user.username)
+                                name="username"
+                                hx-patch="/admin/api/inline-edit/update-cell"
+                                hx-trigger="change"
+                                hx-target="this"
+                                hx-swap="outerHTML"
+                                hx-vals=(format!("{{\"id\": {}, \"column\": \"username\", \"table_to_modify\": \"users\"}}", user.id))
+                                class="bg-transparent hover:bg-gray-850 focus:bg-gray-800 px-2 py-1 rounded focus:outline-none w-full border border-transparent focus:border-emerald-600 transition";
+                            }
+                            td class="p-3" {
+                                input type="text" value=(user.email) name="email"
+                                    hx-patch="/admin/api/inline-edit/update-cell" hx-trigger="change" hx-target="this" hx-swap="outerHTML"
+                                    hx-vals=(format!("{{\"id\": {}, \"column\": \"email\", \"table_to_modify\": \"users\"}}", user.id))
+                                    class="bg-transparent hover:bg-gray-850 focus:bg-gray-800 px-2 py-1 rounded focus:outline-none w-full border border-transparent focus:border-emerald-600 transition";
+                            }
+                        }
                     }
-                    td class="p-3" {
-                        input type="text"
-                               value=(user.email)
-                               hx-patch="/admin/api/inline-edit/update-cell"
-                               hx-trigger="change"
-                               name="email"
-                               hx-target="this"
-                               hx-swap="outerHTML"
-                               hx-vals=(format!("{{\"id\": {}, \"column\": \"email\", \"table_to_modify\": \"users\"}}", user.id))
-                               class="bg-transparent hover:bg-gray-850 focus:bg-gray-800 px-2 py-1 rounded focus:outline-none w-full border border-transparent focus:border-emerald-600 transition";
+                    // IF this batch is a lazy HTMX load request and there's more data coming, append a transient loading row
+                    @if is_htmx && (page + 1) < total_pages {
+            // Keep this clean as a structural table row container
+            tr id="infinite-scroll-spinner" class="border-t border-gray-900 bg-gray-950/50 animate-pulse" {
+                td colspan="3" class="p-4" {
+                    // FIX: Place the htmx-indicator class right here on the layout flex container!
+                    div class="htmx-indicator flex items-center justify-center space-x-2" {
+                        svg class="animate-spin h-4 w-4 text-emerald-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" {
+                            circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" {}
+                            path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" {}
+                        }
+                        span class="text-xs text-gray-400 font-medium" { "Loading more system entries..." }
                     }
                 }
             }
-        };
+        }
+                };
 
         // If HTMX requested this, it's a scroll pagination hit!
         // Just return the raw incremental rows; HTMX swaps them right into place.
@@ -107,19 +118,32 @@ impl AdminUserController {
                     }
 
                     input type="text"
-                           name="q"
-                           placeholder="Type Alt+K to look up tables, or search records..."
-                           hx-get="/admin/users/search"
-                           hx-trigger="keyup changed delay:300ms"
-                           hx-target="#table-body"
-                           class="bg-gray-950 border border-gray-800 rounded px-4 py-2 w-80 text-sm focus:outline-none focus:border-emerald-500 transition";
+                        name="q"
+                        placeholder="Type Alt+K to look up tables, or search records..."
+                        hx-get="/admin/users/search"
+                        hx-trigger="keyup changed delay:300ms"
+                        hx-target="#table-body"
+                        hx-indicator="#search-loading"
+                        class="bg-gray-950 border border-gray-800 rounded px-4 py-2 w-80 text-sm focus:outline-none focus:border-emerald-500 transition";
                 }
 
-                div class="bg-gray-950 border border-gray-800 rounded-xl overflow-hidden shadow-xl" {
+                div class="bg-gray-950 border border-gray-800 rounded-xl overflow-hidden shadow-xl relative" {
+                    // Loading overlay that appears during search
+                    div id="search-loading"
+                        class="htmx-indicator absolute inset-0 bg-gray-950/80 backdrop-blur-sm flex items-center justify-center z-10 rounded-xl" {
+                        div class="flex flex-col items-center space-y-3" {
+                            svg class="animate-spin h-8 w-8 text-emerald-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" {
+                                circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" {}
+                                path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" {}
+                            }
+                            span class="text-sm text-gray-400" { "Searching..." }
+                        }
+                    }
+
                     table class="w-full text-left border-collapse" {
                         thead class="bg-gray-900/80 backdrop-blur border-b border-gray-800 text-xs font-semibold uppercase tracking-wider text-gray-400" {
                             tr class="divide-x divide-gray-800" {
-                                th class="p-4 w-20" { "Database ID" }
+                                th class="p-4 w-20" { "DB ID" }
                                 th class="p-4" { "Username String Field" }
                                 th class="p-4" { "Registered Email Address" }
                             }
@@ -161,7 +185,6 @@ impl AdminUserController {
 
         // Find the record from the database
         if let Some(user) = user_repo.find_by_id(record_id).await.unwrap() {
-
             // 1. Convert via standard IntoActiveModel to preserve database primary key context
             let mut active_user = user.into_active_model();
 
@@ -202,8 +225,6 @@ impl AdminUserController {
             .map(|v| v.to_string().to_lowercase())
             .unwrap_or_default();
 
-        println!("===> {}", query);
-
         if query.is_empty() {
             return Response::ok(""); // Return empty state if nothing is typed
         }
@@ -240,5 +261,80 @@ impl AdminUserController {
         }
 
         Response::ok(matching_results.into_string())
+    }
+
+    #[get("/users/search")]
+    pub async fn search_users(ctx: RequestContext) -> Response {
+        let db = ctx.db.as_deref().unwrap();
+        let user_repo = UserRepository { db: db.clone() };
+
+        // 1. Extract the query string safely from the URL params
+        let query = ctx
+            .query
+            .get("q")
+            .map(|v| v.to_string())
+            .unwrap_or_default();
+
+        // 2. Fetch records: If query is empty, return a clean state or fetch the first page slice.
+        // Otherwise, execute the repository's dynamic global search.
+        let users = if query.is_empty() {
+            <UserRepository as GritRepository>::Entity::find()
+                .order_by_desc(<UserRepository as GritRepository>::id_column())
+                .all(db)
+                .await
+                .unwrap_or_default()
+        } else {
+            // Use the columns you want searchable (e.g., username, email)
+            let searchable_columns = vec![
+                crate::models::user::Column::Username,
+                crate::models::user::Column::Email,
+            ];
+
+            user_repo
+                .global_search(&query, searchable_columns)
+                .await
+                .unwrap_or_default()
+        };
+
+        // 3. Render ONLY the <tr> tags (matching your list_users design exactly)
+        let rows_html = html! {
+            @if users.is_empty() {
+                tr class="border-b border-gray-900" {
+                    td colspan="3" class="p-8 text-center text-gray-500 text-sm italic" {
+                        "No records found matching \"" (query) "\""
+                    }
+                }
+            } @else {
+                @for user in users.iter() {
+                    tr class="divide-x divide-gray-800 hover:bg-gray-900/40 transition" {
+                        td class="p-4 text-gray-500 font-mono text-xs" { (user.id) }
+                        td class="p-3" {
+                            input type="text"
+                                   value=(user.username)
+                                   hx-patch="/admin/api/inline-edit/update-cell"
+                                   hx-trigger="change"
+                                   name="username"
+                                   hx-target="this"
+                                   hx-swap="outerHTML"
+                                   hx-vals=(format!("{{\"id\": {}, \"column\": \"username\", \"table_to_modify\": \"users\"}}", user.id))
+                                   class="bg-transparent hover:bg-gray-850 focus:bg-gray-800 px-2 py-1 rounded focus:outline-none w-full border border-transparent focus:border-emerald-600 transition";
+                        }
+                        td class="p-3" {
+                            input type="text"
+                                   value=(user.email)
+                                   hx-patch="/admin/api/inline-edit/update-cell"
+                                   hx-trigger="change"
+                                   name="email"
+                                   hx-target="this"
+                                   hx-swap="outerHTML"
+                                   hx-vals=(format!("{{\"id\": {}, \"column\": \"email\", \"table_to_modify\": \"users\"}}", user.id))
+                                   class="bg-transparent hover:bg-gray-850 focus:bg-gray-800 px-2 py-1 rounded focus:outline-none w-full border border-transparent focus:border-emerald-600 transition";
+                        }
+                    }
+                }
+            }
+        };
+
+        Response::ok(rows_html.into_string())
     }
 }

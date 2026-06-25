@@ -17,3 +17,4 @@ document.addEventListener('keydown', function(e) {
         document.getElementById('command-palette').classList.add('hidden');
     }
 });
+
