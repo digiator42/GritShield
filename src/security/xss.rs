@@ -51,6 +51,10 @@ impl SafeHtml {
     pub fn as_bytes(&self) -> &[u8] {
         self.0.as_bytes()
     }
+
+    pub fn into_string(self) -> String {
+        self.0
+    }
 }
 
 // Implement Display for SafeHtml so it can be easily used in templates/format!
@@ -63,11 +67,10 @@ impl fmt::Display for SafeHtml {
 pub struct Sanitizer;
 
 impl Sanitizer {
-    /// The "Gatekeeper" function.
-    pub fn encode(untrusted: UntrustedString) -> SafeHtml {
-        // Rust's functional approach makes this clear
+    /// The "Gatekeeper" function for rendering text inside HTML templates.
+    /// Protects against Cross-Site Scripting (XSS) context injections.
+    pub fn encode(untrusted: &str) -> SafeHtml {
         let encoded: String = untrusted
-            .0
             .chars()
             .map(|c| match c {
                 '&' => "&amp;".to_string(),
@@ -80,12 +83,24 @@ impl Sanitizer {
             })
             .collect();
 
-        // We now "wrap" the encoded string in the SafeHtml "promise"
         SafeHtml(encoded)
     }
 
-    /// Allow developers to trust hardcoded strings
-    /// e.g., Sanitizer::trust("\<h1>Welcome\</h1>")
+    /// Safely decodes percent-encoded query parameter input strings back into plain text.
+    /// e.g., converts "%3A49" -> ":49" so the backend engines receive correct values.
+    pub fn url_decode(encoded_str: &str) -> String {
+        ::urlencoding::decode(encoded_str)
+            .map(|cow| cow.into_owned())
+            .unwrap_or_else(|_| encoded_str.to_string())
+    }
+
+    /// Encodes a plain string slice for safe use within URL query strings.
+    pub fn url_encode(plain_str: &str) -> String {
+        ::urlencoding::encode(plain_str).into_owned()
+    }
+
+    /// Allow to trust outgoing hardcoded strings bypassing entity encoding
+    /// e.g., Sanitizer::trust("<h1>Welcome Matrix Dashboard</h1>")
     pub fn trust(safe_str: &str) -> SafeHtml {
         SafeHtml(safe_str.to_string())
     }

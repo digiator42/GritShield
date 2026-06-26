@@ -173,20 +173,25 @@ pub fn controller(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     TokenStream::from(expanded)
 }
+
 #[proc_macro_derive(GritRepository, attributes(repository))]
 pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let name = &input.ident;
 
-    let entity_module = quote! { crate::models::user };
+    let mut entity_module_path: Option<syn::Path> = None;
     let mut searchable_columns = Vec::new();
     let mut grid_columns = Vec::new();
-    let mut read_only_columns = Vec::new(); // 💡 Track read-only column names
+    let mut read_only_columns = Vec::new();
 
     for attr in &input.attrs {
         if attr.path().is_ident("repository") {
             let _ = attr.parse_nested_meta(|meta| {
-                if meta.path.is_ident("searchable") {
+                if meta.path.is_ident("entity") {
+                    // Parse custom path configurations, e.g., entity = crate::models::admin
+                    let value = meta.value()?;
+                    entity_module_path = Some(value.parse::<syn::Path>()?);
+                } else if meta.path.is_ident("searchable") {
                     let value = meta.value()?;
                     if let Ok(Expr::Array(ExprArray { elems, .. })) = value.parse::<Expr>() {
                         for elem in elems {
@@ -213,7 +218,6 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
                         }
                     }
                 } else if meta.path.is_ident("read_only") {
-                    // 💡 Parse the read-only attributes
                     let value = meta.value()?;
                     if let Ok(Expr::Array(ExprArray { elems, .. })) = value.parse::<Expr>() {
                         for elem in elems {
@@ -231,6 +235,17 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
             });
         }
     }
+
+    // Convention: If no entity is specified, infer it from the Repository name
+    // e.g., "AdminRepository" -> "admin" -> crate::models::admin
+    let entity_module = match entity_module_path {
+        Some(path) => quote! { #path },
+        None => {
+            let repo_name_lower = name.to_string().replace("Repository", "").to_lowercase();
+            let module_ident = syn::Ident::new(&repo_name_lower, name.span());
+            quote! { crate::models::#module_ident }
+        }
+    };
 
     // Fallback default: if grid_columns isn't provided, use ID + searchable items
     if grid_columns.is_empty() {
@@ -485,8 +500,10 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
                     #entity_module::Entity::delete_by_id(id).exec(db).await
                 }
 
-                pub async fn search_admin_fields(&self, text: &str) -> ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr> {
+               pub async fn search_admin_fields(&self, text: &str) -> ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr> {
                     use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait, Iterable, Iden};
+                    use ::gritshield::deps::sea_orm::sea_query::{Expr, ExprTrait, Alias};
+
                     let db = <Self as ::gritshield::database::repository::GritRepository>::get_db(self);
 
                     let mut query = #entity_module::Entity::find();
@@ -499,7 +516,10 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
 
                     for col in <#entity_module::Column as Iterable>::iter() {
                         if configured_search_strings.contains(&col.to_string().as_str()) {
-                            condition = condition.add(col.contains(text));
+
+                            let expr = Expr::col(col.clone()).cast_as(Alias::new("text"));
+
+                            condition = condition.add(expr.like(format!("%{}%", text)));
                         }
                     }
 

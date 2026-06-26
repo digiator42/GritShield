@@ -443,7 +443,7 @@ pub trait GritRepository {
         query: &str,
         columns: Vec<Self::Column>,
     ) -> Result<Vec<Self::Model>, sea_orm::DbErr> {
-        let mut search_query = Self::Entity::find();
+        let search_query = Self::Entity::find();
         let mut condition = sea_orm::Condition::any();
         for column in columns {
             condition = condition.add(column.contains(query));

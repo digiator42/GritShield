@@ -33,6 +33,7 @@ pub mod deps {
     pub use futures_util;
     pub use once_cell;
     pub use sea_orm;
+    pub use sea_query;
     pub use sea_orm_migration;
     pub use sea_orm_migration::async_trait::async_trait;
     pub use serde;

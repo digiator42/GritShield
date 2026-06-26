@@ -29,8 +29,7 @@ impl FormData {
     pub fn get_safe_html(&self, key: &str) -> Option<SafeHtml> {
         self.fields
             .get(key)
-            .cloned() // Clone the UntrustedString to pass ownership to the encoder
-            .map(|untrusted| Sanitizer::encode(untrusted))
+            .map(|untrusted| Sanitizer::encode(untrusted.as_str()))
     }
 
     /// Safely extracts the plain text value as an unescaped standard `String`.

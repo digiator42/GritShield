@@ -22,8 +22,8 @@ async fn main() {
     run_server("127.0.0.1", "8080", router).await;
 }
 
-// gritadmin/src/main.rs (or where you initialize your database connection)
 use crate::models::user;
+use crate::models::admin;
 use sea_orm::{ActiveModelTrait, ConnectionTrait, DatabaseConnection, EntityTrait, PaginatorTrait}; // Adjust path to your user entity module
 
 async fn seed_test_users_if_empty(db: &DatabaseConnection) {
@@ -33,7 +33,17 @@ async fn seed_test_users_if_empty(db: &DatabaseConnection) {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT NOT NULL,
             email TEXT NOT NULL UNIQUE,
-            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS admins (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL,
+            email TEXT NOT NULL UNIQUE,
+            password_hash TEXT, -- Allow NULL if omitted in seeder
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
     "#;
 
@@ -56,10 +66,20 @@ async fn seed_test_users_if_empty(db: &DatabaseConnection) {
                 ..Default::default()
             };
 
-            // CHANGE THIS: Don't discard the result with let _ =
+            let mock_admins_user = admin::ActiveModel {
+                username: sea_orm::Set(format!("test_admin_{}", i)),
+                email: sea_orm::Set(format!("admin_{}@gritshield.io", i)),
+                ..Default::default()
+            };
+
             match mock_user.insert(db).await {
                 Ok(_) => println!("Inserted user {}", i),
                 Err(err) => eprintln!("❌ Seeding failed at user {}: {:?}", i, err),
+            }
+
+            match mock_admins_user.insert(db).await {
+                Ok(_) => println!("Inserted admin {}", i),
+                Err(err) => eprintln!("❌ Seeding failed at admin {}: {:?}", i, err),
             }
         }
         println!("✅ Seeding complete.");

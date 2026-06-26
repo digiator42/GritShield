@@ -13,7 +13,7 @@ use std::{
 fn test_scape_unsafe_payload() {
     let unsafe_payload = UntrustedString::new("<script>alert(1)</script>".to_string());
 
-    let safe_payload = Sanitizer::encode(unsafe_payload);
+    let safe_payload = Sanitizer::encode(unsafe_payload.as_str());
 
     let re = Regex::new(r"[<>]").unwrap();
     assert!(!re.is_match(&safe_payload.to_string()));
@@ -23,7 +23,7 @@ fn test_scape_unsafe_payload() {
 fn test_html_attributes_are_escaped() {
     let payload = UntrustedString::new("<img src=x onerror=alert(1)>".to_string());
 
-    let safe = Sanitizer::encode(payload);
+    let safe = Sanitizer::encode(payload.as_str());
 
     assert!(!safe.to_string().contains("<img"));
 }

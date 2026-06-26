@@ -7,6 +7,6 @@ use sea_orm::DatabaseConnection;
     grid_columns = ["id", "username", "email", "updated_at"],
     read_only = ["updated_at"]
 )]
-pub struct AdminRepository {
+pub struct UserRepository {
     pub db: DatabaseConnection,
 }

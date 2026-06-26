@@ -1,8 +1,10 @@
-use crate::{repository::admin_repository::UserRepository, shell};
+use crate::{models::user, repository::user_repository::UserRepository, shell};
 use gritshield::{
     database::repository::{GritRepository, ADMIN_REGISTRY},
+    deps::serde_json,
     prelude::*,
 };
+use maud::PreEscaped;
 use sea_orm::{
     ActiveModelTrait, EntityTrait, IntoActiveModel, PaginatorTrait, QueryOrder, QuerySelect,
 };
@@ -14,122 +16,45 @@ impl AdminUserController {
     #[get("/users")]
     pub async fn list_users(ctx: RequestContext) -> Response {
         let is_htmx = ctx.req.has_header("hx-request");
-
         let db = ctx.db.as_deref().unwrap();
         let user_repo = UserRepository { db: db.clone() };
 
-        // Parse the page query parameter (default to page 0)
+        let columns = UserRepository::column_names();
+        let raw_table_name = user_repo.table_name();
+
         let page = ctx
             .query
             .get("page")
-            .map(|v| v.parse::<u64>().unwrap())
+            .and_then(|v| v.parse::<u64>().ok())
             .unwrap_or(0);
 
-        println!("====>> Processing Page: {}", page);
-
-        // 💡 ULTIMATE FIX: If page > 0, it's ALWAYS an incremental scroll slice.
-        // We do not need to parse unreliable string targets from headers.
         let is_infinite_scroll = is_htmx && page > 0;
+        let page_size = 15;
 
-        let page_size = 15; // Number of spreadsheet rows per batch
-
-        // Query page slice from database via Sea-ORM, sorted by newest ID
-        let user_paginator = <UserRepository as GritRepository>::Entity::find()
-            .order_by_desc(<UserRepository as GritRepository>::id_column())
+        // Execute proper paginated database extraction boundaries
+        let user_paginator = UserRepository::find()
+            .order_by_desc(UserRepository::id_column())
             .paginate(db, page_size);
 
         let total_pages = user_paginator.num_pages().await.unwrap_or(0);
         let total_items = user_paginator.num_items().await.unwrap_or(0);
         let users = user_paginator.fetch_page(page).await.unwrap_or_default();
 
-        // Trace block if it's completely empty to prevent silent failing
-        if users.is_empty() && page == 0 {
-            println!("⚠️ Paginator returned empty slice on page 0. Falling back to default find sequence.");
-            let fallback_users =
-                <<UserRepository as GritRepository>::Entity as sea_orm::EntityTrait>::find()
-                    .order_by_desc(<UserRepository as GritRepository>::id_column())
-                    .limit(page_size)
-                    .all(db)
-                    .await
-                    .unwrap_or_default();
-            println!("{:?}", fallback_users);
-        }
+        // Generate standard rows + scroll rows, activating OOB updates ONLY on active scrolling
+        let rendered_results = render_admin_table_view(
+            &user_repo,
+            &users,
+            page,
+            total_pages,
+            total_items,
+            columns.len(),
+            is_infinite_scroll,
+            None,
+        );
 
-        // Render the dynamic spreadsheet row matrix
-        let rows_html = html! {
-            @for user in users.iter() {
-                tr class="divide-x divide-gray-800 hover:bg-gray-900/40 transition" {
-                    td class="p-4 text-gray-500 font-mono text-xs" { (user.id) }
-                    td class="p-3" {
-                        input type="text"
-                            value=(user.username)
-                            name="username"
-                            hx-patch="/admin/api/inline-edit/update-cell"
-                            hx-trigger="change"
-                            hx-target="this"
-                            hx-swap="outerHTML"
-                            hx-vals=(format!("{{\"id\": {}, \"column\": \"username\", \"table_to_modify\": \"users\"}}", user.id))
-                            class="bg-transparent hover:bg-gray-850 focus:bg-gray-800 px-2 py-1 rounded focus:outline-none w-full border border-transparent focus:border-emerald-600 transition";
-                    }
-                    td class="p-3" {
-                        input type="text" value=(user.email) name="email"
-                            hx-patch="/admin/api/inline-edit/update-cell" hx-trigger="change" hx-target="this" hx-swap="outerHTML"
-                            hx-vals=(format!("{{\"id\": {}, \"column\": \"email\", \"table_to_modify\": \"users\"}}", user.id))
-                            class="bg-transparent hover:bg-gray-850 focus:bg-gray-800 px-2 py-1 rounded focus:outline-none w-full border border-transparent focus:border-emerald-600 transition";
-                    }
-                }
-            }
-
-            // The pagination trigger row
-            @if (page + 1) < total_pages {
-                tr id="infinite-scroll-spinner"
-                    hx-get=(format!("/admin/users?page={}", page + 1))
-                    hx-trigger="intersect once"
-                    hx-target="#infinite-scroll-spinner"
-                    hx-swap="outerHTML"
-                    class="border-t border-gray-900 bg-gray-950/50 animate-pulse"
-                {
-                    td colspan="3" class="p-4" {
-                        div class="flex items-center justify-center space-x-2" {
-                            svg class="animate-spin h-4 w-4 text-emerald-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" {
-                                circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" {}
-                                path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" {}
-                            }
-                            span class="text-xs text-gray-400 font-medium" { "Loading more system entries..." }
-                        }
-                    }
-                }
-            }
-
-            // Clean, isolated out-of-band updates for the panel footer counters
-            @if is_infinite_scroll {
-                tr id="pagination-stats-target" hx-swap-oob="outerHTML" {
-                    td colspan="3" class="p-4 bg-gray-950/90 backdrop-blur border-t border-gray-800 text-xs font-medium" {
-                        div class="flex justify-between items-center w-full" {
-                            span class="text-gray-400" {
-                                "Viewing Page Slice "
-                                span class="text-emerald-400 font-mono font-semibold" { (&(page + 1)) }
-                                " of "
-                                span class="text-gray-400 font-mono" { (total_pages) }
-                            }
-                            span class="text-xs text-gray-500 font-medium tracking-wide bg-gray-900 px-2.5 py-1 rounded-md border border-gray-800" {
-                                "Total Matched Rows: " span class="text-gray-300 font-mono" { (total_items) }
-                            }
-                        }
-                    }
-                }
-            }
-        };
-
-        // FORK THE RECOVERY DELIVERY WINDOW:
         if is_infinite_scroll {
-            // Returns ONLY rows + new spinner + OOB component
-            Response::ok(rows_html.into_string())
+            Response::ok(rendered_results)
         } else {
-            // This invokes the EntityName trait implementation directly
-            let raw_table_name = user_repo.table_name();
-
-            // Capitalize the first letter safely without needing an external helper function
             let display_title = format!(
                 "{} Matrix Matrix",
                 raw_table_name
@@ -140,14 +65,13 @@ impl AdminUserController {
                     + &raw_table_name[1..]
             );
 
-            // Page 0 loads the structural dashboard outline interface
             let complete_view = html! {
                 div class="space-y-6" {
                     div class="flex justify-between items-center" {
                         h1 class="text-2xl font-bold tracking-tight" { (display_title) }
-                            p class="text-xs text-gray-500 mt-1" {
-                                (format!("Double-click field inputs to execute reactive backend inline-edits dynamically on table '{}'.", raw_table_name))
-                            }
+                        p class="text-xs text-gray-500 mt-1" {
+                            (format!("Double-click field inputs to execute reactive backend inline-edits dynamically on table '{}'.", raw_table_name))
+                        }
 
                         input type="text"
                             name="q"
@@ -174,17 +98,17 @@ impl AdminUserController {
                         table class="w-full text-left border-collapse" {
                             thead class="bg-gray-900/80 backdrop-blur border-b border-gray-800 text-xs font-semibold uppercase tracking-wider text-gray-400" {
                                 tr class="divide-x divide-gray-800" {
-                                    th class="p-4 w-20" { "DB ID" }
-                                    th class="p-4" { "Username String Field" }
-                                    th class="p-4" { "Registered Email Address" }
+                                    @for col in user_repo.grid_columns().iter() {
+                                        th class="p-4" { (col.label) }
+                                    }
                                 }
                             }
                             tbody id="table-body" class="divide-y divide-gray-800" {
-                                (rows_html)
+                                (PreEscaped(rendered_results))
                             }
                             tfoot {
                                 tr id="pagination-stats-target" class="bg-gray-950 border-t border-gray-800 text-xs font-medium" {
-                                    td colspan="3" class="p-4 bg-gray-950/90 backdrop-blur" {
+                                    td colspan=(columns.len()) class="p-4 bg-gray-950/90 backdrop-blur" {
                                         div class="flex justify-between items-center w-full" {
                                             span class="text-gray-400" {
                                                 "Viewing Page Slice "
@@ -232,37 +156,34 @@ impl AdminUserController {
         let db = ctx.db.as_deref().unwrap();
         let user_repo = UserRepository { db: db.clone() };
 
-        // Find the record from the database
-        if let Some(user) = user_repo.find_by_id(record_id).await.unwrap() {
-            // 1. Convert via standard IntoActiveModel to preserve database primary key context
-            let mut active_user = user.into_active_model();
+        // ONE METHOD TO RULE THEM ALL: Automatically parses primitives, booleans, and dates!
+        match user_repo
+            .update_column_value(record_id, &column_name, target_value.clone())
+            .await
+        {
+            Ok(updated_model) => {
+                // 💡 Get the clean string representation straight back from the updated model
+                let display_value = user_repo.get_field_as_string(&updated_model, &column_name);
 
-            // 2. Change ONLY the targeted column to Set (dirty)
-            match column_name.as_str() {
-                "username" => active_user.username = sea_orm::Set(target_value.clone()),
-                "email" => active_user.email = sea_orm::Set(target_value.clone()),
-                _ => return Response::bad_request("Unknown column field cluster"),
-            };
+                // Return component back to HTMX smoothly
+                let single_input_html = html! {
+                    input type="text"
+                           value=(display_value)
+                           hx-patch="/admin/api/inline-edit/update-cell"
+                           hx-trigger="change"
+                           name=(column_name)
+                           hx-target="this"
+                           hx-swap="outerHTML"
+                           hx-vals=(format!("{{\"id\": {}, \"column\": \"{}\", \"table_to_modify\": \"{}\"}}", record_id, column_name, table_name))
+                           class="bg-transparent hover:bg-gray-850 focus:bg-gray-800 px-2 py-1 rounded focus:outline-none w-full border border-transparent focus:border-emerald-600 transition";
+                };
 
-            // 3. Execute the update directly using Sea-ORM's active model trait
-            active_user.update(db).await.unwrap();
-
-            // 4. Return the component back to HTMX
-            let single_input_html = html! {
-                input type="text"
-                       value=(target_value)
-                       hx-patch="/admin/api/inline-edit/update-cell"
-                       hx-trigger="change"
-                       name=(column_name)
-                       hx-target="this"
-                       hx-swap="outerHTML"
-                       hx-vals=(format!("{{\"id\": {}, \"column\": \"{}\", \"table_to_modify\": \"{}\"}}", record_id, column_name, table_name))
-                       class="bg-transparent hover:bg-gray-850 focus:bg-gray-800 px-2 py-1 rounded focus:outline-none w-full border border-transparent focus:border-emerald-600 transition";
-            };
-
-            Response::ok(single_input_html.into_string())
-        } else {
-            Response::not_found("Record missing")
+                Response::ok(single_input_html.into_string())
+            }
+            Err(err) => {
+                // If parsing a datetime fails, it bubbles up cleanly as a sea_orm::DbErr::Custom
+                Response::bad_request(format!("Database field rejection: {}", err))
+            }
         }
     }
 
@@ -316,12 +237,13 @@ impl AdminUserController {
     pub async fn search_users(ctx: RequestContext) -> Response {
         let db = ctx.db.as_deref().unwrap();
         let user_repo = UserRepository { db: db.clone() };
+        let columns = UserRepository::column_names();
+        let raw_table_name = user_repo.table_name();
 
-        // 1. Extract the query string safely from the URL params
         let query = ctx
             .query
             .get("q")
-            .map(|v| v.to_string())
+            .map(|v| Sanitizer::url_decode(v.as_str()))
             .unwrap_or_default();
 
         let users = if query.is_empty() {
@@ -331,55 +253,124 @@ impl AdminUserController {
                 .await
                 .unwrap_or_default()
         } else {
-            let searchable_columns = vec![
-                crate::models::user::Column::Username,
-                crate::models::user::Column::Email,
-            ];
             user_repo
-                .global_search(&query, searchable_columns)
+                .search_admin_fields(&query)
                 .await
                 .unwrap_or_default()
         };
 
-        // 3. Render ONLY the <tr> tags (matching your list_users design exactly)
-        let rows_html = html! {
-            @if users.is_empty() {
-                tr class="border-b border-gray-900" {
-                    td colspan="3" class="p-8 text-center text-gray-500 text-sm italic" {
-                        "No records found matching \"" (query) "\""
+        // For plain query hits, treat as page 0, total_pages 1, total_items = matched length.
+        // Set is_oob_update to TRUE so search events instantly update metrics live!
+        let rendered_search_results = render_admin_table_view(
+            &user_repo,
+            &users,
+            0,
+            1,
+            users.len() as u64,
+            columns.len(),
+            true, // Enable OOB Swap!
+            Some(&query),
+        );
+
+        Response::ok(rendered_search_results)
+    }
+}
+
+/// Unified admin data matrix rendering component.
+/// Outputs matching dataset rows, infinite-scroll triggers, and real-time out-of-band statistical counters.
+pub fn render_admin_table_view<R>(
+    repo: &R,
+    records: &[R::Model],
+    page: u64,
+    total_pages: u64,
+    total_items: u64,
+    columns_len: usize,
+    is_oob_update: bool,
+    search_query: Option<&str>,
+) -> String
+where
+    R: ::gritshield::database::repository::GritRepository,
+{
+    let rows_html = html! {
+        @if records.is_empty() {
+            tr class="border-b border-gray-900" {
+                td colspan=(columns_len) class="p-8 text-center text-gray-500 text-sm italic" {
+                    @if let Some(q) = search_query {
+                        "No records found matching \"" (q) "\""
+                    } @else {
+                        "No system entries found."
                     }
                 }
-            } @else {
-                @for user in users.iter() {
-                    tr class="divide-x divide-gray-800 hover:bg-gray-900/40 transition" {
-                        td class="p-4 text-gray-500 font-mono text-xs" { (user.id) }
-                        td class="p-3" {
-                            input type="text"
-                                   value=(user.username)
-                                   hx-patch="/admin/api/inline-edit/update-cell"
-                                   hx-trigger="change"
-                                   name="username"
-                                   hx-target="this"
-                                   hx-swap="outerHTML"
-                                   hx-vals=(format!("{{\"id\": {}, \"column\": \"username\", \"table_to_modify\": \"users\"}}", user.id))
-                                   class="bg-transparent hover:bg-gray-850 focus:bg-gray-800 px-2 py-1 rounded focus:outline-none w-full border border-transparent focus:border-emerald-600 transition";
-                        }
-                        td class="p-3" {
-                            input type="text"
-                                   value=(user.email)
-                                   hx-patch="/admin/api/inline-edit/update-cell"
-                                   hx-trigger="change"
-                                   name="email"
-                                   hx-target="this"
-                                   hx-swap="outerHTML"
-                                   hx-vals=(format!("{{\"id\": {}, \"column\": \"email\", \"table_to_modify\": \"users\"}}", user.id))
-                                   class="bg-transparent hover:bg-gray-850 focus:bg-gray-800 px-2 py-1 rounded focus:outline-none w-full border border-transparent focus:border-emerald-600 transition";
+            }
+        } @else {
+            @for record in records.iter() {
+                tr class="divide-x divide-gray-800 hover:bg-gray-900/40 transition" {
+                    @for col in repo.grid_columns().iter() {
+                        td class="p-3 text-sm font-medium" {
+                            @if col.is_editable {
+                                // Editable Column Input Field
+                                input type="text"
+                                    value=(repo.get_field_as_string(record, &col.name))
+                                    name=(col.name)
+                                    hx-patch="/admin/api/inline-edit/update-cell"
+                                    hx-trigger="change"
+                                    hx-target="this"
+                                    hx-swap="outerHTML"
+                                    hx-vals=(format!(
+                                        "{{\"id\": {}, \"column\": \"{}\", \"table_to_modify\": \"{}\"}}",
+                                        repo.get_field_as_string(record, "id"), col.name, repo.table_name()
+                                    ))
+                                    class="bg-transparent hover:bg-gray-850 focus:bg-gray-800 px-2 py-1 rounded focus:outline-none w-full border border-transparent focus:border-emerald-600 transition";
+                            } @else {
+                                // Read-only Text Column (e.g., id, updated_at)
+                                span class="px-2 py-1 text-gray-400 font-mono text-xs" {
+                                    (repo.get_field_as_string(record, &col.name))
+                                }
+                            }
                         }
                     }
                 }
             }
-        };
+        }
 
-        Response::ok(rows_html.into_string())
-    }
+        // 1. Dynamic Infinite Scroll Trigger Row
+        @if (page + 1) < total_pages {
+            tr id="infinite-scroll-spinner"
+                hx-get=(format!("/admin/{}?page={}", repo.table_name(), page + 1))
+                hx-trigger="intersect once"
+                hx-target="#infinite-scroll-spinner"
+                hx-swap="outerHTML"
+                class="border-t border-gray-900 bg-gray-950/50 animate-pulse"
+            {
+                td colspan=(columns_len) class="p-4" {
+                    div class="flex items-center justify-center space-x-2" {
+                        svg class="animate-spin h-4 w-4 text-emerald-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" {
+                            circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" {}
+                            path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" {}
+                        }
+                        span class="text-xs text-gray-400 font-medium" { "Loading more system entries..." }
+                    }
+                }
+            }
+        }
+
+        // 2. Out-Of-Band (OOB) Statistical Update block targeting table footers
+        @if is_oob_update {
+            tr id="pagination-stats-target" hx-swap-oob="outerHTML" class="bg-gray-950 border-t border-gray-800 text-xs font-medium" {
+                td colspan=(columns_len) class="p-4 bg-gray-950/90 backdrop-blur" {
+                    div class="flex justify-between items-center w-full" {
+                        span class="text-gray-400" {
+                            "Viewing Page Slice " span class="text-emerald-400 font-mono font-semibold" { (&(page + 1)) }
+                            " of " span class="text-gray-400 font-mono" { (total_pages) }
+                        }
+                        span class="text-xs text-gray-500 font-medium tracking-wide bg-gray-900 px-2.5 py-1 rounded-md border border-gray-800" {
+                            "Total Matched Rows: " span class="text-gray-300 font-mono" { (total_items) }
+                        }
+                    }
+                }
+            }
+        }
+    };
+
+    rows_html.into_string()
 }
