@@ -1,0 +1,19 @@
+[package]
+name = "basic_crud"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+gritshield = { path = "../../", features = ["default",] }
+tokio = { version = "1.0", features = ["full"] }
+maud = "0.25"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+ctor = "1.0.7"
+dotenvy = "0.15"
+chrono = "0.4"
+sea-orm = { version = "1.1.0", features = [
+    "runtime-tokio-native-tls",
+    "sqlx-sqlite",
+    "with-chrono",
+] }

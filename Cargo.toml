@@ -1,7 +1,7 @@
 [package]
 name = "gritshield"
 version = "0.1.2"
-authors = ["Ahmed Hassan <digiator2020@gmail.com>"]
+authors = ["Ahmed Hassan digiator2020@gmail.com"]
 edition = "2021"
 description = "A security-first, high-performance micro-framework."
 license = "Apache-2.0"
@@ -12,6 +12,8 @@ keywords = ["web", "framework", "orm", "micro", "async"]
 categories = ["web-programming::http-server"]
 
 [features]
+default = ["admin"]
+admin = []
 sqlite = ["sea-orm/sqlx-sqlite"]
 postgres = ["sea-orm/sqlx-postgres"]
 mysql = ["sea-orm/sqlx-mysql"]
