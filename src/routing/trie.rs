@@ -1,4 +1,4 @@
-use crate::core::logger::{self, LogLevel, log_request_summary};
+use crate::core::logger::{self, log_request_summary, LogLevel};
 use crate::protocol::form::FormData;
 use crate::protocol::request::{HttpMethod, Request};
 use crate::protocol::response::{Cookie, Response};
@@ -125,6 +125,14 @@ where
             res.into_response()
         }
         .boxed()
+    }
+}
+
+impl IntoHandler
+    for std::sync::Arc<dyn Fn(RequestContext) -> BoxedResponse + Send + Sync + 'static>
+{
+    fn call(&self, ctx: RequestContext) -> BoxedResponse {
+        (self)(ctx)
     }
 }
 
@@ -659,6 +667,7 @@ impl Router {
         } else {
             None
         };
+
         let mut router = Router {
             root: Node::new(),
             middlewares: Vec::new(),
@@ -673,6 +682,8 @@ impl Router {
             role_inheritance: HashMap::new(),
         };
 
+        // Standard application routes
+
         for route in inventory::iter::<AutoRoute> {
             info!(
                 "[DYN-ROUTER] Registering: {:<30} {} [{:<6}]",
@@ -681,17 +692,69 @@ impl Router {
                 method_color(&format!("{:?}", route.method))
             );
 
-            // Capture role properties globally at framework startup, this is DEPRECATED for now
             if let Some(role) = route.required_role {
-                info!(
-                    "[RBAC-SHIELD] Detected role requirement for path: {} | Required role: {}",
-                    route.path, role
-                );
                 router.role_registry.insert(route.path.to_string(), role);
             }
 
-            // Route standard mapping execution
             router.add_route(route.method, route.path, route.handler, route.required_role);
+        }
+
+        // Admin routes
+
+        #[cfg(feature = "admin")]
+        {
+            use crate::database::repository::ADMIN_REGISTRY;
+            use crate::protocol::request::HttpMethod;
+
+            let registry = ADMIN_REGISTRY.lock().unwrap();
+
+            for (_, model) in registry.iter() {
+                info!(
+                    "[ADMIN] Registering: {:<30} {} [{:<6}]",
+                    model.route_path,
+                    format!("->").green(),
+                    method_color("GET")
+                );
+
+                router.add_route(
+                    HttpMethod::GET,
+                    model.route_path,
+                    model.list_handler.clone(),
+                    None,
+                );
+
+                let search = format!("{}/search", model.route_path);
+
+                info!(
+                    "[ADMIN] Registering: {:<30} {} [{:<6}]",
+                    search,
+                    format!("->").green(),
+                    method_color("POST")
+                );
+
+                router.add_route(
+                    HttpMethod::POST,
+                    Box::leak(search.into_boxed_str()),
+                    model.search_handler.clone(),
+                    None,
+                );
+
+                let patch = format!("{}/patch", model.route_path);
+
+                info!(
+                    "[ADMIN] Registering: {:<30} {} [{:<6}]",
+                    patch,
+                    format!("->").green(),
+                    method_color("PATCH")
+                );
+
+                router.add_route(
+                    HttpMethod::PATCH,
+                    Box::leak(patch.into_boxed_str()),
+                    model.patch_handler.clone(),
+                    None,
+                );
+            }
         }
 
         router

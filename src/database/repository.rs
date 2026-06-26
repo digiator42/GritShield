@@ -7,17 +7,57 @@ use sea_orm::{
 use sea_orm_migration::async_trait::async_trait;
 
 use crate::deps::once_cell::sync::Lazy;
+use crate::deps::sea_orm::DbErr;
+use crate::protocol::response::Response;
+use crate::routing::trie::RequestContext;
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::{Arc, Mutex};
 
-#[derive(Clone, Debug)]
+// 🌟 Type alias for the type-erased admin dashboard request handlers
+pub type AdminHandlerFn =
+    Arc<dyn Fn(RequestContext) -> Pin<Box<dyn Future<Output = Response> + Send>> + Send + Sync>;
+
+#[derive(Clone)]
 pub struct ModelMetadata {
     pub table_name: &'static str,
     pub route_path: &'static str,
     pub searchable_columns: Vec<&'static str>,
+    pub list_handler: AdminHandlerFn,
+    pub search_handler: AdminHandlerFn,
+    pub patch_handler: AdminHandlerFn,
 }
 
-// 🌟 NEW COLUMN METADATA CONTAINER STRUCT
+// 🌟 The missing field parser trait required by macro expansion
+pub trait AdminFieldParser {
+    fn parse_field(s: &str) -> Result<Self, sea_orm::DbErr>
+    where
+        Self: Sized;
+}
+
+// Implement for standard strings
+impl AdminFieldParser for String {
+    fn parse_field(s: &str) -> Result<Self, sea_orm::DbErr> {
+        Ok(s.to_string())
+    }
+}
+
+// Implement for primitive scalar types
+macro_rules! impl_primitive_parser {
+    ($($t:ty),*) => {
+        $(
+            impl AdminFieldParser for $t {
+                fn parse_field(s: &str) -> Result<Self, sea_orm::DbErr> {
+                    s.parse::<Self>().map_err(|e| sea_orm::DbErr::Custom(format!("Parse error: {}", e)))
+                }
+            }
+        )*
+    };
+}
+impl_primitive_parser!(i8, i16, i32, i64, u8, u16, u32, u64, bool, f32, f64);
+
+// 🌟 Existing Registry layout code below remains untouched
 #[derive(Clone, Debug)]
 pub struct GridColumn {
     pub name: &'static str,
@@ -25,7 +65,6 @@ pub struct GridColumn {
     pub is_editable: bool,
 }
 
-// A global registry that repositories register into at startup
 pub static ADMIN_REGISTRY: Lazy<Mutex<HashMap<&'static str, ModelMetadata>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 
@@ -189,6 +228,8 @@ pub trait GritRepository {
     fn grid_columns(&self) -> Vec<GridColumn> {
         vec![]
     }
+
+    async fn search_admin_fields(&self, text: &str) -> Result<Vec<Self::Model>, sea_orm::DbErr>;
 
     /// Pulls a field's string representation dynamically out of a Model instance safely
     fn get_field_as_string(&self, _model: &Self::Model, _column_name: &str) -> String {

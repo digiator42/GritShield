@@ -1,4 +1,4 @@
-use gritshield::{database::repository::ADMIN_REGISTRY, prelude::*};
+use crate::{database::repository::ADMIN_REGISTRY, prelude::*};
 
 /// The Master Shell Layout that loads HTMX globally.
 pub fn admin_shell(title: &str, content: Markup, is_htmx: bool) -> Response {
@@ -81,7 +81,7 @@ pub fn admin_shell(title: &str, content: Markup, is_htmx: bool) -> Response {
                 }
             }
             script {
-                (maud::PreEscaped(include_str!("static/admin_palette.js")))
+                (maud::PreEscaped(include_str!("admin_palette.js")))
             }
         }
     };
