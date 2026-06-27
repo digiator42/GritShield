@@ -298,6 +298,26 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
         }
     }
 
+    enum MacroColumnType {
+        String,
+        Numeric,
+        DateTime,
+        Bool,
+    }
+
+    let infer_macro_column_type = |name: &str| -> MacroColumnType {
+        let name_lower = name.to_lowercase();
+        if name_lower == "active" || name_lower.starts_with("is_") || name_lower.starts_with("has_") {
+            MacroColumnType::Bool
+        } else if name_lower.ends_with("_at") || name_lower.contains("date") || name_lower.contains("time") {
+            MacroColumnType::DateTime
+        } else if name_lower == "id" || name_lower.ends_with("_id") || name_lower == "count" || name_lower == "amount" || name_lower == "price" {
+            MacroColumnType::Numeric
+        } else {
+            MacroColumnType::String
+        }
+    };
+
     let mut jpa_dsl_methods = Vec::new();
 
     // 1. Single Column Invocations
@@ -311,6 +331,7 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
         let delete_by_ident = syn::Ident::new(&format!("delete_by_{}", col), proc_macro2::Span::call_site());
         let count_by_ident = syn::Ident::new(&format!("count_by_{}", col), proc_macro2::Span::call_site());
 
+        // Base CRUD Operations
         jpa_dsl_methods.push(quote! {
             pub async fn #find_by_ident<V>(&self, val: V) -> ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr>
             where V: ::std::convert::Into<::gritshield::deps::sea_orm::Value> {
@@ -359,6 +380,205 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
                     .await
             }
         });
+
+        // Specialized Semantic Dialect Methods
+        match infer_macro_column_type(col) {
+            MacroColumnType::String => {
+                let like_ident = syn::Ident::new(&format!("find_by_{}_like", col), proc_macro2::Span::call_site());
+                let contains_ident = syn::Ident::new(&format!("find_by_{}_contains", col), proc_macro2::Span::call_site());
+                let starts_with_ident = syn::Ident::new(&format!("find_by_{}_starts_with", col), proc_macro2::Span::call_site());
+                let ends_with_ident = syn::Ident::new(&format!("find_by_{}_ends_with", col), proc_macro2::Span::call_site());
+
+                jpa_dsl_methods.push(quote! {
+                    pub async fn #like_ident<V>(&self, val: V) -> ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr>
+                    where V: ::std::convert::Into<::std::string::String> {
+                        use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait};
+                        #entity_module::Entity::find()
+                            .filter(#entity_module::Column::#variant_ident.like(val))
+                            .all(&self.db)
+                            .await
+                    }
+
+                    pub async fn #contains_ident(&self, val: &str) -> ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr> {
+                        use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait};
+                        #entity_module::Entity::find()
+                            .filter(#entity_module::Column::#variant_ident.contains(val))
+                            .all(&self.db)
+                            .await
+                    }
+
+                    pub async fn #starts_with_ident(&self, val: &str) -> ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr> {
+                        use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait};
+                        #entity_module::Entity::find()
+                            .filter(#entity_module::Column::#variant_ident.starts_with(val))
+                            .all(&self.db)
+                            .await
+                    }
+
+                    pub async fn #ends_with_ident(&self, val: &str) -> ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr> {
+                        use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait};
+                        #entity_module::Entity::find()
+                            .filter(#entity_module::Column::#variant_ident.ends_with(val))
+                            .all(&self.db)
+                            .await
+                    }
+                });
+            }
+            MacroColumnType::Numeric => {
+                let gt_ident = syn::Ident::new(&format!("find_by_{}_gt", col), proc_macro2::Span::call_site());
+                let lt_ident = syn::Ident::new(&format!("find_by_{}_lt", col), proc_macro2::Span::call_site());
+                let ge_ident = syn::Ident::new(&format!("find_by_{}_ge", col), proc_macro2::Span::call_site());
+                let le_ident = syn::Ident::new(&format!("find_by_{}_le", col), proc_macro2::Span::call_site());
+                let between_ident = syn::Ident::new(&format!("find_by_{}_between", col), proc_macro2::Span::call_site());
+
+                jpa_dsl_methods.push(quote! {
+                    pub async fn #gt_ident<V>(&self, val: V) -> ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr>
+                    where V: ::std::convert::Into<::gritshield::deps::sea_orm::Value> {
+                        use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait};
+                        #entity_module::Entity::find()
+                            .filter(#entity_module::Column::#variant_ident.gt(val))
+                            .all(&self.db)
+                            .await
+                    }
+
+                    pub async fn #lt_ident<V>(&self, val: V) -> ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr>
+                    where V: ::std::convert::Into<::gritshield::deps::sea_orm::Value> {
+                        use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait};
+                        #entity_module::Entity::find()
+                            .filter(#entity_module::Column::#variant_ident.lt(val))
+                            .all(&self.db)
+                            .await
+                    }
+
+                    pub async fn #ge_ident<V>(&self, val: V) -> ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr>
+                    where V: ::std::convert::Into<::gritshield::deps::sea_orm::Value> {
+                        use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait};
+                        #entity_module::Entity::find()
+                            .filter(#entity_module::Column::#variant_ident.gte(val))
+                            .all(&self.db)
+                            .await
+                    }
+
+                    pub async fn #le_ident<V>(&self, val: V) -> ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr>
+                    where V: ::std::convert::Into<::gritshield::deps::sea_orm::Value> {
+                        use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait};
+                        #entity_module::Entity::find()
+                            .filter(#entity_module::Column::#variant_ident.lte(val))
+                            .all(&self.db)
+                            .await
+                    }
+
+                    pub async fn #between_ident<V>(&self, low: V, high: V) -> ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr>
+                    where 
+                        V: ::std::convert::Into<::gritshield::deps::sea_orm::Value>,
+                    {
+                        use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait};
+                        #entity_module::Entity::find()
+                            .filter(#entity_module::Column::#variant_ident.between(low, high))
+                            .all(&self.db)
+                            .await
+                    }
+                });
+            }
+            MacroColumnType::DateTime => {
+                let after_ident = syn::Ident::new(&format!("find_by_{}_after", col), proc_macro2::Span::call_site());
+                let before_ident = syn::Ident::new(&format!("find_by_{}_before", col), proc_macro2::Span::call_site());
+                let between_ident = syn::Ident::new(&format!("find_by_{}_between", col), proc_macro2::Span::call_site());
+                let gt_ident = syn::Ident::new(&format!("find_by_{}_gt", col), proc_macro2::Span::call_site());
+                let lt_ident = syn::Ident::new(&format!("find_by_{}_lt", col), proc_macro2::Span::call_site());
+                let ge_ident = syn::Ident::new(&format!("find_by_{}_ge", col), proc_macro2::Span::call_site());
+                let le_ident = syn::Ident::new(&format!("find_by_{}_le", col), proc_macro2::Span::call_site());
+
+                jpa_dsl_methods.push(quote! {
+                    pub async fn #after_ident<V>(&self, val: V) -> ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr>
+                    where V: ::std::convert::Into<::gritshield::deps::sea_orm::Value> {
+                        use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait};
+                        #entity_module::Entity::find()
+                            .filter(#entity_module::Column::#variant_ident.gt(val))
+                            .all(&self.db)
+                            .await
+                    }
+
+                    pub async fn #before_ident<V>(&self, val: V) -> ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr>
+                    where V: ::std::convert::Into<::gritshield::deps::sea_orm::Value> {
+                        use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait};
+                        #entity_module::Entity::find()
+                            .filter(#entity_module::Column::#variant_ident.lt(val))
+                            .all(&self.db)
+                            .await
+                    }
+
+                    pub async fn #gt_ident<V>(&self, val: V) -> ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr>
+                    where V: ::std::convert::Into<::gritshield::deps::sea_orm::Value> {
+                        use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait};
+                        #entity_module::Entity::find()
+                            .filter(#entity_module::Column::#variant_ident.gt(val))
+                            .all(&self.db)
+                            .await
+                    }
+
+                    pub async fn #lt_ident<V>(&self, val: V) -> ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr>
+                    where V: ::std::convert::Into<::gritshield::deps::sea_orm::Value> {
+                        use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait};
+                        #entity_module::Entity::find()
+                            .filter(#entity_module::Column::#variant_ident.lt(val))
+                            .all(&self.db)
+                            .await
+                    }
+
+                    pub async fn #ge_ident<V>(&self, val: V) -> ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr>
+                    where V: ::std::convert::Into<::gritshield::deps::sea_orm::Value> {
+                        use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait};
+                        #entity_module::Entity::find()
+                            .filter(#entity_module::Column::#variant_ident.gte(val))
+                            .all(&self.db)
+                            .await
+                    }
+
+                    pub async fn #le_ident<V>(&self, val: V) -> ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr>
+                    where V: ::std::convert::Into<::gritshield::deps::sea_orm::Value> {
+                        use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait};
+                        #entity_module::Entity::find()
+                            .filter(#entity_module::Column::#variant_ident.lte(val))
+                            .all(&self.db)
+                            .await
+                    }
+
+                    pub async fn #between_ident<V>(&self, low: V, high: V) -> ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr>
+                    where 
+                        V: ::std::convert::Into<::gritshield::deps::sea_orm::Value>,
+                    {
+                        use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait};
+                        #entity_module::Entity::find()
+                            .filter(#entity_module::Column::#variant_ident.between(low, high))
+                            .all(&self.db)
+                            .await
+                    }
+                });
+            }
+            MacroColumnType::Bool => {
+                let true_ident = syn::Ident::new(&format!("find_by_{}_true", col), proc_macro2::Span::call_site());
+                let false_ident = syn::Ident::new(&format!("find_by_{}_false", col), proc_macro2::Span::call_site());
+
+                jpa_dsl_methods.push(quote! {
+                    pub async fn #true_ident(&self) -> ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr> {
+                        use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait};
+                        #entity_module::Entity::find()
+                            .filter(#entity_module::Column::#variant_ident.eq(true))
+                            .all(&self.db)
+                            .await
+                    }
+
+                    pub async fn #false_ident(&self) -> ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr> {
+                        use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait};
+                        #entity_module::Entity::find()
+                            .filter(#entity_module::Column::#variant_ident.eq(false))
+                            .all(&self.db)
+                            .await
+                    }
+                });
+            }
+        }
     }
 
     // 2. Multi-Column Composite Invocations
