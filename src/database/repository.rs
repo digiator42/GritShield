@@ -15,7 +15,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
-// 🌟 Type alias for the type-erased admin dashboard request handlers
+// Type alias for the type-erased admin dashboard request handlers
 pub type AdminHandlerFn =
     Arc<dyn Fn(RequestContext) -> Pin<Box<dyn Future<Output = Response> + Send>> + Send + Sync>;
 
@@ -29,7 +29,6 @@ pub struct ModelMetadata {
     pub patch_handler: AdminHandlerFn,
 }
 
-// 🌟 The missing field parser trait required by macro expansion
 pub trait AdminFieldParser {
     fn parse_field(s: &str) -> Result<Self, sea_orm::DbErr>
     where
@@ -57,7 +56,7 @@ macro_rules! impl_primitive_parser {
 }
 impl_primitive_parser!(i8, i16, i32, i64, u8, u16, u32, u64, bool, f32, f64);
 
-// 🌟 Existing Registry layout code below remains untouched
+// Existing Registry layout code below remains untouched
 #[derive(Clone, Debug)]
 pub struct GridColumn {
     pub name: &'static str,
@@ -197,7 +196,7 @@ pub trait Specification<E: EntityTrait> {
 pub trait GritRepository {
     type Entity: EntityTrait<Model = Self::Model, Column = Self::Column>;
     type Model: ModelTrait + FromQueryResult + IntoActiveModel<Self::ActiveModel> + Send + Sync;
-    type Column: ColumnTrait + Send + Sync;
+    type Column: ColumnTrait + sea_orm::Iterable + sea_orm::Iden + Clone + Send + Sync;
     type ActiveModel: ActiveModelTrait<Entity = Self::Entity>
         + ActiveModelBehavior
         + TryIntoModel<Self::Model>
@@ -210,6 +209,77 @@ pub trait GritRepository {
         + Sync
         + Clone
         + std::fmt::Debug;
+
+    // =========================================================================
+    // STATIC HELPERS
+    // =========================================================================
+
+    fn find(&self) -> Select<Self::Entity> {
+        Self::Entity::find()
+    }
+
+    async fn find_first(&self) -> Result<Option<Self::Model>, sea_orm::DbErr> {
+        self.find()
+            .order_by_asc(self.id_col())
+            .one(self.get_db())
+            .await
+    }
+
+    async fn find_last(&self) -> Result<Option<Self::Model>, sea_orm::DbErr> {
+        self.find()
+            .order_by_desc(self.id_col())
+            .one(self.get_db())
+            .await
+    }
+
+    async fn truncate(&self) -> Result<sea_orm::DeleteResult, sea_orm::DbErr> {
+        Self::Entity::delete_many().exec(self.get_db()).await
+    }
+
+    fn id_col(&self) -> Self::Column {
+        Self::id_column()
+    }
+
+    fn column_names(&self) -> Vec<String> {
+        use sea_orm::{Iden, Iterable};
+
+        <Self::Column as Iterable>::iter()
+            .map(|col| col.to_string())
+            .collect()
+    }
+
+    fn column_from_str(&self, name: &str) -> Option<Self::Column> {
+        use sea_orm::{Iden, Iterable};
+
+        <Self::Column as Iterable>::iter().find(|col| col.to_string() == name)
+    }
+
+    // =========================================================================
+    // COMMON CRUD
+    // =========================================================================
+
+    async fn find_by_id(&self, id: Self::Id) -> Result<Option<Self::Model>, sea_orm::DbErr> {
+        Self::Entity::find_by_id(id).one(self.get_db()).await
+    }
+
+    async fn delete_by_id(&self, id: Self::Id) -> Result<sea_orm::DeleteResult, sea_orm::DbErr> {
+        Self::Entity::delete_by_id(id).exec(self.get_db()).await
+    }
+
+    // ========== PAgination ============
+
+    /// Fetch a page of results (0-based page index).
+    async fn find_page(
+        &self,
+        page: u64,
+        page_size: u64,
+    ) -> Result<Vec<Self::Model>, sea_orm::DbErr> {
+        self.find()
+            .order_by_desc(self.id_col())
+            .paginate(self.get_db(), page_size)
+            .fetch_page(page)
+            .await
+    }
 
     // =========================================================================
     // CORE DATABASE ACCESS
@@ -266,10 +336,6 @@ pub trait GritRepository {
     // =========================================================================
     // BASIC CRUD OPERATIONS (JPA Style)
     // =========================================================================
-
-    async fn find_by_id(&self, id: Self::Id) -> Result<Option<Self::Model>, sea_orm::DbErr> {
-        Self::Entity::find_by_id(id).one(self.get_db()).await
-    }
 
     async fn find_all(&self) -> Result<Vec<Self::Model>, sea_orm::DbErr> {
         Self::Entity::find().all(self.get_db()).await
@@ -423,11 +489,6 @@ pub trait GritRepository {
     // =========================================================================
     // DELETE OPERATIONS (JPA Style)
     // =========================================================================
-
-    async fn delete_by_id(&self, id: Self::Id) -> Result<u64, sea_orm::DbErr> {
-        let res = Self::Entity::delete_by_id(id).exec(self.get_db()).await?;
-        Ok(res.rows_affected)
-    }
 
     async fn delete(&self, model: &Self::Model) -> Result<u64, sea_orm::DbErr> {
         let active_model =

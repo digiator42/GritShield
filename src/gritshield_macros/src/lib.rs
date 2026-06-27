@@ -297,10 +297,7 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
     let repo_name_lower = name.to_string().replace("Repository", "").to_lowercase();
     let route_path_str = format!("/admin/{}", repo_name_lower);
 
-    let route_path_literal = syn::LitStr::new(
-        &route_path_str,
-        proc_macro2::Span::call_site(),
-    );
+    let route_path_literal = syn::LitStr::new(&route_path_str, proc_macro2::Span::call_site());
 
     // Convert searchable column names to compile‑time string literals
     let searchable_literals: Vec<LitStr> = searchable_columns
@@ -475,73 +472,6 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
                     }
 
                     query.filter(condition).all(db).await
-                }
-            }
-
-            // ────────── Inherent methods ──────────
-            impl #name {
-                pub fn find() -> ::gritshield::deps::sea_orm::Select<#entity_module::Entity> {
-                    use ::gritshield::deps::sea_orm::EntityTrait;
-                    #entity_module::Entity::find()
-                }
-
-                pub fn id_col() -> #entity_module::Column {
-                    #entity_module::Column::Id
-                }
-
-                pub fn column_names() -> ::std::vec::Vec<::std::string::String> {
-                    use ::gritshield::deps::sea_orm::{Iterable, Iden};
-                    <#entity_module::Column as Iterable>::iter()
-                        .map(|col| col.to_string())
-                        .collect()
-                }
-
-                pub fn column_from_str(name: &str) -> ::std::option::Option<#entity_module::Column> {
-                    use ::gritshield::deps::sea_orm::{Iterable, Iden};
-                    for col in <#entity_module::Column as Iterable>::iter() {
-                        if col.to_string() == name {
-                            return ::std::option::Option::Some(col);
-                        }
-                    }
-                    ::std::option::Option::None
-                }
-
-                pub async fn find_by_id(
-                    &self,
-                    id: <#name as ::gritshield::database::repository::GritRepository>::Id
-                ) -> ::std::result::Result<::std::option::Option<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr> {
-                    use ::gritshield::deps::sea_orm::EntityTrait;
-                    let db = <Self as ::gritshield::database::repository::GritRepository>::get_db(self);
-                    #entity_module::Entity::find_by_id(id).one(db).await
-                }
-
-                pub async fn total_count(&self) -> ::std::result::Result<u64, ::gritshield::deps::sea_orm::DbErr> {
-                    use ::gritshield::deps::sea_orm::PaginatorTrait;
-                    let db = <Self as ::gritshield::database::repository::GritRepository>::get_db(self);
-                    Self::find().count(db).await
-                }
-
-                pub async fn delete_by_id(
-                    &self,
-                    id: <#name as ::gritshield::database::repository::GritRepository>::Id
-                ) -> ::std::result::Result<::gritshield::deps::sea_orm::DeleteResult, ::gritshield::deps::sea_orm::DbErr> {
-                    use ::gritshield::deps::sea_orm::EntityTrait;
-                    let db = <Self as ::gritshield::database::repository::GritRepository>::get_db(self);
-                    #entity_module::Entity::delete_by_id(id).exec(db).await
-                }
-
-                pub async fn fetch_page_slice(
-                    &self,
-                    page: u64,
-                    page_size: u64
-                ) -> ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr> {
-                    use ::gritshield::deps::sea_orm::{QueryOrder, PaginatorTrait};
-                    let db = <Self as ::gritshield::database::repository::GritRepository>::get_db(self);
-                    Self::find()
-                        .order_by_desc(Self::id_col())
-                        .paginate(db, page_size)
-                        .fetch_page(page)
-                        .await
                 }
             }
 
