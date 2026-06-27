@@ -15,15 +15,12 @@ struct RouteArgs {
 /// e.g. `"/api/route"` OR `"/api/route", role = "Operator"`
 impl Parse for RouteArgs {
     fn parse(input: ParseStream) -> Result<Self> {
-        // 1. The first parameter is always the absolute string routing path literal
         let path: LitStr = input.parse()?;
         let mut required_role = None;
 
-        // 2. Check if a trailing comma exists indicating secondary settings attributes
         if input.peek(Token![,]) {
             input.parse::<Token![,]>()?;
 
-            // Look for specific named parameter blocks, e.g., "role"
             let key: Ident = input.parse()?;
             if key == "role" || key == "required_role" {
                 input.parse::<Token![=]>()?;
@@ -42,7 +39,6 @@ macro_rules! generate_route_macro {
     ($macro_name:ident, $http_method:ident) => {
         #[proc_macro_attribute]
         pub fn $macro_name(attr: TokenStream, item: TokenStream) -> TokenStream {
-            // Parse utilizing our explicit RouteArgs composite layout wrapper
             let args = parse_macro_input!(attr as RouteArgs);
             let input_fn = parse_macro_input!(item as ItemFn);
 
@@ -72,7 +68,7 @@ macro_rules! generate_route_macro {
                         path: #path,
                         method: gritshield::protocol::request::HttpMethod::$http_method,
                         handler: #wrapper_name,
-                        required_role: #required_role_opt // Automatically compiled and linked
+                        required_role: #required_role_opt
                     }
                 }
             };
@@ -89,24 +85,20 @@ generate_route_macro!(delete, DELETE);
 
 #[proc_macro_attribute]
 pub fn controller(attr: TokenStream, item: TokenStream) -> TokenStream {
-    // 1. Parse the base prefix route string: #[request("/auth")]
     let base_path_lit = parse_macro_input!(attr as LitStr);
     let base_path = base_path_lit.value();
 
-    // 2. Parse the impl block target
     let mut input_impl = parse_macro_input!(item as ItemImpl);
     let self_ty = &input_impl.self_ty;
 
     let mut inventory_submissions = vec![];
 
-    // 3. Look through all items inside the impl block
     for item in &mut input_impl.items {
         if let ImplItem::Fn(method) = item {
             let fn_name = &method.sig.ident;
             let mut matched_method = None;
             let mut route_args = None;
 
-            // Check if this method has one of your routing attributes
             method.attrs.retain(|attr| {
                 let path = attr.path();
                 if path.is_ident("get")
@@ -117,20 +109,17 @@ pub fn controller(attr: TokenStream, item: TokenStream) -> TokenStream {
                 {
                     matched_method = Some(path.get_ident().unwrap().to_string().to_uppercase());
 
-                    // Parse arguments using your exact pre-existing `RouteArgs` structure!
                     if let Ok(args) = attr.parse_args::<RouteArgs>() {
                         route_args = Some(args);
                     }
-                    false // Remove this attribute so standard compiler doesn't throw errors
+                    false
                 } else {
-                    true // Keep other attributes (e.g., #[doc])
+                    true
                 }
             });
 
-            // 4. If a routing attribute was intercepted, build an explicit AutoRoute link
             if let (Some(http_method), Some(args)) = (matched_method, route_args) {
                 let sub_path = args.path.value();
-                // Combine prefix cleanly: e.g., "/auth" + "/login" -> "/auth/login"
                 let combined_path = format!("{}{}", base_path, sub_path);
 
                 let required_role_opt = match args.required_role {
@@ -162,7 +151,6 @@ pub fn controller(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
     }
 
-    // 5. Output the rewritten struct block alongside the generated inventory wrappers
     let expanded = quote! {
         #input_impl
 
@@ -172,6 +160,18 @@ pub fn controller(attr: TokenStream, item: TokenStream) -> TokenStream {
     };
 
     TokenStream::from(expanded)
+}
+
+fn to_pascal_case(s: &str) -> String {
+    s.split('_')
+        .map(|word| {
+            let mut chars = word.chars();
+            match chars.next() {
+                None => String::new(),
+                Some(f) => f.to_uppercase().collect::<String>() + chars.as_str(),
+            }
+        })
+        .collect()
 }
 
 #[proc_macro_derive(GritRepository, attributes(repository))]
@@ -235,7 +235,6 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
         }
     }
 
-    // Fallback entity module inference
     let entity_module = match entity_module_path {
         Some(path) => quote! { #path },
         None => {
@@ -245,7 +244,6 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
         }
     };
 
-    // Default grid columns: id + searchable columns (excluding duplicates)
     if grid_columns.is_empty() {
         grid_columns.push("id".to_string());
         for col in &searchable_columns {
@@ -255,7 +253,6 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
         }
     }
 
-    // Build tokens for grid columns, get_field, and update_field
     let mut grid_column_tokens = Vec::new();
     let mut get_field_tokens = Vec::new();
     let mut update_field_tokens = Vec::new();
@@ -294,12 +291,162 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
         }
     }
 
+    let mut unique_fields = grid_columns.clone();
+    for col in &searchable_columns {
+        if !unique_fields.contains(col) {
+            unique_fields.push(col.clone());
+        }
+    }
+
+    let mut jpa_dsl_methods = Vec::new();
+
+    // 1. Single Column Invocations
+    for col in &unique_fields {
+        let variant_name = to_pascal_case(col);
+        let variant_ident = syn::Ident::new(&variant_name, proc_macro2::Span::call_site());
+
+        let find_by_ident = syn::Ident::new(&format!("find_by_{}", col), proc_macro2::Span::call_site());
+        let find_one_by_ident = syn::Ident::new(&format!("find_one_by_{}", col), proc_macro2::Span::call_site());
+        let exists_by_ident = syn::Ident::new(&format!("exists_by_{}", col), proc_macro2::Span::call_site());
+        let delete_by_ident = syn::Ident::new(&format!("delete_by_{}", col), proc_macro2::Span::call_site());
+        let count_by_ident = syn::Ident::new(&format!("count_by_{}", col), proc_macro2::Span::call_site());
+
+        jpa_dsl_methods.push(quote! {
+            pub async fn #find_by_ident<V>(&self, val: V) -> ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr>
+            where V: ::std::convert::Into<::gritshield::deps::sea_orm::Value> {
+                use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait};
+                #entity_module::Entity::find()
+                    .filter(#entity_module::Column::#variant_ident.eq(val))
+                    .all(&self.db)
+                    .await
+            }
+
+            pub async fn #find_one_by_ident<V>(&self, val: V) -> ::std::result::Result<::std::option::Option<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr>
+            where V: ::std::convert::Into<::gritshield::deps::sea_orm::Value> {
+                use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait};
+                #entity_module::Entity::find()
+                    .filter(#entity_module::Column::#variant_ident.eq(val))
+                    .one(&self.db)
+                    .await
+            }
+
+            pub async fn #exists_by_ident<V>(&self, val: V) -> ::std::result::Result<bool, ::gritshield::deps::sea_orm::DbErr>
+            where V: ::std::convert::Into<::gritshield::deps::sea_orm::Value> {
+                use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait, PaginatorTrait};
+                let count = #entity_module::Entity::find()
+                    .filter(#entity_module::Column::#variant_ident.eq(val))
+                    .count(&self.db)
+                    .await?;
+                ::std::result::Result::Ok(count > 0)
+            }
+
+            pub async fn #delete_by_ident<V>(&self, val: V) -> ::std::result::Result<u64, ::gritshield::deps::sea_orm::DbErr>
+            where V: ::std::convert::Into<::gritshield::deps::sea_orm::Value> {
+                use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait};
+                let res = #entity_module::Entity::delete_many()
+                    .filter(#entity_module::Column::#variant_ident.eq(val))
+                    .exec(&self.db)
+                    .await?;
+                ::std::result::Result::Ok(res.rows_affected)
+            }
+
+            pub async fn #count_by_ident<V>(&self, val: V) -> ::std::result::Result<u64, ::gritshield::deps::sea_orm::DbErr>
+            where V: ::std::convert::Into<::gritshield::deps::sea_orm::Value> {
+                use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait, PaginatorTrait};
+                #entity_module::Entity::find()
+                    .filter(#entity_module::Column::#variant_ident.eq(val))
+                    .count(&self.db)
+                    .await
+            }
+        });
+    }
+
+    // 2. Multi-Column Composite Invocations
+    for i in 0..unique_fields.len() {
+        for j in 0..unique_fields.len() {
+            if i == j { continue; }
+            let col1 = &unique_fields[i];
+            let col2 = &unique_fields[j];
+
+            let var1_ident = syn::Ident::new(&to_pascal_case(col1), proc_macro2::Span::call_site());
+            let var2_ident = syn::Ident::new(&to_pascal_case(col2), proc_macro2::Span::call_site());
+
+            let find_and_ident = syn::Ident::new(&format!("find_by_{}_and_{}", col1, col2), proc_macro2::Span::call_site());
+            let find_one_and_ident = syn::Ident::new(&format!("find_one_by_{}_and_{}", col1, col2), proc_macro2::Span::call_site());
+            let find_or_ident = syn::Ident::new(&format!("find_by_{}_or_{}", col1, col2), proc_macro2::Span::call_site());
+            let exists_and_ident = syn::Ident::new(&format!("exists_by_{}_and_{}", col1, col2), proc_macro2::Span::call_site());
+            let delete_and_ident = syn::Ident::new(&format!("delete_by_{}_and_{}", col1, col2), proc_macro2::Span::call_site());
+
+            jpa_dsl_methods.push(quote! {
+                pub async fn #find_and_ident<V1, V2>(&self, val1: V1, val2: V2) -> ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr>
+                where 
+                    V1: ::std::convert::Into<::gritshield::deps::sea_orm::Value>,
+                    V2: ::std::convert::Into<::gritshield::deps::sea_orm::Value>
+                {
+                    use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait, Condition};
+                    let condition = Condition::all()
+                        .add(#entity_module::Column::#var1_ident.eq(val1))
+                        .add(#entity_module::Column::#var2_ident.eq(val2));
+                    #entity_module::Entity::find().filter(condition).all(&self.db).await
+                }
+
+                pub async fn #find_one_and_ident<V1, V2>(&self, val1: V1, val2: V2) -> ::std::result::Result<::std::option::Option<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr>
+                where 
+                    V1: ::std::convert::Into<::gritshield::deps::sea_orm::Value>,
+                    V2: ::std::convert::Into<::gritshield::deps::sea_orm::Value>
+                {
+                    use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait, Condition};
+                    let condition = Condition::all()
+                        .add(#entity_module::Column::#var1_ident.eq(val1))
+                        .add(#entity_module::Column::#var2_ident.eq(val2));
+                    #entity_module::Entity::find().filter(condition).one(&self.db).await
+                }
+
+                pub async fn #find_or_ident<V1, V2>(&self, val1: V1, val2: V2) -> ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr>
+                where 
+                    V1: ::std::convert::Into<::gritshield::deps::sea_orm::Value>,
+                    V2: ::std::convert::Into<::gritshield::deps::sea_orm::Value>
+                {
+                    use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait, Condition};
+                    let condition = Condition::any()
+                        .add(#entity_module::Column::#var1_ident.eq(val1))
+                        .add(#entity_module::Column::#var2_ident.eq(val2));
+                    #entity_module::Entity::find().filter(condition).all(&self.db).await
+                }
+
+                pub async fn #exists_and_ident<V1, V2>(&self, val1: V1, val2: V2) -> ::std::result::Result<bool, ::gritshield::deps::sea_orm::DbErr>
+                where 
+                    V1: ::std::convert::Into<::gritshield::deps::sea_orm::Value>,
+                    V2: ::std::convert::Into<::gritshield::deps::sea_orm::Value>
+                {
+                    use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait, Condition, PaginatorTrait};
+                    let condition = Condition::all()
+                        .add(#entity_module::Column::#var1_ident.eq(val1))
+                        .add(#entity_module::Column::#var2_ident.eq(val2));
+                    let count = #entity_module::Entity::find().filter(condition).count(&self.db).await?;
+                    ::std::result::Result::Ok(count > 0)
+                }
+
+                pub async fn #delete_and_ident<V1, V2>(&self, val1: V1, val2: V2) -> ::std::result::Result<u64, ::gritshield::deps::sea_orm::DbErr>
+                where 
+                    V1: ::std::convert::Into<::gritshield::deps::sea_orm::Value>,
+                    V2: ::std::convert::Into<::gritshield::deps::sea_orm::Value>
+                {
+                    use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait, Condition};
+                    let condition = Condition::all()
+                        .add(#entity_module::Column::#var1_ident.eq(val1))
+                        .add(#entity_module::Column::#var2_ident.eq(val2));
+                    let res = #entity_module::Entity::delete_many().filter(condition).exec(&self.db).await?;
+                    ::std::result::Result::Ok(res.rows_affected)
+                }
+            });
+        }
+    }
+
     let repo_name_lower = name.to_string().replace("Repository", "").to_lowercase();
     let route_path_str = format!("/admin/{}", repo_name_lower);
-
     let route_path_literal = syn::LitStr::new(&route_path_str, proc_macro2::Span::call_site());
 
-    // Convert searchable column names to compile‑time string literals
     let searchable_literals: Vec<LitStr> = searchable_columns
         .iter()
         .map(|s| LitStr::new(s, proc_macro2::Span::call_site()))
@@ -311,10 +458,13 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
     );
 
     let expanded = quote! {
+        impl #name {
+            #(#jpa_dsl_methods)*
+        }
+
         const _: () = {
             use ::gritshield::deps::sea_orm;
 
-            // ────────── Admin field formatting traits ──────────
             trait AdminFieldFormat {
                 fn to_display_str(&self) -> ::std::string::String;
             }
@@ -402,7 +552,6 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
                 }
             }
 
-            // ────────── Trait implementation ──────────
             #[::gritshield::deps::async_trait]
             impl ::gritshield::database::repository::GritRepository for #name {
                 type Entity = #entity_module::Entity;
@@ -436,8 +585,8 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
                     column_name: &str,
                     value: ::std::string::String
                 ) -> ::std::result::Result<Self::Model, ::gritshield::deps::sea_orm::DbErr> {
-                    use ::gritshield::deps::sea_orm::ActiveModelTrait;
-                    if let ::std::option::Option::Some(record) = self.find_by_id(id).await? {
+                    use ::gritshield::deps::sea_orm::{ActiveModelTrait, EntityTrait};
+                    if let ::std::option::Option::Some(record) = #entity_module::Entity::find_by_id(id).one(self.get_db()).await? {
                         let mut active_model = <Self::ActiveModel as ::gritshield::database::repository::ConvertFromModel<Self::Model>>::from_model(record);
                         match column_name {
                             #(#update_field_tokens)*
@@ -475,7 +624,6 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
                 }
             }
 
-            // ────────── ConvertFromModel ──────────
             impl ::gritshield::database::repository::ConvertFromModel<#entity_module::Model> for #entity_module::ActiveModel {
                 fn from_model(model: #entity_module::Model) -> Self {
                     use sea_orm::IntoActiveModel;
@@ -483,7 +631,6 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
                 }
             }
 
-            // ────────── Admin registration ──────────
             #[::gritshield::startup::ctor(unsafe)]
             fn #initializer_name() {
                 use ::gritshield::deps::sea_orm::EntityName;
