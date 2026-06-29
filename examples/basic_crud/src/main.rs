@@ -15,71 +15,64 @@ async fn main() {
 
     let router = Router::new().mount_db(shared_db.clone());
 
-    seed_test_users_if_empty(shared_db.as_ref()).await;
+    seed_social_media_if_empty(shared_db.as_ref()).await;
 
     // Fire the framework runtime loop
     run_server("127.0.0.1", "8080", router).await;
 }
 
-use crate::models::user;
-use sea_orm::{ActiveModelTrait, ConnectionTrait, DatabaseConnection, EntityTrait, PaginatorTrait}; // Adjust path to your user entity module
+use crate::models::*;
+use chrono::Utc;
+use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait, PaginatorTrait, Set};
 
-async fn seed_test_users_if_empty(db: &DatabaseConnection) {
-    // 1. Force execute our strict structural migration schema layout
-    let schema_sql = r#"
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT NOT NULL,
-            email TEXT NOT NULL UNIQUE,
-            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE TABLE IF NOT EXISTS admins (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT NOT NULL,
-            email TEXT NOT NULL UNIQUE,
-            password_hash TEXT, -- Allow NULL if omitted in seeder
-            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-        );
-    "#;
-
-    // Execute DDL statement directly
-    let _ = db
-        .execute(sea_orm::Statement::from_string(
-            db.get_database_backend(),
-            schema_sql.to_string(),
-        ))
-        .await;
-
-    // 2. Now run your existing check and insert loop safely!
-    let count = user::Entity::find().count(db).await.unwrap_or(0);
-    if count == 0 {
-        println!("🌱 Database table verified via migration! Seeding 40 users...");
-        for i in 1..=40 {
+pub async fn seed_social_media_if_empty(db: &DatabaseConnection) {
+    // Seed users
+    let user_count = user::Entity::find().count(db).await.unwrap_or(0);
+    if user_count == 0 {
+        println!("🌱 Seeding 10 users...");
+        for i in 1..=10 {
             let mock_user = user::ActiveModel {
-                username: sea_orm::Set(format!("test_user_{}", i)),
-                email: sea_orm::Set(format!("user_{}@gritshield.io", i)),
+                username: Set(format!("test_user_{}", i)),
+                email: Set(format!("user_{}@example.com", i)),
                 ..Default::default()
             };
-
-            // let mock_admins_user = admin::ActiveModel {
-            //     username: sea_orm::Set(format!("test_admin_{}", i)),
-            //     email: sea_orm::Set(format!("admin_{}@gritshield.io", i)),
-            //     ..Default::default()
-            // };
-
-            match mock_user.insert(db).await {
-                Ok(_) => println!("Inserted user {}", i),
-                Err(err) => eprintln!("❌ Seeding failed at user {}: {:?}", i, err),
-            }
-
-            // match mock_admins_user.insert(db).await {
-            //     Ok(_) => println!("Inserted admin {}", i),
-            //     Err(err) => eprintln!("❌ Seeding failed at admin {}: {:?}", i, err),
-            // }
+            mock_user.insert(db).await.expect("Insert user failed");
         }
-        println!("✅ Seeding complete.");
     }
+
+    // Seed posts
+    let post_count = post::Entity::find().count(db).await.unwrap_or(0);
+    if post_count == 0 {
+        println!("🌱 Seeding posts...");
+        for i in 1..=30 {
+            let mock_post = post::ActiveModel {
+                user_id: Set(((i - 1) % 10 + 1) as i32), // distribute posts among users
+                content: Set(format!("This is post {}", i)),
+                created_at: Set(Utc::now()),
+                ..Default::default()
+            };
+            mock_post.insert(db).await.expect("Insert post failed");
+        }
+    }
+
+    // Seed comments
+    let comment_count = comment::Entity::find().count(db).await.unwrap_or(0);
+    if comment_count == 0 {
+        println!("🌱 Seeding comments...");
+        for i in 1..=50 {
+            let mock_comment = comment::ActiveModel {
+                post_id: Set(((i - 1) % 30 + 1) as i32), // distribute comments among posts
+                user_id: Set(((i - 1) % 10 + 1) as i32), // random user commenting
+                content: Set(format!("Comment {} content", i)),
+                created_at: Set(Utc::now()),
+                ..Default::default()
+            };
+            mock_comment
+                .insert(db)
+                .await
+                .expect("Insert comment failed");
+        }
+    }
+
+    println!("✅ Seeding complete.");
 }
