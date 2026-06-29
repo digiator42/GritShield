@@ -183,55 +183,72 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
     let mut searchable_columns = Vec::new();
     let mut grid_columns = Vec::new();
     let mut read_only_columns = Vec::new();
+    let mut has_many_relations = Vec::new();
+    let mut has_one_relations = Vec::new();
 
     for attr in &input.attrs {
         if attr.path().is_ident("repository") {
-            let _ = attr.parse_nested_meta(|meta| {
-                if meta.path.is_ident("entity") {
-                    let value = meta.value()?;
-                    entity_module_path = Some(value.parse::<syn::Path>()?);
-                } else if meta.path.is_ident("searchable") {
-                    let value = meta.value()?;
-                    if let Ok(Expr::Array(ExprArray { elems, .. })) = value.parse::<Expr>() {
-                        for elem in elems {
-                            if let Expr::Lit(ExprLit {
-                                lit: Lit::Str(lit_str),
-                                ..
-                            }) = elem
-                            {
-                                searchable_columns.push(lit_str.value());
-                            }
-                        }
-                    }
-                } else if meta.path.is_ident("grid_columns") {
-                    let value = meta.value()?;
-                    if let Ok(Expr::Array(ExprArray { elems, .. })) = value.parse::<Expr>() {
-                        for elem in elems {
-                            if let Expr::Lit(ExprLit {
-                                lit: Lit::Str(lit_str),
-                                ..
-                            }) = elem
-                            {
-                                grid_columns.push(lit_str.value());
-                            }
-                        }
-                    }
-                } else if meta.path.is_ident("read_only") {
-                    let value = meta.value()?;
-                    if let Ok(Expr::Array(ExprArray { elems, .. })) = value.parse::<Expr>() {
-                        for elem in elems {
-                            if let Expr::Lit(ExprLit {
-                                lit: Lit::Str(lit_str),
-                                ..
-                            }) = elem
-                            {
-                                read_only_columns.push(lit_str.value());
+            if let syn::Meta::List(meta_list) = &attr.meta {
+                if let Ok(nested_metas) = meta_list.parse_args_with(syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated) {
+                    for meta in nested_metas {
+                        if let syn::Meta::NameValue(nv) = meta {
+                            if nv.path.is_ident("entity") {
+                                match nv.value {
+                                    syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(lit_str), .. }) => {
+                                        if let Ok(path) = lit_str.parse::<syn::Path>() {
+                                            entity_module_path = Some(path);
+                                        }
+                                    }
+                                    syn::Expr::Path(expr_path) => {
+                                        entity_module_path = Some(expr_path.path);
+                                    }
+                                    _ => {}
+                                }
+                            } else if nv.path.is_ident("searchable") {
+                                if let syn::Expr::Array(syn::ExprArray { elems, .. }) = nv.value {
+                                    for elem in elems {
+                                        if let syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(lit_str), .. }) = elem {
+                                            searchable_columns.push(lit_str.value());
+                                        }
+                                    }
+                                }
+                            } else if nv.path.is_ident("grid_columns") {
+                                if let syn::Expr::Array(syn::ExprArray { elems, .. }) = nv.value {
+                                    for elem in elems {
+                                        if let syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(lit_str), .. }) = elem {
+                                            grid_columns.push(lit_str.value());
+                                        }
+                                    }
+                                }
+                            } else if nv.path.is_ident("read_only") {
+                                if let syn::Expr::Array(syn::ExprArray { elems, .. }) = nv.value {
+                                    for elem in elems {
+                                        if let syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(lit_str), .. }) = elem {
+                                            read_only_columns.push(lit_str.value());
+                                        }
+                                    }
+                                }
+                            } else if nv.path.is_ident("has_many") {
+                                if let syn::Expr::Array(syn::ExprArray { elems, .. }) = nv.value {
+                                    for elem in elems {
+                                        if let syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(lit_str), .. }) = elem {
+                                            has_many_relations.push(lit_str.value());
+                                        }
+                                    }
+                                }
+                            } else if nv.path.is_ident("has_one") {
+                                if let syn::Expr::Array(syn::ExprArray { elems, .. }) = nv.value {
+                                    for elem in elems {
+                                        if let syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(lit_str), .. }) = elem {
+                                            has_one_relations.push(lit_str.value());
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
                 }
-                Ok(())
-            });
+            }
         }
     }
 
@@ -252,6 +269,67 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
             }
         }
     }
+
+    // relation all query builder, RAQB, ROQB
+    let all_builder_name = syn::Ident::new(&format!("{}RAQB", name), name.span());
+    let one_builder_name = syn::Ident::new(&format!("{}ROQB", name), name.span());
+
+    // Parse potential explicit relation mappings supporting:
+    // 1. Flat array pairs: ["posts", "crate::models::post::Entity"]
+    // 2. Colon-split: ["posts:crate::models::post::Entity"]
+    // 3. Auto-inferred singulars: ["posts"]
+    let mut parsed_has_many: Vec<(String, syn::Path)> = Vec::new();
+    let mut iter_many = has_many_relations.iter().peekable();
+    while let Some(current) = iter_many.next() {
+        if current.contains(':') {
+            let parts: Vec<&str> = current.split(':').collect();
+            let field = parts[0].to_string();
+            let target: syn::Path = syn::parse_str(parts[1]).expect("Invalid entity path mapping");
+            parsed_has_many.push((field, target));
+        } else if iter_many.peek().map_or(false, |next| next.contains("::") || next.contains("Entity")) {
+            let field = current.clone();
+            let next_str = iter_many.next().unwrap();
+            let target: syn::Path = syn::parse_str(next_str).expect("Invalid entity path mapping");
+            parsed_has_many.push((field, target));
+        } else {
+            let field = current.clone();
+            let singular = if field.ends_with('s') { &field[..field.len()-1] } else { &field };
+            let path_str = format!("crate::models::{}::Entity", singular);
+            let target: syn::Path = syn::parse_str(&path_str).unwrap();
+            parsed_has_many.push((field, target));
+        }
+    }
+
+    let has_many_idents: Vec<syn::Ident> = parsed_has_many.iter().map(|(f, _)| syn::Ident::new(&format!("load_{}", f), proc_macro2::Span::call_site())).collect();
+    let with_many_idents: Vec<syn::Ident> = parsed_has_many.iter().map(|(f, _)| syn::Ident::new(&format!("with_{}", f), proc_macro2::Span::call_site())).collect();
+    let has_many_fields: Vec<syn::Ident> = parsed_has_many.iter().map(|(f, _)| syn::Ident::new(f, proc_macro2::Span::call_site())).collect();
+    let relation_many_variants: Vec<syn::Path> = parsed_has_many.iter().map(|(_, t)| t.clone()).collect();
+
+    let mut parsed_has_one: Vec<(String, syn::Path)> = Vec::new();
+    let mut iter_one = has_one_relations.iter().peekable();
+    while let Some(current) = iter_one.next() {
+        if current.contains(':') {
+            let parts: Vec<&str> = current.split(':').collect();
+            let field = parts[0].to_string();
+            let target: syn::Path = syn::parse_str(parts[1]).expect("Invalid entity path mapping");
+            parsed_has_one.push((field, target));
+        } else if iter_one.peek().map_or(false, |next| next.contains("::") || next.contains("Entity")) {
+            let field = current.clone();
+            let next_str = iter_one.next().unwrap();
+            let target: syn::Path = syn::parse_str(next_str).expect("Invalid entity path mapping");
+            parsed_has_one.push((field, target));
+        } else {
+            let field = current.clone();
+            let path_str = format!("crate::models::{}::Entity", field);
+            let target: syn::Path = syn::parse_str(&path_str).unwrap();
+            parsed_has_one.push((field, target));
+        }
+    }
+
+    let has_one_idents: Vec<syn::Ident> = parsed_has_one.iter().map(|(f, _)| syn::Ident::new(&format!("load_{}", f), proc_macro2::Span::call_site())).collect();
+    let with_one_idents: Vec<syn::Ident> = parsed_has_one.iter().map(|(f, _)| syn::Ident::new(&format!("with_{}", f), proc_macro2::Span::call_site())).collect();
+    let has_one_fields: Vec<syn::Ident> = parsed_has_one.iter().map(|(f, _)| syn::Ident::new(f, proc_macro2::Span::call_site())).collect();
+    let relation_one_variants: Vec<syn::Path> = parsed_has_one.iter().map(|(_, t)| t.clone()).collect();
 
     let mut grid_column_tokens = Vec::new();
     let mut get_field_tokens = Vec::new();
@@ -333,22 +411,18 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
 
         // Base CRUD Operations
         jpa_dsl_methods.push(quote! {
-            pub async fn #find_by_ident<V>(&self, val: V) -> ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr>
+            pub fn #find_by_ident<V>(&self, val: V) -> #all_builder_name
             where V: ::std::convert::Into<::gritshield::deps::sea_orm::Value> {
                 use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait};
-                #entity_module::Entity::find()
-                    .filter(#entity_module::Column::#variant_ident.eq(val))
-                    .all(&self.db)
-                    .await
+                let query = #entity_module::Entity::find().filter(#entity_module::Column::#variant_ident.eq(val));
+                #all_builder_name::new(self, query)
             }
 
-            pub async fn #find_one_by_ident<V>(&self, val: V) -> ::std::result::Result<::std::option::Option<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr>
+            pub fn #find_one_by_ident<V>(&self, val: V) -> #one_builder_name
             where V: ::std::convert::Into<::gritshield::deps::sea_orm::Value> {
                 use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait};
-                #entity_module::Entity::find()
-                    .filter(#entity_module::Column::#variant_ident.eq(val))
-                    .one(&self.db)
-                    .await
+                let query = #entity_module::Entity::find().filter(#entity_module::Column::#variant_ident.eq(val));
+                #one_builder_name::new(self, query)
             }
 
             pub async fn #exists_by_ident<V>(&self, val: V) -> ::std::result::Result<bool, ::gritshield::deps::sea_orm::DbErr>
@@ -390,37 +464,30 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
                 let ends_with_ident = syn::Ident::new(&format!("find_by_{}_ends_with", col), proc_macro2::Span::call_site());
 
                 jpa_dsl_methods.push(quote! {
-                    pub async fn #like_ident<V>(&self, val: V) -> ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr>
-                    where V: ::std::convert::Into<::std::string::String> {
+                    pub fn #like_ident<V>(&self, val: V) -> #all_builder_name 
+                    where V: ::std::convert::Into<::std::string::String> 
+                    {
                         use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait};
-                        #entity_module::Entity::find()
-                            .filter(#entity_module::Column::#variant_ident.like(val))
-                            .all(&self.db)
-                            .await
+                        let query = #entity_module::Entity::find().filter(#entity_module::Column::#variant_ident.like(val));
+                        #all_builder_name::new(self, query)
                     }
 
-                    pub async fn #contains_ident(&self, val: &str) -> ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr> {
+                    pub fn #contains_ident(&self, val: &str) -> #all_builder_name {
                         use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait};
-                        #entity_module::Entity::find()
-                            .filter(#entity_module::Column::#variant_ident.contains(val))
-                            .all(&self.db)
-                            .await
+                        let query = #entity_module::Entity::find().filter(#entity_module::Column::#variant_ident.contains(val));
+                        #all_builder_name::new(self, query)
                     }
 
-                    pub async fn #starts_with_ident(&self, val: &str) -> ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr> {
+                    pub fn #starts_with_ident(&self, val: &str) -> #all_builder_name {
                         use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait};
-                        #entity_module::Entity::find()
-                            .filter(#entity_module::Column::#variant_ident.starts_with(val))
-                            .all(&self.db)
-                            .await
+                        let query = #entity_module::Entity::find().filter(#entity_module::Column::#variant_ident.starts_with(val));
+                        #all_builder_name::new(self, query)                    
                     }
 
-                    pub async fn #ends_with_ident(&self, val: &str) -> ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr> {
+                    pub fn #ends_with_ident(&self, val: &str) -> #all_builder_name {
                         use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait};
-                        #entity_module::Entity::find()
-                            .filter(#entity_module::Column::#variant_ident.ends_with(val))
-                            .all(&self.db)
-                            .await
+                        let query = #entity_module::Entity::find().filter(#entity_module::Column::#variant_ident.ends_with(val));
+                        #all_builder_name::new(self, query)
                     }
                 });
             }
@@ -432,51 +499,41 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
                 let between_ident = syn::Ident::new(&format!("find_by_{}_between", col), proc_macro2::Span::call_site());
 
                 jpa_dsl_methods.push(quote! {
-                    pub async fn #gt_ident<V>(&self, val: V) -> ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr>
+                    pub fn #gt_ident<V>(&self, val: V) -> #all_builder_name
                     where V: ::std::convert::Into<::gritshield::deps::sea_orm::Value> {
                         use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait};
-                        #entity_module::Entity::find()
-                            .filter(#entity_module::Column::#variant_ident.gt(val))
-                            .all(&self.db)
-                            .await
+                        let query = #entity_module::Entity::find().filter(#entity_module::Column::#variant_ident.gt(val));
+                            #all_builder_name::new(self, query)
                     }
 
-                    pub async fn #lt_ident<V>(&self, val: V) -> ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr>
+                    pub fn #lt_ident<V>(&self, val: V) -> #all_builder_name
                     where V: ::std::convert::Into<::gritshield::deps::sea_orm::Value> {
                         use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait};
-                        #entity_module::Entity::find()
-                            .filter(#entity_module::Column::#variant_ident.lt(val))
-                            .all(&self.db)
-                            .await
+                        let query = #entity_module::Entity::find().filter(#entity_module::Column::#variant_ident.lt(val));
+                            #all_builder_name::new(self, query)
                     }
 
-                    pub async fn #ge_ident<V>(&self, val: V) -> ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr>
+                    pub fn #ge_ident<V>(&self, val: V) -> #all_builder_name
                     where V: ::std::convert::Into<::gritshield::deps::sea_orm::Value> {
                         use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait};
-                        #entity_module::Entity::find()
-                            .filter(#entity_module::Column::#variant_ident.gte(val))
-                            .all(&self.db)
-                            .await
+                        let query = #entity_module::Entity::find().filter(#entity_module::Column::#variant_ident.gte(val));
+                            #all_builder_name::new(self, query)
                     }
 
-                    pub async fn #le_ident<V>(&self, val: V) -> ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr>
+                    pub fn #le_ident<V>(&self, val: V) -> #all_builder_name
                     where V: ::std::convert::Into<::gritshield::deps::sea_orm::Value> {
                         use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait};
-                        #entity_module::Entity::find()
-                            .filter(#entity_module::Column::#variant_ident.lte(val))
-                            .all(&self.db)
-                            .await
+                        let query = #entity_module::Entity::find().filter(#entity_module::Column::#variant_ident.lte(val));
+                            #all_builder_name::new(self, query)
                     }
 
-                    pub async fn #between_ident<V>(&self, low: V, high: V) -> ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr>
+                    pub fn #between_ident<V>(&self, low: V, high: V) -> #all_builder_name
                     where 
                         V: ::std::convert::Into<::gritshield::deps::sea_orm::Value>,
                     {
                         use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait};
-                        #entity_module::Entity::find()
-                            .filter(#entity_module::Column::#variant_ident.between(low, high))
-                            .all(&self.db)
-                            .await
+                        let query = #entity_module::Entity::find().filter(#entity_module::Column::#variant_ident.between(low, high));
+                            #all_builder_name::new(self, query)
                     }
                 });
             }
@@ -508,23 +565,20 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
                             .await
                     }
 
-                    pub async fn #gt_ident<V>(&self, val: V) -> ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr>
+                    pub fn #gt_ident<V>(&self, val: V) -> #all_builder_name
                     where V: ::std::convert::Into<::gritshield::deps::sea_orm::Value> {
                         use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait};
-                        #entity_module::Entity::find()
-                            .filter(#entity_module::Column::#variant_ident.gt(val))
-                            .all(&self.db)
-                            .await
+                        let query = #entity_module::Entity::find().filter(#entity_module::Column::#variant_ident.gt(val));
+                        #all_builder_name::new(self, query)
                     }
 
-                    pub async fn #lt_ident<V>(&self, val: V) -> ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr>
+                    pub fn #lt_ident<V>(&self, val: V) -> #all_builder_name
                     where V: ::std::convert::Into<::gritshield::deps::sea_orm::Value> {
                         use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait};
-                        #entity_module::Entity::find()
-                            .filter(#entity_module::Column::#variant_ident.lt(val))
-                            .all(&self.db)
-                            .await
+                        let query = #entity_module::Entity::find().filter(#entity_module::Column::#variant_ident.lt(val));
+                        #all_builder_name::new(self, query)
                     }
+
 
                     pub async fn #ge_ident<V>(&self, val: V) -> ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr>
                     where V: ::std::convert::Into<::gritshield::deps::sea_orm::Value> {
@@ -561,20 +615,16 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
                 let false_ident = syn::Ident::new(&format!("find_by_{}_false", col), proc_macro2::Span::call_site());
 
                 jpa_dsl_methods.push(quote! {
-                    pub async fn #true_ident(&self) -> ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr> {
+                    pub fn #true_ident(&self) -> #all_builder_name {
                         use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait};
-                        #entity_module::Entity::find()
-                            .filter(#entity_module::Column::#variant_ident.eq(true))
-                            .all(&self.db)
-                            .await
+                        let query = #entity_module::Entity::find().filter(#entity_module::Column::#variant_ident.eq(true));
+                        #all_builder_name::new(self, query)
                     }
 
-                    pub async fn #false_ident(&self) -> ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr> {
+                    pub fn #false_ident(&self) -> #all_builder_name {
                         use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait};
-                        #entity_module::Entity::find()
-                            .filter(#entity_module::Column::#variant_ident.eq(false))
-                            .all(&self.db)
-                            .await
+                        let query = #entity_module::Entity::find().filter(#entity_module::Column::#variant_ident.eq(false));
+                        #all_builder_name::new(self, query)
                     }
                 });
             }
@@ -598,7 +648,7 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
             let delete_and_ident = syn::Ident::new(&format!("delete_by_{}_and_{}", col1, col2), proc_macro2::Span::call_site());
 
             jpa_dsl_methods.push(quote! {
-                pub async fn #find_and_ident<V1, V2>(&self, val1: V1, val2: V2) -> ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr>
+                pub fn #find_and_ident<V1, V2>(&self, val1: V1, val2: V2) -> #all_builder_name
                 where 
                     V1: ::std::convert::Into<::gritshield::deps::sea_orm::Value>,
                     V2: ::std::convert::Into<::gritshield::deps::sea_orm::Value>
@@ -607,10 +657,11 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
                     let condition = Condition::all()
                         .add(#entity_module::Column::#var1_ident.eq(val1))
                         .add(#entity_module::Column::#var2_ident.eq(val2));
-                    #entity_module::Entity::find().filter(condition).all(&self.db).await
+                    let query = #entity_module::Entity::find().filter(condition);
+                    #all_builder_name::new(self, query)
                 }
 
-                pub async fn #find_one_and_ident<V1, V2>(&self, val1: V1, val2: V2) -> ::std::result::Result<::std::option::Option<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr>
+                pub fn #find_one_and_ident<V1, V2>(&self, val1: V1, val2: V2) -> #one_builder_name
                 where 
                     V1: ::std::convert::Into<::gritshield::deps::sea_orm::Value>,
                     V2: ::std::convert::Into<::gritshield::deps::sea_orm::Value>
@@ -619,10 +670,11 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
                     let condition = Condition::all()
                         .add(#entity_module::Column::#var1_ident.eq(val1))
                         .add(#entity_module::Column::#var2_ident.eq(val2));
-                    #entity_module::Entity::find().filter(condition).one(&self.db).await
+                    let query = #entity_module::Entity::find().filter(condition);
+                    #one_builder_name::new(self, query)
                 }
 
-                pub async fn #find_or_ident<V1, V2>(&self, val1: V1, val2: V2) -> ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr>
+                pub fn #find_or_ident<V1, V2>(&self, val1: V1, val2: V2) -> #all_builder_name
                 where 
                     V1: ::std::convert::Into<::gritshield::deps::sea_orm::Value>,
                     V2: ::std::convert::Into<::gritshield::deps::sea_orm::Value>
@@ -631,7 +683,8 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
                     let condition = Condition::any()
                         .add(#entity_module::Column::#var1_ident.eq(val1))
                         .add(#entity_module::Column::#var2_ident.eq(val2));
-                    #entity_module::Entity::find().filter(condition).all(&self.db).await
+                    let query = #entity_module::Entity::find().filter(condition);
+                    #all_builder_name::new(self, query)
                 }
 
                 pub async fn #exists_and_ident<V1, V2>(&self, val1: V1, val2: V2) -> ::std::result::Result<bool, ::gritshield::deps::sea_orm::DbErr>
@@ -682,6 +735,156 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
             #(#jpa_dsl_methods)*
         }
 
+        // =========================================================================
+        // DEFERRED QUERY BUILDERS FOR EAGER LOADING
+        // =========================================================================
+
+        pub struct #all_builder_name<'a> {
+            repo: &'a #name,
+            query: ::gritshield::deps::sea_orm::Select<#entity_module::Entity>,
+            #( #has_many_idents: bool, )*
+            #( #has_one_idents: bool, )*
+        }
+
+        impl<'a> #all_builder_name<'a> {
+            pub fn new(repo: &'a #name, query: ::gritshield::deps::sea_orm::Select<#entity_module::Entity>) -> Self {
+                Self {
+                    repo,
+                    query,
+                    #( #has_many_idents: false, )*
+                    #( #has_one_idents: false, )*
+                }
+            }
+
+            #(
+                pub fn #with_many_idents(mut self) -> Self {
+                    self.#has_many_idents = true;
+                    self
+                }
+            )*
+
+            #(
+                pub fn #with_one_idents(mut self) -> Self {
+                    self.#has_one_idents = true;
+                    self
+                }
+            )*
+
+            pub async fn execute(self) -> ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr> {
+                use ::gritshield::deps::sea_orm::{EntityTrait, QuerySelect};
+                
+                #(
+                    if self.#has_many_idents {
+                        let pairs = self.query.find_with_related(<#relation_many_variants>::default()).all(&self.repo.db).await?;
+                        let mut models = ::std::vec::Vec::new();
+                        for (mut model, related) in pairs {
+                            model.#has_many_fields = ::std::option::Option::Some(related);
+                            models.push(model);
+                        }
+                        return ::std::result::Result::Ok(models);
+                    }
+                )*
+
+                #(
+                    if self.#has_one_idents {
+                        let pairs = self.query.find_also_related(<#relation_one_variants>::default()).all(&self.repo.db).await?;
+                        let mut models = ::std::vec::Vec::new();
+                        for (mut model, opt_related) in pairs {
+                            model.#has_one_fields = opt_related;
+                            models.push(model);
+                        }
+                        return ::std::result::Result::Ok(models);
+                    }
+                )*
+
+                let models = self.query.all(&self.repo.db).await?;
+                ::std::result::Result::Ok(models)
+            }
+        }
+
+        impl<'a> ::std::future::IntoFuture for #all_builder_name<'a> {
+            type Output = ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr>;
+            type IntoFuture = ::gritshield::futures::future::BoxFuture<'a, Self::Output>;
+
+            fn into_future(self) -> Self::IntoFuture {
+                ::std::boxed::Box::pin(self.execute())
+            }
+        }
+
+        pub struct #one_builder_name<'a> {
+            repo: &'a #name,
+            query: ::gritshield::deps::sea_orm::Select<#entity_module::Entity>,
+            #( #has_many_idents: bool, )*
+            #( #has_one_idents: bool, )*
+        }
+
+        impl<'a> #one_builder_name<'a> {
+            pub fn new(repo: &'a #name, query: ::gritshield::deps::sea_orm::Select<#entity_module::Entity>) -> Self {
+                Self {
+                    repo,
+                    query,
+                    #( #has_many_idents: false, )*
+                    #( #has_one_idents: false, )*
+                }
+            }
+
+            #(
+                pub fn #with_many_idents(mut self) -> Self {
+                    self.#has_many_idents = true;
+                    self
+                }
+            )*
+
+            #(
+                pub fn #with_one_idents(mut self) -> Self {
+                    self.#has_one_idents = true;
+                    self
+                }
+            )*
+
+            pub async fn execute(self) -> ::std::result::Result<::std::option::Option<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr> {
+                use ::gritshield::deps::sea_orm::{EntityTrait, LoaderTrait};
+                let opt_model = self.query.one(&self.repo.db).await?;
+                
+                let model = match opt_model {
+                    ::std::option::Option::Some(m) => m,
+                    ::std::option::Option::None => return ::std::result::Result::Ok(::std::option::Option::None),
+                };
+
+                let mut models = ::std::vec![model];
+
+                #(
+                    if self.#has_many_idents {
+                        let related_data = models.load_many(<#relation_many_variants>::default(), &self.repo.db).await?;
+                        if let ::std::option::Option::Some(related) = related_data.into_iter().next() {
+                            models[0].#has_many_fields = ::std::option::Option::Some(related);
+                        }
+                    }
+                )*
+
+                #(
+                    if self.#has_one_idents {
+                        let related_data = models.load_one(<#relation_one_variants>::default(), &self.repo.db).await?;
+                        if let ::std::option::Option::Some(related) = related_data.into_iter().next() {
+                            models[0].#has_one_fields = related;
+                        }
+                    }
+                )*
+
+                ::std::result::Result::Ok(::std::option::Option::Some(models.remove(0)))
+            }
+        }
+
+        impl<'a> ::std::future::IntoFuture for #one_builder_name<'a> {
+            type Output = ::std::result::Result<::std::option::Option<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr>;
+            type IntoFuture = ::gritshield::futures::future::BoxFuture<'a, Self::Output>;
+
+            fn into_future(self) -> Self::IntoFuture {
+                ::std::boxed::Box::pin(self.execute())
+            }
+        }
+
+        // const block tracking admin registrations below
         const _: () = {
             use ::gritshield::deps::sea_orm;
 
@@ -799,6 +1002,7 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
                     }
                 }
 
+                #[allow(unreachable_code)]
                 async fn update_column_value(
                     &self,
                     id: Self::Id,

@@ -696,37 +696,6 @@ pub trait GritRepository {
     }
 
     // =========================================================================
-    // EMAIL SPECIFIC METHODS (Optional)
-    // =========================================================================
-
-    async fn find_by_email(&self, email: &str) -> Result<Option<Self::Model>, sea_orm::DbErr> {
-        if let Some(column) = Self::email_column() {
-            Self::Entity::find()
-                .filter(column.eq(email))
-                .one(self.get_db())
-                .await
-        } else {
-            Err(sea_orm::DbErr::Custom(
-                "Email column not defined for this entity".to_string(),
-            ))
-        }
-    }
-
-    async fn exists_by_email(&self, email: &str) -> Result<bool, sea_orm::DbErr> {
-        if let Some(column) = Self::email_column() {
-            let count = Self::Entity::find()
-                .filter(column.eq(email))
-                .count(self.get_db())
-                .await?;
-            Ok(count > 0)
-        } else {
-            Err(sea_orm::DbErr::Custom(
-                "Email column not defined for this entity".to_string(),
-            ))
-        }
-    }
-
-    // =========================================================================
     // SAVE / UPDATE OPERATIONS (JPA Style)
     // =========================================================================
 
@@ -801,11 +770,6 @@ pub trait GritRepository {
             .filter(column.eq(value))
             .count(self.get_db())
             .await
-    }
-
-    async fn exists_by_id(&self, id: Self::Id) -> Result<bool, sea_orm::DbErr> {
-        let count = Self::Entity::find_by_id(id).count(self.get_db()).await?;
-        Ok(count > 0)
     }
 
     async fn global_search(
