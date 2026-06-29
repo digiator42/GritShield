@@ -331,6 +331,13 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
     let has_one_fields: Vec<syn::Ident> = parsed_has_one.iter().map(|(f, _)| syn::Ident::new(f, proc_macro2::Span::call_site())).collect();
     let relation_one_variants: Vec<syn::Path> = parsed_has_one.iter().map(|(_, t)| t.clone()).collect();
 
+    let extended_ident = syn::Ident::new(&format!("{}Record", name), proc_macro2::Span::call_site());
+
+    let none_initializers = quote::quote! {
+        #( #has_many_fields: ::std::option::Option::None, )*
+        #( #has_one_fields: ::std::option::Option::None, )*
+    };
+
     let mut grid_column_tokens = Vec::new();
     let mut get_field_tokens = Vec::new();
     let mut update_field_tokens = Vec::new();
@@ -735,6 +742,34 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
             #(#jpa_dsl_methods)*
         }
 
+
+        #[derive(::std::clone::Clone, ::std::fmt::Debug, ::serde::Serialize, ::serde::Deserialize)]
+        pub struct #extended_ident {
+            #[serde(flatten)]
+            pub core: #entity_module::Model,
+            #(
+                #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+                pub #has_many_fields: ::std::option::Option<::std::vec::Vec<<#relation_many_variants as ::gritshield::deps::sea_orm::EntityTrait>::Model>>,
+            )*
+            #(
+                #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+                pub #has_one_fields: ::std::option::Option<<#relation_one_variants as ::gritshield::deps::sea_orm::EntityTrait>::Model>,
+            )*
+        }
+
+        impl ::std::ops::Deref for #extended_ident {
+            type Target = #entity_module::Model;
+            fn deref(&self) -> &Self::Target {
+                &self.core
+            }
+        }
+
+        impl ::std::ops::DerefMut for #extended_ident {
+            fn deref_mut(&mut self) -> &mut Self::Target {
+                &mut self.core
+            }
+        }
+
         // =========================================================================
         // DEFERRED QUERY BUILDERS FOR EAGER LOADING
         // =========================================================================
@@ -770,40 +805,60 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
                 }
             )*
 
-            pub async fn execute(self) -> ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr> {
+            pub async fn execute(self) -> ::std::result::Result<::std::vec::Vec<#extended_ident>, ::gritshield::deps::sea_orm::DbErr> {
                 use ::gritshield::deps::sea_orm::{EntityTrait, QuerySelect};
                 
+                // 1. Fetch baseline core records
+                let core_models = self.query.clone().all(&self.repo.db).await?;
+                let mut ids = ::std::vec::Vec::new();
+                let mut records_map = ::std::collections::HashMap::new();
+                
+                for m in core_models {
+                    let id = m.id;
+                    ids.push(id);
+                    records_map.insert(id, #extended_ident {
+                        core: m,
+                        #none_initializers
+                    });
+                }
+
+                // 2. Sequentially accumulate active Has-Many relations without short-circuiting
                 #(
                     if self.#has_many_idents {
-                        let pairs = self.query.find_with_related(<#relation_many_variants>::default()).all(&self.repo.db).await?;
-                        let mut models = ::std::vec::Vec::new();
-                        for (mut model, related) in pairs {
-                            model.#has_many_fields = ::std::option::Option::Some(related);
-                            models.push(model);
+                        let pairs = self.query.clone().find_with_related(<#relation_many_variants>::default()).all(&self.repo.db).await?;
+                        for (core_model, related) in pairs {
+                            if let Some(rec) = records_map.get_mut(&core_model.id) {
+                                rec.#has_many_fields = ::std::option::Option::Some(related);
+                            }
                         }
-                        return ::std::result::Result::Ok(models);
                     }
                 )*
 
+                // 3. Sequentially accumulate active Has-One relations without short-circuiting
                 #(
                     if self.#has_one_idents {
-                        let pairs = self.query.find_also_related(<#relation_one_variants>::default()).all(&self.repo.db).await?;
-                        let mut models = ::std::vec::Vec::new();
-                        for (mut model, opt_related) in pairs {
-                            model.#has_one_fields = opt_related;
-                            models.push(model);
+                        let pairs = self.query.clone().find_also_related(<#relation_one_variants>::default()).all(&self.repo.db).await?;
+                        for (core_model, opt_related) in pairs {
+                            if let Some(rec) = records_map.get_mut(&core_model.id) {
+                                rec.#has_one_fields = opt_related;
+                            }
                         }
-                        return ::std::result::Result::Ok(models);
                     }
                 )*
 
-                let models = self.query.all(&self.repo.db).await?;
-                ::std::result::Result::Ok(models)
+                // 4. Re-assemble back into vector maintaining database-side sort orders
+                let mut results = ::std::vec::Vec::new();
+                for id in ids {
+                    if let Some(rec) = records_map.remove(&id) {
+                        results.push(rec);
+                    }
+                }
+                ::std::result::Result::Ok(results)
             }
         }
 
         impl<'a> ::std::future::IntoFuture for #all_builder_name<'a> {
-            type Output = ::std::result::Result<::std::vec::Vec<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr>;
+            type Output = ::std::result::Result<::std::vec::Vec<#extended_ident>, ::gritshield::deps::sea_orm::DbErr>;
             type IntoFuture = ::gritshield::futures::future::BoxFuture<'a, Self::Output>;
 
             fn into_future(self) -> Self::IntoFuture {
@@ -842,41 +897,46 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
                 }
             )*
 
-            pub async fn execute(self) -> ::std::result::Result<::std::option::Option<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr> {
-                use ::gritshield::deps::sea_orm::{EntityTrait, LoaderTrait};
-                let opt_model = self.query.one(&self.repo.db).await?;
-                
-                let model = match opt_model {
+            pub async fn execute(self) -> ::std::result::Result<::std::option::Option<#extended_ident>, ::gritshield::deps::sea_orm::DbErr> {
+                use ::gritshield::deps::sea_orm::{EntityTrait, QuerySelect};
+
+                // 1. Fetch baseline single core record
+                let opt_model = self.query.clone().one(&self.repo.db).await?;
+                let core_model = match opt_model {
                     ::std::option::Option::Some(m) => m,
                     ::std::option::Option::None => return ::std::result::Result::Ok(::std::option::Option::None),
                 };
 
-                let mut models = ::std::vec![model];
+                let mut rec = #extended_ident {
+                    core: core_model,
+                    #none_initializers
+                };
 
+                // 2. Hydrate collections sequentially if flags are active
                 #(
                     if self.#has_many_idents {
-                        let related_data = models.load_many(<#relation_many_variants>::default(), &self.repo.db).await?;
-                        if let ::std::option::Option::Some(related) = related_data.into_iter().next() {
-                            models[0].#has_many_fields = ::std::option::Option::Some(related);
+                        let pairs = self.query.clone().find_with_related(<#relation_many_variants>::default()).all(&self.repo.db).await?;
+                        if let ::std::option::Option::Some((_, related)) = pairs.into_iter().next() {
+                            rec.#has_many_fields = ::std::option::Option::Some(related);
                         }
                     }
                 )*
 
                 #(
                     if self.#has_one_idents {
-                        let related_data = models.load_one(<#relation_one_variants>::default(), &self.repo.db).await?;
-                        if let ::std::option::Option::Some(related) = related_data.into_iter().next() {
-                            models[0].#has_one_fields = related;
+                        let pairs = self.query.clone().find_also_related(<#relation_one_variants>::default()).all(&self.repo.db).await?;
+                        if let ::std::option::Option::Some((_, opt_related)) = pairs.into_iter().next() {
+                            rec.#has_one_fields = opt_related;
                         }
                     }
                 )*
 
-                ::std::result::Result::Ok(::std::option::Option::Some(models.remove(0)))
+                ::std::result::Result::Ok(::std::option::Option::Some(rec))
             }
         }
 
         impl<'a> ::std::future::IntoFuture for #one_builder_name<'a> {
-            type Output = ::std::result::Result<::std::option::Option<#entity_module::Model>, ::gritshield::deps::sea_orm::DbErr>;
+            type Output = ::std::result::Result<::std::option::Option<#extended_ident>, ::gritshield::deps::sea_orm::DbErr>;
             type IntoFuture = ::gritshield::futures::future::BoxFuture<'a, Self::Output>;
 
             fn into_future(self) -> Self::IntoFuture {
