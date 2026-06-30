@@ -4,7 +4,7 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::DeriveInput;
 
-pub mod jpa_dsl;
+pub mod query_dsl;
 pub mod model;
 pub mod query_builders;
 pub mod relation;
@@ -41,13 +41,13 @@ pub fn expand_repository(input: DeriveInput) -> syn::Result<TokenStream> {
         }
     }
 
-    let converted_fields: Vec<(syn::Ident, crate::repository::jpa_dsl::ModelColumnType)> =
+    let converted_fields: Vec<(syn::Ident, crate::repository::query_dsl::ModelColumnType)> =
         unique_fields
             .iter()
             .map(|field_str| {
                 (
                     syn::Ident::new(field_str, proc_macro2::Span::call_site()),
-                    crate::repository::jpa_dsl::ModelColumnType::Unknown,
+                    crate::repository::query_dsl::ModelColumnType::Unknown,
                 )
             })
             .collect();
@@ -58,7 +58,7 @@ pub fn expand_repository(input: DeriveInput) -> syn::Result<TokenStream> {
     let all_builder_path = quote! { #entity_module::GritAllQueryBuilder };
     let one_builder_path = quote! { #entity_module::GritOneQueryBuilder };
 
-    let jpa_methods_block = crate::repository::jpa_dsl::generate_jpa_methods(
+    let query_methods_block = crate::repository::query_dsl::generate_query_methods(
         &entity_path,
         &column_path,
         &all_builder_path,
@@ -68,7 +68,7 @@ pub fn expand_repository(input: DeriveInput) -> syn::Result<TokenStream> {
 
     Ok(quote! {
         impl #name {
-            #jpa_methods_block
+            #query_methods_block
         }
     })
 }

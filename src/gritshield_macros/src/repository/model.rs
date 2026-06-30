@@ -1,5 +1,5 @@
 // src/repository/model.rs
-use crate::repository::jpa_dsl::{generate_model_specific_methods, type_to_column_type};
+use crate::repository::query_dsl::{generate_model_specific_methods, type_to_column_type};
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
 use syn::{Data, DeriveInput, Ident, Meta, Path, Result};
@@ -87,7 +87,7 @@ pub fn expand_model(input: DeriveInput) -> Result<TokenStream> {
     let column_path = quote! { Column };
     let all_builder_path = quote! { GritAllQueryBuilder };
 
-    let jpa_methods_block = generate_model_specific_methods(
+    let query_methods_block = generate_model_specific_methods(
         &entity_path,
         &column_path,
         &all_builder_path,
@@ -96,7 +96,7 @@ pub fn expand_model(input: DeriveInput) -> Result<TokenStream> {
 
     Ok(quote! {
         impl #repo_path {
-            #jpa_methods_block
+            #query_methods_block
         }
     })
 }

@@ -1,4 +1,4 @@
-// src/repository/jpa_dsl.rs
+// src/repository/query_dsl.rs
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
 use syn::Ident;
@@ -165,14 +165,14 @@ pub fn generate_model_specific_methods(
     quote! { #(#advanced_methods)* }
 }
 
-pub fn generate_jpa_methods(
+pub fn generate_query_methods(
     entity_path: &TokenStream,
     column_path: &TokenStream,
     all_builder_path: &TokenStream,
     one_builder_path: &TokenStream,
     fields: &[(syn::Ident, ModelColumnType)],
 ) -> TokenStream {
-    let mut jpa_dsl_methods = Vec::new();
+    let mut query_dsl_methods = Vec::new();
 
     // 1. Single Column Invocations
     for (field_ident, col_type) in fields {
@@ -185,7 +185,7 @@ pub fn generate_jpa_methods(
         let delete_by_ident = Ident::new(&format!("delete_by_{}", col_str), Span::call_site());
         let count_by_ident = Ident::new(&format!("count_by_{}", col_str), Span::call_site());
 
-        jpa_dsl_methods.push(quote! {
+        query_dsl_methods.push(quote! {
             pub fn #find_by_ident<V>(&self, val: V) -> #all_builder_path<'_>
             where V: ::std::convert::Into<::gritshield::deps::sea_orm::Value> {
                 use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait};
@@ -237,7 +237,7 @@ pub fn generate_jpa_methods(
             column_path,
             all_builder_path,
         );
-        jpa_dsl_methods.push(type_specific_block);
+        query_dsl_methods.push(type_specific_block);
     }
 
     // 2. Composite Multi-Column Invocations
@@ -255,7 +255,7 @@ pub fn generate_jpa_methods(
             let exists_and_ident = Ident::new(&format!("exists_by_{}_and_{}", col1, col2), proc_macro2::Span::call_site());
             let delete_and_ident = Ident::new(&format!("delete_by_{}_and_{}", col1, col2), proc_macro2::Span::call_site());
 
-            jpa_dsl_methods.push(quote! {
+            query_dsl_methods.push(quote! {
                 pub fn #find_and_ident<V1, V2>(&self, val1: V1, val2: V2) -> #all_builder_path<'_>
                 where 
                     V1: ::std::convert::Into<::gritshield::deps::sea_orm::Value>,
@@ -314,5 +314,5 @@ pub fn generate_jpa_methods(
         }
     }
 
-    quote! { #(#jpa_dsl_methods)* }
+    quote! { #(#query_dsl_methods)* }
 }
