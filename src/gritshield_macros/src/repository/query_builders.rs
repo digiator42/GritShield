@@ -3,7 +3,6 @@ use quote::quote;
 use syn::{Ident, Path};
 
 pub fn generate_builders(
-    name: &Ident,
     entity_module: &TokenStream,
     extended_ident: &Ident,
     all_builder_name: &Ident,
@@ -71,16 +70,16 @@ pub fn generate_builders(
 
         // RAQB
         pub struct #all_builder_name<'a> {
-            repo: &'a #name,
+            db: &'a ::gritshield::deps::sea_orm::DatabaseConnection,
             query: ::gritshield::deps::sea_orm::Select<#entity_module::Entity>,
             #( #has_many_idents: bool, )*
             #( #has_one_idents: bool, )*
         }
 
         impl<'a> #all_builder_name<'a> {
-            pub fn new(repo: &'a #name, query: ::gritshield::deps::sea_orm::Select<#entity_module::Entity>) -> Self {
+            pub fn new(db: &'a ::gritshield::deps::sea_orm::DatabaseConnection, query: ::gritshield::deps::sea_orm::Select<#entity_module::Entity>) -> Self {
                 Self {
-                    repo,
+                    db,
                     query,
                     #( #has_many_idents: false, )*
                     #( #has_one_idents: false, )*
@@ -92,7 +91,7 @@ pub fn generate_builders(
 
             pub async fn execute(self) -> ::std::result::Result<::std::vec::Vec<#extended_ident>, ::gritshield::deps::sea_orm::DbErr> {
                 use ::gritshield::deps::sea_orm::{EntityTrait, QuerySelect};
-                let core_models = self.query.clone().all(&self.repo.db).await?;
+                let core_models = self.query.clone().all(self.db).await?;
                 let mut ids = ::std::vec::Vec::new();
                 let mut records_map = ::std::collections::HashMap::new();
 
@@ -104,7 +103,7 @@ pub fn generate_builders(
 
                 #(
                     if self.#has_many_idents {
-                        let pairs = self.query.clone().find_with_related(<#relation_many_variants>::default()).all(&self.repo.db).await?;
+                        let pairs = self.query.clone().find_with_related(<#relation_many_variants>::default()).all(self.db).await?;
                         for (core_model, related) in pairs {
                             if let Some(rec) = records_map.get_mut(&core_model.id) { rec.#has_many_fields = ::std::option::Option::Some(related); }
                         }
@@ -113,7 +112,7 @@ pub fn generate_builders(
 
                 #(
                     if self.#has_one_idents {
-                        let pairs = self.query.clone().find_also_related(<#relation_one_variants>::default()).all(&self.repo.db).await?;
+                        let pairs = self.query.clone().find_also_related(<#relation_one_variants>::default()).all(self.db).await?;
                         for (core_model, opt_related) in pairs {
                             if let Some(rec) = records_map.get_mut(&core_model.id) { rec.#has_one_fields = opt_related; }
                         }
@@ -136,16 +135,16 @@ pub fn generate_builders(
 
         // ROQB
         pub struct #one_builder_name<'a> {
-            repo: &'a #name,
+            db: &'a ::gritshield::deps::sea_orm::DatabaseConnection,
             query: ::gritshield::deps::sea_orm::Select<#entity_module::Entity>,
             #( #has_many_idents: bool, )*
             #( #has_one_idents: bool, )*
         }
 
         impl<'a> #one_builder_name<'a> {
-            pub fn new(repo: &'a #name, query: ::gritshield::deps::sea_orm::Select<#entity_module::Entity>) -> Self {
+            pub fn new(db: &'a ::gritshield::deps::sea_orm::DatabaseConnection, query: ::gritshield::deps::sea_orm::Select<#entity_module::Entity>) -> Self {
                 Self {
-                    repo,
+                    db,
                     query,
                     #( #has_many_idents: false, )*
                     #( #has_one_idents: false, )*
@@ -157,7 +156,7 @@ pub fn generate_builders(
 
             pub async fn execute(self) -> ::std::result::Result<::std::option::Option<#extended_ident>, ::gritshield::deps::sea_orm::DbErr> {
                 use ::gritshield::deps::sea_orm::{EntityTrait, QuerySelect};
-                let opt_model = self.query.clone().one(&self.repo.db).await?;
+                let opt_model = self.query.clone().one(self.db).await?;
                 let core_model = match opt_model {
                     ::std::option::Option::Some(m) => m,
                     ::std::option::Option::None => return ::std::result::Result::Ok(::std::option::Option::None),
@@ -167,14 +166,14 @@ pub fn generate_builders(
 
                 #(
                     if self.#has_many_idents {
-                        let pairs = self.query.clone().find_with_related(<#relation_many_variants>::default()).all(&self.repo.db).await?;
+                        let pairs = self.query.clone().find_with_related(<#relation_many_variants>::default()).all(self.db).await?;
                         if let ::std::option::Option::Some((_, related)) = pairs.into_iter().next() { rec.#has_many_fields = ::std::option::Option::Some(related); }
                     }
                 )*
 
                 #(
                     if self.#has_one_idents {
-                        let pairs = self.query.clone().find_also_related(<#relation_one_variants>::default()).all(&self.repo.db).await?;
+                        let pairs = self.query.clone().find_also_related(<#relation_one_variants>::default()).all(self.db).await?;
                         if let ::std::option::Option::Some((_, opt_related)) = pairs.into_iter().next() { rec.#has_one_fields = opt_related; }
                     }
                 )*

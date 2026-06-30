@@ -40,10 +40,6 @@ pub fn parse_repository_attributes(attrs: &[syn::Attribute]) -> Result<Repositor
                             extract_strings(&nv.value, &mut result.grid_columns);
                         } else if nv.path.is_ident("read_only") {
                             extract_strings(&nv.value, &mut result.read_only_columns);
-                        } else if nv.path.is_ident("has_many") {
-                            extract_strings(&nv.value, &mut result.has_many_relations);
-                        } else if nv.path.is_ident("has_one") {
-                            extract_strings(&nv.value, &mut result.has_one_relations);
                         }
                     }
                 }

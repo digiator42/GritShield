@@ -23,6 +23,8 @@ pub use gritadmin::shell::admin_shell;
 pub use gritshield_macros::controller;
 pub use gritshield_macros::GritAdmin;
 pub use gritshield_macros::GritRepository;
+pub use gritshield_macros::GritRelation;
+pub use gritshield_macros::GritModel;
 pub use gritshield_macros::{delete, get, patch, post, put};
 
 // explicit module namespace for startup macros
@@ -70,7 +72,9 @@ pub mod prelude {
     // Re-export macros for the prelude
     pub use crate::controller;
     pub use crate::GritRepository;
-    pub use gritshield_macros::GritAdmin;
+    pub use crate::GritAdmin;
+    pub use crate::GritRelation;
+    pub use crate::GritModel;
     pub use crate::{delete, get, patch, post, put};
 
     // External essentials the developer will always need

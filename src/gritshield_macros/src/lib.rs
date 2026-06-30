@@ -7,10 +7,6 @@ mod core_parser;
 mod repository;
 mod routing;
 
-// ==========================================
-// DERIVE MACROS
-// ==========================================
-
 #[proc_macro_derive(GritAdmin, attributes(repository))]
 pub fn derive_grit_admin(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -27,10 +23,26 @@ pub fn derive_grit_repository(input: TokenStream) -> TokenStream {
         .into()
 }
 
+#[proc_macro_derive(GritModel, attributes(grit))]
+pub fn derive_grit_model(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    repository::model::expand_model(input)
+        .unwrap_or_else(|e| e.to_compile_error())
+        .into()
+}
+
+/// Dynamic relation harvester that hooks into SeaORM's native enum Relation
+#[proc_macro_derive(GritRelation, attributes(sea_orm, grit))]
+pub fn derive_grit_relation(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    repository::relation::expand_relation(input)
+        .unwrap_or_else(|e| e.to_compile_error())
+        .into()
+}
+
 // ==========================================
 // ATTRIBUTE MACROS (Controllers & Endpoints)
 // ==========================================
-
 #[proc_macro_attribute]
 pub fn controller(attr: TokenStream, item: TokenStream) -> TokenStream {
     routing::expand_controller(attr.into(), item.into())
