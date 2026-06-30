@@ -286,7 +286,7 @@ pub fn generate_jpa_methods(
                     use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait, Condition};
                     let condition = Condition::any().add(#column_path::#var1_ident.eq(val1)).add(#column_path::#var2_ident.eq(val2));
                     let query = #entity_path::find().filter(condition);
-                    #one_builder_path::new(self, query)
+                    #all_builder_path::new(&self.db, query)
                 }
 
                 pub async fn #exists_and_ident<V1, V2>(&self, val1: V1, val2: V2) -> ::std::result::Result<bool, ::gritshield::deps::sea_orm::DbErr>
