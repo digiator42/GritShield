@@ -4,44 +4,20 @@ use quote::quote;
 use syn::{Data, DeriveInput, Ident, Meta, Path, Result};
 
 pub fn expand_relation(input: DeriveInput) -> Result<TokenStream> {
-    let variants = match input.data {
-        Data::Enum(e) => e.variants,
+    let variants = match &input.data {
+        Data::Enum(e) => &e.variants,
         _ => {
             return Err(syn::Error::new_spanned(
-                input,
+                &input,
                 "GritRelation can only be derived on Enums",
             ))
         }
     };
 
-    let mut model_base_name = "User".to_string();
-    for attr in &input.attrs {
-        if attr.path().is_ident("grit") {
-            if let Meta::List(meta_list) = &attr.meta {
-                let _ = meta_list.parse_nested_meta(|meta| {
-                    if meta.path.is_ident("model") {
-                        let value = meta.value()?;
-                        let lit_str: syn::LitStr = value.parse()?;
-                        model_base_name = lit_str.value();
-                    }
-                    Ok(())
-                });
-            }
-        }
-    }
-
-    let all_builder_name = Ident::new(
-        &format!("{}RepositoryRAQB", model_base_name),
-        Span::call_site(),
-    );
-    let one_builder_name = Ident::new(
-        &format!("{}RepositoryROQB", model_base_name),
-        Span::call_site(),
-    );
-    let extended_ident = Ident::new(
-        &format!("{}RepositoryRecord", model_base_name),
-        Span::call_site(),
-    );
+    // No attributes to parse, no directories to scan. Standardized static names!
+    let all_builder_name = Ident::new("GritAllQueryBuilder", Span::call_site());
+    let one_builder_name = Ident::new("GritOneQueryBuilder", Span::call_site());
+    let extended_ident = Ident::new("GritRepositoryRecord", Span::call_site());
 
     let entity_module = quote! { self };
 
@@ -69,7 +45,6 @@ pub fn expand_relation(input: DeriveInput) -> Result<TokenStream> {
                                 parsed_has_one.push((variant_field_name.clone(), target_path));
                             }
                         } else if meta.path.is_ident("belongs_to") {
-                            // Parse belongs_to and pluralize it to match your builder expectations (.with_users())
                             let value = meta.value()?;
                             let path_str: syn::LitStr = value.parse()?;
                             if let Ok(target_path) = path_str.parse::<Path>() {

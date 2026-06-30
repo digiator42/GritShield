@@ -1,6 +1,6 @@
 // src/repository/mod.rs
 use crate::core_parser::parse_repository_attributes;
-use proc_macro2::{Span, TokenStream};
+use proc_macro2::TokenStream;
 use quote::quote;
 use syn::DeriveInput;
 
@@ -34,9 +34,6 @@ pub fn expand_repository(input: DeriveInput) -> syn::Result<TokenStream> {
         }
     }
 
-    let all_builder_name = syn::Ident::new(&format!("{}RAQB", name), name.span());
-    let one_builder_name = syn::Ident::new(&format!("{}ROQB", name), name.span());
-
     let mut unique_fields = grid_columns.clone();
     for col in &searchable_columns {
         if !unique_fields.contains(col) {
@@ -55,11 +52,11 @@ pub fn expand_repository(input: DeriveInput) -> syn::Result<TokenStream> {
             })
             .collect();
 
-    // Construct precise cross-module tokens pointing directly to the entity module context where builders live
+    // Point explicitly to the namespaced static builder targets inside the target module!
     let entity_path = quote! { #entity_module::Entity };
     let column_path = quote! { #entity_module::Column };
-    let all_builder_path = quote! { #entity_module::#all_builder_name };
-    let one_builder_path = quote! { #entity_module::#one_builder_name };
+    let all_builder_path = quote! { #entity_module::GritAllQueryBuilder };
+    let one_builder_path = quote! { #entity_module::GritOneQueryBuilder };
 
     let jpa_methods_block = crate::repository::jpa_dsl::generate_jpa_methods(
         &entity_path,
