@@ -710,7 +710,7 @@ impl Router {
 
             for (_, model) in registry.iter() {
                 info!(
-                    "[ADMIN] Registering: {:<30} {} [{:<6}]",
+                    "[DYN-ROUTER] Registering: {:<30} {} [{:<6}]",
                     model.route_path,
                     format!("->").green(),
                     method_color("GET")
@@ -726,7 +726,7 @@ impl Router {
                 let search = format!("{}/search", model.route_path);
 
                 info!(
-                    "[ADMIN] Registering: {:<30} {} [{:<6}]",
+                    "[DYN-ROUTER] Registering: {:<30} {} [{:<6}]",
                     search,
                     format!("->").green(),
                     method_color("POST")
@@ -742,7 +742,7 @@ impl Router {
                 let patch = format!("{}/patch", model.route_path);
 
                 info!(
-                    "[ADMIN] Registering: {:<30} {} [{:<6}]",
+                    "[DYN-ROUTER] Registering: {:<30} {} [{:<6}]",
                     patch,
                     format!("->").green(),
                     method_color("PATCH")

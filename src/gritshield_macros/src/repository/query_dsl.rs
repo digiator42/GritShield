@@ -145,26 +145,6 @@ fn generate_type_specific_methods(
     quote! { #(#extra_methods)* }
 }
 
-pub fn generate_model_specific_methods(
-    entity_path: &TokenStream,
-    column_path: &TokenStream,
-    all_builder_path: &TokenStream,
-    fields: &[(syn::Ident, ModelColumnType)],
-) -> TokenStream {
-    let mut advanced_methods = Vec::new();
-    for (field_ident, col_type) in fields {
-        let block = generate_type_specific_methods(
-            field_ident,
-            *col_type,
-            entity_path,
-            column_path,
-            all_builder_path,
-        );
-        advanced_methods.push(block);
-    }
-    quote! { #(#advanced_methods)* }
-}
-
 pub fn generate_query_methods(
     entity_path: &TokenStream,
     column_path: &TokenStream,

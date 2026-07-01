@@ -1,5 +1,5 @@
 // src/repository/model.rs
-use crate::repository::query_dsl::{generate_model_specific_methods, type_to_column_type};
+use crate::repository::query_dsl::{generate_query_methods, type_to_column_type};
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
 use syn::{Data, DeriveInput, Ident, Meta, Path, Result};
@@ -52,20 +52,22 @@ pub fn expand_model(input: DeriveInput) -> Result<TokenStream> {
         }
     }
 
+    let table_str = table_name.clone().ok_or_else(|| {
+        syn::Error::new_spanned(
+            &input,
+            "GritModel requires a table_name to derive repository path",
+        )
+    })?;
+
+    let module_name = if table_str.ends_with('s') && table_str.len() > 1 {
+        &table_str[..table_str.len() - 1]
+    } else {
+        &table_str
+    };
+
     let repo_path = match repo_path {
         Some(path) => path,
         None => {
-            let table_str = table_name.ok_or_else(|| {
-                syn::Error::new_spanned(
-                    &input,
-                    "GritModel requires a table_name to derive repository path",
-                )
-            })?;
-            let module_name = if table_str.ends_with('s') && table_str.len() > 1 {
-                &table_str[..table_str.len() - 1]
-            } else {
-                &table_str
-            };
             let mut chars = module_name.chars();
             let pascal_repo = chars.next().unwrap().to_uppercase().collect::<String>()
                 + chars.as_str()
@@ -82,15 +84,21 @@ pub fn expand_model(input: DeriveInput) -> Result<TokenStream> {
         parsed_fields.push((ident, col_type));
     }
 
-    // Reference the standardized local builder name directly!
-    let entity_path = quote! { Entity };
-    let column_path = quote! { Column };
-    let all_builder_path = quote! { GritAllQueryBuilder };
+    // Build absolute cross-module paths to safely wire the repo to its source models
+    let module_ident = Ident::new(module_name, Span::call_site());
+    let entity_module = quote! { crate::models::#module_ident };
 
-    let query_methods_block = generate_model_specific_methods(
+    let entity_path = quote! { #entity_module::Entity };
+    let column_path = quote! { #entity_module::Column };
+    let all_builder_path = quote! { #entity_module::GritAllQueryBuilder };
+    let one_builder_path = quote! { #entity_module::GritOneQueryBuilder };
+
+    // Generate the complete query DSL engine block
+    let query_methods_block = generate_query_methods(
         &entity_path,
         &column_path,
         &all_builder_path,
+        &one_builder_path,
         &parsed_fields,
     );
 
