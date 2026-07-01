@@ -1,3 +1,4 @@
+// src/proc-macro code (e.g., ctor_registry.rs)
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{Ident, LitStr};
@@ -17,12 +18,7 @@ pub fn generate_registration(
     quote! {
         #[::gritshield::startup::ctor(unsafe)]
         fn #initializer_name() {
-            use ::gritshield::deps::sea_orm::EntityName;
-
-            let table_name: &'static str =
-                Box::leak(<#entity_module::Entity as EntityName>::table_name(&#entity_module::Entity)
-                    .to_owned()
-                    .into_boxed_str());
+            let table_name: &'static str = #repo_name_lower;
 
             let route_path: &'static str =
                 Box::leak(::std::string::String::from(#route_path_literal).into_boxed_str());

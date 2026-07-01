@@ -1,12 +1,9 @@
-use gritshield::{GritAdmin, GritRepository};
+use gritshield::{GritAdmin};
 
-#[derive(GritRepository, GritAdmin)]
+#[derive(GritAdmin)]
 #[repository(
-    entity = "crate::models::user",
-    searchable = ["id", "email"],
-    grid_columns = ["id", "email", "created_at", "updated_at"],
-    read_only = ["updated_at"],
-    has_many = ["posts", "comments"]
+    searchable = ["username", "email", "created_at", "updated_at"],
+    grid_columns = ["id", "username", "created_at", "updated_at"],
 )]
 pub struct UserRepository {
     pub db: sea_orm::DatabaseConnection,

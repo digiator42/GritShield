@@ -3,6 +3,9 @@ use gritshield::deps::sea_orm::{
 };
 use gritshield::{database::repository::GritRepository, prelude::*};
 
+use crate::models::comment;
+use crate::repositories::post::PostRepository;
+// use crate::repositories::post::PostRepository;
 use crate::{
     models::{post, user},
     repositories::user::UserRepository,
@@ -25,13 +28,47 @@ impl ApiController {
             .await
             .unwrap();
 
-        let repo_user_with_posts = user_repo
-            .find_by_email("user_1@example.com")
-            .with_posts()
-            .with_comments()
-            .await
-            .unwrap();
+        // let repo_user_with_posts = user_repo
+        //     .find_by_email("user_1@example.com")
+        //     .with_posts()
+        //     .with_comments()
+        //     .await
+        //     .unwrap();
 
-        Response::json(200, &repo_user_with_posts)
+        // let repo_user_query = user_repo
+        //     .query()
+        //     .where_gt(user::Column::Id, 3)
+        //     .fetch()
+        //     .await
+        //     .unwrap();
+
+        // =================== GritModel ====================
+        // let test_grit_model = user_repo
+        //     .find_by_id_between(5, 6)
+        //     .with_posts()
+        //     .with_comments()
+        //     .await
+        //     .unwrap();
+
+        let post_repo = PostRepository { db: db.clone() };
+
+        // post_repo
+
+        // let posts_with_comments = post_repo
+        //     .find_by_id(2)
+        //     .with_comments()
+        //     .with_users()
+        //     .await
+        //     .unwrap();
+
+        // let posts_by_query = post_repo.search_admin_fields("03:15:07").await.unwrap();
+
+        // let user_tree = user_repo
+        //     .find_by_email("user_1@example.com")
+        //     .with_comments_nested(|query| query.with_users())
+        //     .await
+        //     .unwrap();
+
+        Response::json(200, &sea_user_with_posts)
     }
 }

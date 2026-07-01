@@ -48,7 +48,7 @@ pub async fn seed_social_media_if_empty(db: &DatabaseConnection) {
             let mock_post = post::ActiveModel {
                 user_id: Set(((i - 1) % 10 + 1) as i32), // distribute posts among users
                 content: Set(format!("This is post {}", i)),
-                created_at: Set(Utc::now()),
+                created_at: Set(Utc::now().naive_utc()),
                 ..Default::default()
             };
             mock_post.insert(db).await.expect("Insert post failed");
@@ -64,7 +64,7 @@ pub async fn seed_social_media_if_empty(db: &DatabaseConnection) {
                 post_id: Set(((i - 1) % 30 + 1) as i32), // distribute comments among posts
                 user_id: Set(((i - 1) % 10 + 1) as i32), // random user commenting
                 content: Set(format!("Comment {} content", i)),
-                created_at: Set(Utc::now()),
+                created_at: Set(Utc::now().naive_utc()),
                 ..Default::default()
             };
             mock_comment

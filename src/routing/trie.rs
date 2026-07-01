@@ -1,4 +1,6 @@
 use crate::core::logger::{self, log_request_summary, LogLevel};
+use crate::database::repository::AdminHandlerFn;
+use crate::gritadmin::main_handler::*;
 use crate::protocol::form::FormData;
 use crate::protocol::request::{HttpMethod, Request};
 use crate::protocol::response::{Cookie, Response};
@@ -700,7 +702,6 @@ impl Router {
         }
 
         // Admin routes
-
         #[cfg(feature = "admin")]
         {
             use crate::database::repository::ADMIN_REGISTRY;
@@ -708,7 +709,9 @@ impl Router {
 
             let registry = ADMIN_REGISTRY.lock().unwrap();
 
-            for (_, model) in registry.iter() {
+            for (table_name, model) in registry.iter() {
+                println!("=======>> {:?} => {:?}", table_name, model.route_path);
+                // 1. Core Workspace Table Views / Global Dynamic Routes (GET)
                 info!(
                     "[DYN-ROUTER] Registering: {:<30} {} [{:<6}]",
                     model.route_path,
@@ -723,38 +726,57 @@ impl Router {
                     None,
                 );
 
+                // 2. Real-time Grid Search Pipeline (GET)
                 let search = format!("{}/search", model.route_path);
 
                 info!(
                     "[DYN-ROUTER] Registering: {:<30} {} [{:<6}]",
                     search,
                     format!("->").green(),
-                    method_color("POST")
+                    method_color("GET")
                 );
 
                 router.add_route(
-                    HttpMethod::POST,
+                    HttpMethod::GET,
                     Box::leak(search.into_boxed_str()),
                     model.search_handler.clone(),
                     None,
                 );
 
-                let patch = format!("{}/patch", model.route_path);
+                // 3. Inline Cell Updates (PATCH)
+                let patch_path = format!("{}/update-cell", model.route_path);
 
                 info!(
                     "[DYN-ROUTER] Registering: {:<30} {} [{:<6}]",
-                    patch,
+                    patch_path,
                     format!("->").green(),
                     method_color("PATCH")
                 );
 
                 router.add_route(
                     HttpMethod::PATCH,
-                    Box::leak(patch.into_boxed_str()),
+                    Box::leak(patch_path.into_boxed_str()),
                     model.patch_handler.clone(),
                     None,
                 );
             }
+
+            let palette_handler: AdminHandlerFn =
+                Arc::new(|ctx| Box::pin(handle_search_palette(ctx)));
+
+            info!(
+                "[DYN-ROUTER] Registering: {:<30} {} [{:<6}]",
+                "/admin/api/search-palette",
+                format!("->").green(),
+                method_color("GET")
+            );
+
+            router.add_route(
+                HttpMethod::GET,
+                "/admin/api/search-palette",
+                palette_handler,
+                None,
+            );
         }
 
         router

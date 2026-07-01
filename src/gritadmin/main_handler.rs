@@ -1,12 +1,14 @@
-use crate::database::repository::GritRepository;
+use crate::database::repository::AdminHandlerFn;
+use crate::database::repository::{GritRepository, ADMIN_REGISTRY};
 use crate::deps::sea_orm::{EntityTrait, PaginatorTrait, QueryOrder};
+use crate::security::xss::UntrustedString;
 use crate::{admin_shell, prelude::*};
 use maud::{html, Markup};
 
 /// Generic dashboard view runner for listing data rows and handling infinite scrolls.
 pub async fn handle_list<R>(ctx: RequestContext, repo: R, table_slug: &'static str) -> Response
 where
-    R: GritRepository + Send + Sync + 'static, 
+    R: GritRepository + Send + Sync + 'static,
     <R as GritRepository>::Model: Sync + Send,
 {
     let is_htmx = ctx.req.has_header("hx-request");
@@ -42,7 +44,7 @@ where
                                 value=(repo.get_field_as_string(item, &col.name))
                                 name=(col.name)
                                 hx-patch=(route_patch_str)
-                                hx-trigger="change"
+                                hx-trigger="change, keyup[key=='Enter']"
                                 hx-target="this"
                                 hx-swap="outerHTML"
                                 hx-vals=(format!("{{\"id\": {}, \"column\": \"{}\", \"table_to_modify\": \"{}\"}}", repo.get_field_as_string(item, "id"), col.name, table_slug))
@@ -105,7 +107,7 @@ where
 /// Generic search query processor handling dynamic query filters.
 pub async fn handle_search<R>(ctx: RequestContext, repo: R, table_slug: &'static str) -> Response
 where
-    R: GritRepository + Send + Sync + 'static, 
+    R: GritRepository + Send + Sync + 'static,
     <R as GritRepository>::Model: Sync + Send,
 {
     let db = repo.get_db();
@@ -156,7 +158,7 @@ where
 /// Generic column/cell PATCH updates with standard validation pipelines.
 pub async fn handle_patch<R>(ctx: RequestContext, repo: R, table_slug: &'static str) -> Response
 where
-    R: GritRepository + Send + Sync + 'static, 
+    R: GritRepository + Send + Sync + 'static,
     <R as GritRepository>::Model: Sync + Send,
     <R as GritRepository>::Id: std::str::FromStr,
     <<R as GritRepository>::Id as std::str::FromStr>::Err: std::fmt::Display,
@@ -175,18 +177,26 @@ where
         Err(err) => return Response::bad_request(format!("Invalid record ID format: {}", err)),
     };
 
-    let column_name = match form.get("column") {
-        Some(col) => col.to_string(),
+    let raw_column = match form.get("column") {
+        Some(col) => col.as_str(),
         None => return Response::bad_request("Missing targeted column"),
     };
-    let target_value = match form.get(&column_name) {
-        Some(val) => val.to_string(),
+
+    // Decode the column name in case it contains special characters
+    let column_name = Sanitizer::url_decode(raw_column);
+
+    let raw_value = match form.get(raw_column) {
+        // Note: look up using the raw key present in the map
+        Some(val) => val.as_str(),
         None => return Response::bad_request("Missing field update payload"),
     };
 
     let route_patch_str = format!("/admin/{}/update-cell", table_slug);
 
-    // 3. Pass the correctly typed record_id here
+    // Decode the percent-encoded value (e.g., convert "%20" back into " ")
+    let target_value = Sanitizer::url_decode(raw_value);
+
+    // 3. Pass the correctly typed record_id and clean, decoded string
     match repo
         .update_column_value(record_id, &column_name, target_value)
         .await
@@ -197,11 +207,10 @@ where
                 input type="text"
                     value=(display_value)
                     hx-patch=(route_patch_str)
-                    hx-trigger="change"
+                    hx-trigger="change, keyup[key=='Enter']" // Retaining our Enter key optimization!
                     name=(column_name)
                     hx-target="this"
                     hx-swap="outerHTML"
-                    // Enclose id value in quotes so it handles both integer keys and UUID strings safely
                     hx-vals=(format!("{{\"id\": \"{}\", \"column\": \"{}\", \"table_to_modify\": \"{}\"}}", record_id_raw, column_name, table_slug))
                     class="bg-transparent hover:bg-gray-850 focus:bg-gray-800 px-2 py-1 rounded focus:outline-none w-full border border-transparent focus:border-emerald-600 transition";
             };
@@ -209,4 +218,155 @@ where
         }
         Err(err) => Response::bad_request(format!("Database field rejection: {}", err)),
     }
+}
+
+/// Global command palette search engine covering dynamic tables, settings, and falling back to deep record matching.
+pub async fn handle_search_palette(ctx: RequestContext) -> Response {
+    let query = ctx
+        .query
+        .get("q")
+        .map(|v| v.to_string().to_lowercase())
+        .unwrap_or_default();
+
+    let static_settings = vec![
+        ("/admin/settings", "⚙️ System Metrics"),
+        ("/admin/settings/security", "🛡️ Hardening Matrix"),
+        ("/admin/settings/logs", "📜 Audit Log"),
+    ];
+
+    let (filtered_tables, filtered_settings, search_targets) = {
+        let registry = ADMIN_REGISTRY.lock().unwrap();
+
+        // 1. Fully own the matched table entries as cloned Strings so we don't borrow from registry
+        let tables: Vec<(String, String)> = registry
+            .iter()
+            .filter(|(table_name, _)| {
+                !query.is_empty() && table_name.to_lowercase().contains(&query)
+            })
+            .map(|(table_name, meta)| (table_name.to_string(), meta.route_path.to_string()))
+            .collect();
+
+        // 2. Filter settings
+        let settings: Vec<(String, String)> = static_settings
+            .into_iter()
+            .filter(|(path, label)| {
+                !query.is_empty() && (label.to_lowercase().contains(&query) || path.to_lowercase().contains(&query))
+            })
+            .map(|(path, label)| (path.to_string(), label.to_string()))
+            .collect();
+
+        println!("======>> {:?}", settings);
+
+        // 3. Clone the handler pointers for fallback routing
+        let targets: Vec<(String, String, AdminHandlerFn)> = registry
+            .iter()
+            .map(|(table_name, meta)| {
+                (
+                    table_name.to_string(),
+                    meta.route_path.to_string(),
+                    meta.search_handler.clone(),
+                )
+            })
+            .collect();
+
+        (tables, settings, targets)
+    };
+
+    let mut record_results: Vec<(String, String, String)> = Vec::new();
+
+    // Now, running async operations here is 100% thread-safe
+    if filtered_tables.is_empty() && filtered_settings.is_empty() && !query.is_empty() {
+        for (table_name, route_path, search_handler) in search_targets {
+            let mut sub_ctx = ctx.clone();
+            sub_ctx
+                .query
+                .insert("q".to_string(), UntrustedString::new(query.clone()));
+
+            let search_response = search_handler(sub_ctx).await;
+
+            if search_response.status == 200 {
+                let (body_bytes, _) = search_response.resolve();
+                let html_body = String::from_utf8(body_bytes).unwrap_or_default();
+
+                if !html_body.trim().is_empty() {
+                    record_results.push((table_name, route_path, html_body));
+                }
+            }
+        }
+    }
+
+    // Render the final UI using our isolated variables
+    let results_html = html! {
+        @if filtered_tables.is_empty() && filtered_settings.is_empty() && record_results.is_empty() {
+            div class="p-4 text-center text-gray-500 font-mono text-xs" {
+                "No workspace parameters match your query matrix."
+            }
+        } @else {
+            @if !filtered_tables.is_empty() {
+                div class="text-xxs uppercase tracking-wider text-emerald-500 font-bold px-3 py-2 font-mono" { "📂 Table Workspaces" }
+                @for (table_name, route_path) in filtered_tables {
+                    @let display_name = format!(
+                        "{} Grid",
+                        table_name
+                            .chars()
+                            .next()
+                            .map(|c| c.to_uppercase().to_string())
+                            .unwrap_or_default()
+                            + &table_name[1..]
+                    );
+                    a href=(route_path)
+                       hx-get=(route_path)
+                       hx-target="#main-content"
+                       hx-push-url="true"
+                       onclick="document.getElementById('command-palette').classList.add('hidden')"
+                       class="flex items-center justify-between p-3 rounded-lg hover:bg-gray-800/60 transition group font-medium" {
+                           span { (display_name) }
+                           span class="text-xs text-gray-500 font-mono opacity-0 group-hover:opacity-100 transition" { (route_path) }
+                    }
+                }
+            }
+
+            @if !filtered_settings.is_empty() {
+                // div class="text-xxs uppercase tracking-wider text-blue-400 text-[0.5rem] px-3 py-2 font-mono" { "System Control" }
+                hr {}
+                @for (path, label) in filtered_settings {
+                    a href=(path)
+                       hx-get=(path)
+                       hx-target="#main-content"
+                       hx-push-url="true"
+                       onclick="document.getElementById('command-palette').classList.add('hidden')"
+                       class="flex items-center justify-between p-3 rounded-lg hover:bg-gray-800/60 transition group font-medium" {
+                           span { (label) }
+                           span class="text-xs text-gray-500 font-mono opacity-0 group-hover:opacity-100 transition" { (path) }
+                    }
+                }
+            }
+
+            @if !record_results.is_empty() {
+                div class="text-xxs uppercase tracking-wider text-amber-500 font-bold px-3 py-2 font-mono" { "🔍 Deep Record Matches" }
+                div class="max-h-72 overflow-y-auto space-y-4 px-2 py-1" {
+                    @for (table_slug, route_path, rows_snippet) in record_results {
+                        div class="border border-gray-900 bg-gray-950/40 rounded-lg overflow-hidden" {
+                            div class="bg-gray-900/60 px-3 py-1.5 flex justify-between items-center border-b border-gray-900" {
+                                span class="text-xs font-bold text-gray-400 uppercase tracking-tight" { (table_slug) }
+                                a href=(route_path)
+                                   hx-get=(route_path)
+                                   hx-target="#main-content"
+                                   hx-push-url="true"
+                                   onclick="document.getElementById('command-palette').classList.add('hidden')"
+                                   class="text-xxs text-emerald-500 hover:underline font-mono" { "Go →" }
+                            }
+                            table class="w-full text-left border-collapse pointer-events-none select-none opacity-85" {
+                                tbody class="divide-y divide-gray-900/60 bg-gray-950/20" {
+                                    (maud::PreEscaped(rows_snippet))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    };
+
+    Response::ok(results_html.into_string())
 }

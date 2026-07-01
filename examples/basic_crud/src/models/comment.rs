@@ -1,8 +1,9 @@
+use gritshield::{GritModel, GritRelation};
 use sea_orm::entity::prelude::*;
-
+use chrono::NaiveDateTime;
 use serde::{Serialize, Deserialize};
 
-#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize, GritModel)]
 #[sea_orm(table_name = "comments")]
 pub struct Model {
     #[sea_orm(primary_key)]
@@ -10,10 +11,10 @@ pub struct Model {
     pub post_id: i32,
     pub user_id: i32,
     pub content: String,
-    pub created_at: DateTimeUtc,
+    pub created_at: NaiveDateTime,
 }
 
-#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation, GritRelation)]
 pub enum Relation {
     #[sea_orm(
         belongs_to = "super::post::Entity",
