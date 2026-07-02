@@ -1,4 +1,5 @@
 use gritshield::{
+    database::repository::CustomQuerySpec,
     prelude::*,
     security::db::{DbConfig, DbManager},
 };

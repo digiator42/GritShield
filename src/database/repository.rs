@@ -1,19 +1,194 @@
-use sea_orm::{
-    ActiveModelBehavior, ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, EntityTrait,
-    FromQueryResult, IntoActiveModel, LoaderTrait, ModelTrait, PaginatorTrait, PrimaryKeyTrait,
-    QueryFilter, QueryOrder, QueryOrder as QueryOrderTrait, QueryResult, QuerySelect, Select,
-    SelectTwoMany, TryIntoModel, Value,
-};
-use sea_orm_migration::async_trait::async_trait;
-
 use crate::deps::once_cell::sync::Lazy;
+use crate::deps::sea_orm::sea_query::{Alias, Condition, Expr, JoinType, Query, SelectStatement};
 use crate::deps::sea_orm::DbErr;
 use crate::protocol::response::Response;
 use crate::routing::trie::RequestContext;
+use crate::security::xss::Sanitizer;
+use sea_orm::{
+    ActiveModelBehavior, ActiveModelTrait, ColumnTrait, DatabaseConnection, DbBackend, EntityTrait,
+    FromQueryResult, IntoActiveModel, LoaderTrait, ModelTrait, PaginatorTrait, PrimaryKeyTrait,
+    QueryFilter, QueryOrder, QueryOrder as QueryOrderTrait, QueryResult, QuerySelect, Select,
+    SelectTwoMany, Statement, TryIntoModel, Value,
+};
+use sea_orm_migration::async_trait::async_trait;
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
+
+/// Simplified internal data structural representation of our custom search query
+#[derive(Debug, Clone)]
+pub struct CustomQuerySpec {
+    pub base_table: String,
+    pub select_columns: Vec<(Option<String>, String)>, // (Optional Table Prefix, Column Name)
+    pub joins: Vec<JoinSpec>,
+    pub r#where: Vec<WhereSpec>,
+}
+
+#[derive(Debug, Clone)]
+pub struct JoinSpec {
+    pub target_table: String,
+    pub left_on: (String, String),  // (Table, Column)
+    pub right_on: (String, String), // (Table, Column)
+}
+
+#[derive(Debug, Clone)]
+pub struct WhereSpec {
+    pub table: Option<String>,
+    pub column: String,
+    pub operator: String, // "=", "LIKE", ">"
+    pub value: String,
+}
+
+/// Dynamic compiler translating structural specs into database-agnostic statements
+pub struct JqlCompiler;
+
+impl JqlCompiler {
+    pub fn compile(spec: &CustomQuerySpec, backend: DbBackend) -> Statement {
+        let mut select = Query::select();
+
+        // 1. Process explicit select targets or fallback safely to wildcard definitions
+        if spec.select_columns.is_empty() {
+            select.column((Alias::new(&spec.base_table), Alias::new("*")));
+        } else {
+            for (table_opt, col) in &spec.select_columns {
+                if let Some(tbl) = table_opt {
+                    select.column((Alias::new(tbl), Alias::new(col)));
+                } else {
+                    select.column((Alias::new(&spec.base_table), Alias::new(col)));
+                }
+            }
+        }
+
+        // 2. Define root origin table target matrix
+        select.from(Alias::new(&spec.base_table));
+
+        // 3. Append relational joins dynamically
+        for join in &spec.joins {
+            let left_expr = Expr::col((Alias::new(&join.left_on.0), Alias::new(&join.left_on.1)));
+            let right_expr =
+                Expr::col((Alias::new(&join.right_on.0), Alias::new(&join.right_on.1)));
+
+            // Cleanly link the two column expression definitions together
+            select.join(
+                JoinType::InnerJoin,
+                Alias::new(&join.target_table),
+                left_expr.eq(right_expr),
+            );
+        }
+
+        // 4. Inject runtime query condition filters safely
+        let mut conditions = Condition::all();
+        for cond in &spec.r#where {
+            let col_ref = if let Some(tbl) = &cond.table {
+                Expr::col((Alias::new(tbl), Alias::new(&cond.column)))
+            } else {
+                Expr::col((Alias::new(&spec.base_table), Alias::new(&cond.column)))
+            };
+
+            // Fix: Wrap raw strings inside Expr::val to yield structural parameters
+            let clause = match cond.operator.as_str() {
+                "=" => col_ref.eq(Expr::val(cond.value.clone())),
+                "LIKE" => col_ref.like(format!("%{}%", cond.value)),
+                ">" => col_ref.gt(Expr::val(cond.value.clone())),
+                "<" => col_ref.lt(Expr::val(cond.value.clone())),
+                _ => col_ref.eq(Expr::val(cond.value.clone())),
+            };
+            conditions = conditions.add(clause);
+        }
+
+        select.cond_where(conditions);
+
+        // 5. Generate target-compiled SQL variant safely
+        backend.build(&select)
+    }
+}
+
+impl CustomQuerySpec {
+    pub fn parse_from_str(input: &str) -> Result<Self, String> {
+        let input = Sanitizer::url_decode(input);
+        let normalized = input.replace(",", " ").to_lowercase();
+        let tokens: Vec<&str> = normalized.split_whitespace().collect();
+
+        println!("====>> {:?}\n{:?}", input, tokens);
+
+        // 1. Detect core indexing components
+        let select_idx = tokens.iter().position(|&t| t == "select");
+        let from_idx = tokens.iter().position(|&t| t == "from");
+        let join_idx = tokens.iter().position(|&t| t == "join");
+        let where_idx = tokens.iter().position(|&t| t == "where");
+
+        if select_idx.is_none() || from_idx.is_none() {
+            return Err(
+                "Invalid structural syntax: Queries must include SELECT and FROM clauses."
+                    .to_string(),
+            );
+        }
+
+        let from_table = tokens[from_idx.unwrap() + 1].to_string();
+        let mut select_columns = Vec::new();
+
+        // 2. Parse target columns
+        for i in (select_idx.unwrap() + 1)..from_idx.unwrap() {
+            let part = tokens[i];
+            if part.contains('.') {
+                let chunks: Vec<&str> = part.split('.').collect();
+                select_columns.push((Some(chunks[0].to_string()), chunks[1].to_string()));
+            } else {
+                select_columns.push((None, part.to_string()));
+            }
+        }
+
+        // 3. Extract dynamic joins if present
+        let mut joins = Vec::new();
+        if let Some(j_idx) = join_idx {
+            let on_idx = tokens.iter().position(|&t| t == "on");
+            if let Some(o_idx) = on_idx {
+                let target_table = tokens[j_idx + 1].to_string();
+                let left_side = tokens[o_idx + 1].split('.').collect::<Vec<&str>>();
+                let right_side = tokens[o_idx + 3].split('.').collect::<Vec<&str>>();
+
+                joins.push(JoinSpec {
+                    target_table,
+                    left_on: (left_side[0].to_string(), left_side[1].to_string()),
+                    right_on: (right_side[0].to_string(), right_side[1].to_string()),
+                });
+            }
+        }
+
+        // 4. Extract where condition targets
+        let mut conditions = Vec::new();
+        if let Some(w_idx) = where_idx {
+            let col_part = tokens[w_idx + 1];
+            let operator = tokens[w_idx + 2].to_string();
+            let value = tokens[w_idx + 3].replace("'", "").to_string();
+
+            if col_part.contains('.') {
+                let chunks: Vec<&str> = col_part.split('.').collect();
+                conditions.push(WhereSpec {
+                    table: Some(chunks[0].to_string()),
+                    column: chunks[1].to_string(),
+                    operator,
+                    value,
+                });
+            } else {
+                conditions.push(WhereSpec {
+                    table: None,
+                    column: col_part.to_string(),
+                    operator,
+                    value,
+                });
+            }
+        }
+
+        Ok(CustomQuerySpec {
+            base_table: from_table,
+            select_columns,
+            joins,
+            r#where: conditions,
+        })
+    }
+}
 
 // Type alias for the type-erased admin dashboard request handlers
 pub type AdminHandlerFn =
@@ -26,7 +201,9 @@ pub struct ModelMetadata {
     pub searchable_columns: Vec<&'static str>,
     pub list_handler: AdminHandlerFn,
     pub search_handler: AdminHandlerFn,
+    pub delete_handler: AdminHandlerFn,
     pub patch_handler: AdminHandlerFn,
+    pub advanced_search_handler: AdminHandlerFn,
 }
 
 pub trait AdminFieldParser {

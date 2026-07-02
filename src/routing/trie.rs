@@ -743,6 +743,22 @@ impl Router {
                     None,
                 );
 
+                let delete_path = format!("{}/delete", model.route_path);
+
+                info!(
+                    "[DYN-ROUTER] Registering: {:<30} {} [{:<6}]",
+                    delete_path,
+                    format!("->").green(),
+                    method_color("DELETE")
+                );
+
+                router.add_route(
+                    HttpMethod::DELETE,
+                    Box::leak(delete_path.into_boxed_str()),
+                    model.delete_handler.clone(),
+                    None,
+                );
+
                 // 3. Inline Cell Updates (PATCH)
                 let patch_path = format!("{}/update-cell", model.route_path);
 
@@ -757,6 +773,23 @@ impl Router {
                     HttpMethod::PATCH,
                     Box::leak(patch_path.into_boxed_str()),
                     model.patch_handler.clone(),
+                    None,
+                );
+
+                // 4. Advanced Matrix Query Explorer Pipeline (GET)
+                let advanced_search_path = format!("{}/query-explorer", model.route_path);
+
+                info!(
+                    "[DYN-ROUTER] Registering: {:<30} {} [{:<6}]",
+                    advanced_search_path,
+                    format!("->").green(),
+                    method_color("GET")
+                );
+
+                router.add_route(
+                    HttpMethod::GET,
+                    Box::leak(advanced_search_path.into_boxed_str()),
+                    model.advanced_search_handler.clone(),
                     None,
                 );
             }

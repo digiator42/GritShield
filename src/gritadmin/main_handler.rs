@@ -1,15 +1,21 @@
 use crate::database::repository::AdminHandlerFn;
+use crate::database::repository::{CustomQuerySpec, JoinSpec, JqlCompiler, WhereSpec};
 use crate::database::repository::{GritRepository, ADMIN_REGISTRY};
-use crate::deps::sea_orm::{EntityTrait, PaginatorTrait, QueryOrder};
+use crate::deps::sea_orm::{
+    ConnectionTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryOrder,
+};
 use crate::security::xss::UntrustedString;
 use crate::{admin_shell, prelude::*};
-use maud::{html, Markup};
+use maud::html;
+use sea_orm::QueryResult;
 
 /// Generic dashboard view runner for listing data rows and handling infinite scrolls.
 pub async fn handle_list<R>(ctx: RequestContext, repo: R, table_slug: &'static str) -> Response
 where
     R: GritRepository + Send + Sync + 'static,
     <R as GritRepository>::Model: Sync + Send,
+    <R as GritRepository>::Id: std::str::FromStr,
+    <<R as GritRepository>::Id as std::str::FromStr>::Err: std::fmt::Display,
 {
     let is_htmx = ctx.req.has_header("hx-request");
     let db = repo.get_db();
@@ -33,10 +39,13 @@ where
 
     let route_path_str = format!("/admin/{}", table_slug);
     let route_patch_str = format!("/admin/{}/update-cell", table_slug);
+    let route_delete_str = format!("/admin/{}/delete", table_slug);
+    let route_advanced_str = format!("/admin/{}/query-explorer", table_slug);
 
     let rows_html = html! {
         @for item in items.iter() {
-            tr class="divide-x divide-gray-800 hover:bg-gray-900/40 transition" {
+            @let record_id = repo.get_field_as_string(item, "id");
+            tr class="divide-x divide-gray-800 hover:bg-gray-900/40 transition group" {
                 @for col in repo.grid_columns().iter() {
                     td class="p-3 text-sm font-medium" {
                         @if col.is_editable {
@@ -47,18 +56,30 @@ where
                                 hx-trigger="change, keyup[key=='Enter']"
                                 hx-target="this"
                                 hx-swap="outerHTML"
-                                hx-vals=(format!("{{\"id\": {}, \"column\": \"{}\", \"table_to_modify\": \"{}\"}}", repo.get_field_as_string(item, "id"), col.name, table_slug))
+                                hx-vals=(format!("{{\"id\": \"{}\", \"column\": \"{}\", \"table_to_modify\": \"{}\"}}", record_id, col.name, table_slug))
                                 class="bg-transparent hover:bg-gray-850 focus:bg-gray-800 px-2 py-1 rounded focus:outline-none w-full border border-transparent focus:border-emerald-600 transition";
                         } @else {
                             span class="px-2 py-1 text-gray-400 font-mono text-xs" { (repo.get_field_as_string(item, &col.name)) }
                         }
                     }
                 }
+                // Inline Delete trigger column
+                td class="p-3 text-center w-20" {
+                    button
+                        hx-delete=(route_delete_str)
+                        hx-vals=(format!("{{\"id\": \"{}\"}}", record_id))
+                        hx-target="closest tr"
+                        hx-swap="outerHTML"
+                        hx-confirm="Are you sure you want to permanently delete this record?"
+                        class="text-red-500/60 hover:text-red-400 p-1 rounded hover:bg-red-950/30 font-mono text-xs group-hover:opacity-100 transition duration-150" {
+                            "Delete"
+                    }
+                }
             }
         }
         @if (page + 1) < total_pages {
             tr id="infinite-scroll-spinner"
-                hx-get=(format!("{}?page={}", route_path_str, page + 1))
+                hx-get=(format!("{}?page={}", route_path_str, (page + 1)))
                 hx-trigger="intersect once"
                 hx-target="#infinite-scroll-spinner"
                 hx-swap="outerHTML"
@@ -78,21 +99,52 @@ where
 
         let complete_view = html! {
             div class="space-y-6" {
+                div class="bg-gray-950 border border-gray-800 rounded-xl p-4 shadow-xl space-y-3" {
+                    div class="flex items-center justify-between" {
+                        h2 class="text-xs font-bold tracking-wider text-emerald-500 uppercase font-mono" {
+                            "Matrix Query Explorer JQL"
+                        }
+                        span class="text-xxs font-mono text-gray-500" { "Supports SELECT ... FROM ... JOIN ... WHERE ..." }
+                    }
+                    div class="flex gap-2" {
+                        input type="text"
+                            name="jql"
+                            placeholder="select id,title from projects join assignments on projects.id = assignments.project_id where status = 'active'"
+                            hx-get=(route_advanced_str)
+                            hx-trigger="keyup[key=='Enter']"
+                            hx-target="#matrix-wrapper"
+                            hx-swap="outerHTML"
+                            class="bg-gray-900 border border-gray-800 rounded-lg px-4 py-2.5 flex-1 text-xs font-mono text-emerald-400 focus:outline-none focus:border-emerald-500 placeholder-gray-600 transition shadow-inner";
+
+                        button
+                            hx-get=(route_advanced_str)
+                            hx-include="[name='jql']"
+                            hx-target="#matrix-wrapper"
+                            hx-swap="outerHTML"
+                            class="bg-emerald-950/40 border border-emerald-800/60 hover:bg-emerald-900/40 text-emerald-400 text-xs font-mono font-semibold px-4 py-2 rounded-lg transition duration-150" {
+                                "Run Query"
+                        }
+                    }
+                }
+
                 div class="flex justify-between items-center" {
                     h1 class="text-2xl font-bold tracking-tight" { (display_title) }
                     input type="text"
                         name="q"
-                        placeholder="Search records..."
+                        placeholder="Basic keyword lookup..."
                         hx-get=(route_search_str)
                         hx-trigger="keyup changed delay:300ms"
                         hx-target="#table-body"
-                        class="bg-gray-950 border border-gray-800 rounded px-4 py-2 w-80 text-sm focus:outline-none focus:border-emerald-500 transition";
+                        class="bg-gray-950 border border-gray-800 rounded-lg px-4 py-2 w-80 text-sm focus:outline-none focus:border-emerald-500 transition";
                 }
-                div class="bg-gray-950 border border-gray-800 rounded-xl overflow-hidden shadow-xl" {
+
+                // Target wrapper envelope that gets completely replaced during dynamic structural queries
+                div id="matrix-wrapper" class="bg-gray-950 border border-gray-800 rounded-xl overflow-hidden shadow-xl" {
                     table class="w-full text-left border-collapse" {
                         thead class="bg-gray-900/80 border-b border-gray-800 text-xs font-semibold uppercase tracking-wider text-gray-400" {
                             tr class="divide-x divide-gray-800" {
                                 @for col in repo.grid_columns().iter() { th class="p-4" { (col.label) } }
+                                th class="p-4 text-center w-20" { "Actions" }
                             }
                         }
                         tbody id="table-body" class="divide-y divide-gray-800" { (rows_html) }
@@ -104,7 +156,7 @@ where
     }
 }
 
-/// Generic search query processor handling dynamic query filters.
+/// Generic search query processor handling dynamic query filters with inline drop capabilities.
 pub async fn handle_search<R>(ctx: RequestContext, repo: R, table_slug: &'static str) -> Response
 where
     R: GritRepository + Send + Sync + 'static,
@@ -128,10 +180,12 @@ where
     };
 
     let route_patch_str = format!("/admin/{}/update-cell", table_slug);
+    let route_delete_str = format!("/admin/{}/delete", table_slug);
 
     let rows_html = html! {
         @for item in items.iter() {
-            tr class="divide-x divide-gray-800 hover:bg-gray-900/40 transition" {
+            @let record_id = repo.get_field_as_string(item, "id");
+            tr class="divide-x divide-gray-800 hover:bg-gray-900/40 transition group" {
                 @for col in repo.grid_columns().iter() {
                     td class="p-3 text-sm font-medium" {
                         @if col.is_editable {
@@ -142,17 +196,65 @@ where
                                 hx-trigger="change"
                                 hx-target="this"
                                 hx-swap="outerHTML"
-                                hx-vals=(format!("{{\"id\": {}, \"column\": \"{}\", \"table_to_modify\": \"{}\"}}", repo.get_field_as_string(item, "id"), col.name, table_slug))
+                                hx-vals=(format!("{{\"id\": \"{}\", \"column\": \"{}\", \"table_to_modify\": \"{}\"}}", record_id, col.name, table_slug))
                                 class="bg-transparent hover:bg-gray-850 focus:bg-gray-800 px-2 py-1 rounded focus:outline-none w-full border border-transparent focus:border-emerald-600 transition";
                         } @else {
                             span class="px-2 py-1 text-gray-400 font-mono text-xs" { (repo.get_field_as_string(item, &col.name)) }
                         }
                     }
                 }
+                td class="p-3 text-center w-20" {
+                    button
+                        hx-delete=(route_delete_str)
+                        hx-vals=(format!("{{\"id\": \"{}\"}}", record_id))
+                        hx-target="closest tr"
+                        hx-swap="outerHTML"
+                        hx-confirm="Are you sure you want to permanently delete this record?"
+                        class="text-red-500/60 hover:text-red-400 p-1 rounded hover:bg-red-950/30 font-mono text-xs opacity-0 group-hover:opacity-100 transition duration-150" {
+                            "Drop"
+                    }
+                }
             }
         }
     };
     Response::ok(rows_html.into_string())
+}
+
+/// Generic database record removal handler matching HTMX asynchronous delete operations.
+pub async fn handle_delete<R>(ctx: RequestContext, repo: R, _table_slug: &'static str) -> Response
+where
+    R: GritRepository + Send + Sync + 'static,
+    <R as GritRepository>::Model: Sync + Send,
+    <R as GritRepository>::Id: std::str::FromStr,
+    <<R as GritRepository>::Id as std::str::FromStr>::Err: std::fmt::Display,
+{
+    // Capture from form data payload or query variables uniformly
+    let record_id_raw = match ctx
+        .form
+        .fields
+        .get("id")
+        .map(|v| v.as_str())
+        .or_else(|| ctx.query.get("id").map(|v| v.as_str()))
+    {
+        Some(id) => id,
+        None => return Response::bad_request("Missing record target ID matrix"),
+    };
+
+    // Parse identifier mapping straight into underlying Repository model type
+    let record_id = match record_id_raw.parse::<<R as GritRepository>::Id>() {
+        Ok(id) => id,
+        Err(err) => {
+            return Response::bad_request(format!("Invalid record sequence format: {}", err))
+        }
+    };
+
+    match repo.delete_by_id(record_id).await {
+        Ok(_) => {
+            // Returning an empty 200 OK block tells HTMX to clean the target 'closest tr' out of existence safely.
+            Response::ok("")
+        }
+        Err(err) => Response::bad_request(format!("Database removal engine rejection: {}", err)),
+    }
 }
 
 /// Generic column/cell PATCH updates with standard validation pipelines.
@@ -186,14 +288,11 @@ where
     let column_name = Sanitizer::url_decode(raw_column);
 
     let raw_value = match form.get(raw_column) {
-        // Note: look up using the raw key present in the map
         Some(val) => val.as_str(),
         None => return Response::bad_request("Missing field update payload"),
     };
 
     let route_patch_str = format!("/admin/{}/update-cell", table_slug);
-
-    // Decode the percent-encoded value (e.g., convert "%20" back into " ")
     let target_value = Sanitizer::url_decode(raw_value);
 
     // 3. Pass the correctly typed record_id and clean, decoded string
@@ -207,7 +306,7 @@ where
                 input type="text"
                     value=(display_value)
                     hx-patch=(route_patch_str)
-                    hx-trigger="change, keyup[key=='Enter']" // Retaining our Enter key optimization!
+                    hx-trigger="change, keyup[key=='Enter']"
                     name=(column_name)
                     hx-target="this"
                     hx-swap="outerHTML"
@@ -250,7 +349,9 @@ pub async fn handle_search_palette(ctx: RequestContext) -> Response {
         let settings: Vec<(String, String)> = static_settings
             .into_iter()
             .filter(|(path, label)| {
-                !query.is_empty() && (label.to_lowercase().contains(&query) || path.to_lowercase().contains(&query))
+                !query.is_empty()
+                    && (label.to_lowercase().contains(&query)
+                        || path.to_lowercase().contains(&query))
             })
             .map(|(path, label)| (path.to_string(), label.to_string()))
             .collect();
@@ -303,7 +404,7 @@ pub async fn handle_search_palette(ctx: RequestContext) -> Response {
             }
         } @else {
             @if !filtered_tables.is_empty() {
-                div class="text-xxs uppercase tracking-wider text-emerald-500 font-bold px-3 py-2 font-mono" { "📂 Table Workspaces" }
+                // div class="text-xxs uppercase tracking-wider text-emerald-500 font-bold px-3 py-2 font-mono" { "📂 Table Workspaces" }
                 @for (table_name, route_path) in filtered_tables {
                     @let display_name = format!(
                         "{} Grid",
@@ -369,4 +470,116 @@ pub async fn handle_search_palette(ctx: RequestContext) -> Response {
     };
 
     Response::ok(results_html.into_string())
+}
+
+/// Unified asynchronous query execution engine matching web interface requests
+pub async fn handle_custom_search_viewer(ctx: RequestContext) -> Response {
+    let query_input = ctx.query.get("jql").map(|v| v.as_str()).unwrap_or("");
+
+    let db = ctx.db.clone().expect("DB connection missing");
+
+    println!("====>>query_input {:?}", query_input);
+
+    if query_input.is_empty() {
+        return Response::ok(render_empty_matrix_interface().into_string());
+    }
+
+    // Attempt to evaluate user expression via string token rules engine
+    let parsed_spec = match CustomQuerySpec::parse_from_str(query_input) {
+        Ok(spec) => spec,
+        Err(err) => {
+            println!("====>>Parsed {:?}", err);
+            return Response::ok(html! {
+            div id="matrix-wrapper" class="bg-red-950/20 border border-red-900/50 rounded-xl p-4 font-mono text-xs text-red-400" {
+                span class="font-bold uppercase block mb-1" { "⚠️ Syntax Mapping Error:" }
+                (err)
+            }
+        }.into_string());
+        }
+    };
+
+    println!("====>>Parsed {:?}", parsed_spec);
+
+    // Automatically resolve whether the active runtime target is Postgres, MySQL, or SQLite
+    let db_backend = db.get_database_backend();
+    let native_stmt = JqlCompiler::compile(&parsed_spec, db_backend);
+
+    println!("=====> {:?}", native_stmt);
+
+    match db.query_all(native_stmt).await {
+        Ok(query_results) => {
+            if query_results.is_empty() {
+                return Response::ok(html! {
+                    div class="p-6 text-center text-gray-500 font-mono text-xs border border-gray-800 rounded-xl" {
+                        "Query completed successfully. Execution returned an empty zero-row dataset."
+                    }
+                }.into_string());
+            }
+
+            // Dynamically discover what columns came back inside the generic payload matrix
+            let column_headers: Vec<String> = parsed_spec
+                .select_columns
+                .iter()
+                .map(|(tbl, col)| {
+                    tbl.as_ref()
+                        .map_or(col.clone(), |t| format!("{}.{}", t, col))
+                })
+                .collect();
+
+            let rendered_view = render_results_grid(&column_headers, &query_results);
+            Response::ok(rendered_view.into_string())
+        }
+        Err(db_err) => Response::ok(html! {
+            div id="matrix-wrapper" class="bg-red-950/20 border border-red-900/50 rounded-xl p-4 font-mono text-xs text-red-400" {
+                span class="font-bold uppercase block mb-1" { "⚙️ Database Engine Refusal:" }
+                (db_err.to_string())
+            }
+        }.into_string())
+    }
+}
+
+fn render_results_grid(headers: &[String], rows: &[QueryResult]) -> Markup {
+    html! {
+        div id="matrix-wrapper" class="space-y-4" {
+            div class="text-xxs font-mono uppercase tracking-wider text-emerald-500 font-bold" {
+                "Result Matrix View"
+            }
+            div class="bg-gray-950 border border-gray-800 rounded-xl overflow-x-auto shadow-xl" {
+                table class="w-full text-left border-collapse" {
+                    thead class="bg-gray-900/80 border-b border-gray-800 text-xs font-semibold uppercase tracking-wider text-gray-400 font-mono" {
+                        tr class="divide-x divide-gray-800" {
+                            @for header in headers {
+                                th class="p-3" { (header) }
+                            }
+                        }
+                    }
+                    tbody class="divide-y divide-gray-800 text-sm font-medium text-gray-300 font-mono text-xs" {
+                        @for row in rows {
+                            tr class="divide-x divide-gray-800 hover:bg-gray-900/40 transition" {
+                                @for header in headers {
+                                    // Extract fields out of returned queries by simple positional index configuration or labels
+                                    @let field_val = row
+                                        .try_get_by_index::<String>(headers.iter().position(|h| h == header).unwrap_or(0))
+                                        .unwrap_or_else(|_| "NULL".to_string());
+                                    td class="p-3" { (field_val) }
+                                }
+                            }
+                        }
+                    }
+                    div class="bg-gray-900/40 px-4 py-2 border-t border-gray-850 flex justify-between items-center text-xxs font-mono text-gray-500" {
+                        span { "Metrics: " (rows.len()) " entries collected successfully" }
+                        a href="#" hx-get=(format!("/admin/{}", "table_slug")) hx-target="#matrix-wrapper" hx-swap="outerHTML" class="text-emerald-500 hover:underline" { "Reset Grid Matrix ↺" }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn render_empty_matrix_interface() -> Markup {
+    html! {
+        div class="p-8 text-center text-gray-500 font-mono text-xs border border-gray-800 border-dashed rounded-xl" {
+            "Input custom workspace tracking logic strings above to view underlying engine definitions..."
+        }
+    }
 }

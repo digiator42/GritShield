@@ -44,7 +44,6 @@ pub mod deps {
     pub use sea_orm;
     pub use sea_orm_migration;
     pub use sea_orm_migration::async_trait::async_trait;
-    pub use sea_query;
     pub use serde;
     pub use serde_json;
     pub use tokio;

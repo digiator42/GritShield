@@ -65,6 +65,24 @@ pub fn generate_registration(
                     })
                 });
 
+            let delete_handler: ::gritshield::database::repository::AdminHandlerFn =
+                ::std::sync::Arc::new(move |ctx| {
+                    let table_name = table_name;
+                    Box::pin(async move {
+                        let db = ctx.db.clone().expect("DB connection missing");
+                        let repo = #name {
+                            db: (*db).clone(),
+                        };
+
+                        ::gritshield::gritadmin::main_handler::handle_delete(
+                            ctx,
+                            repo,
+                            table_name,
+                        )
+                        .await
+                    })
+                });
+
             let patch_handler: ::gritshield::database::repository::AdminHandlerFn =
                 ::std::sync::Arc::new(move |ctx| {
                     let table_name = table_name;
@@ -83,13 +101,28 @@ pub fn generate_registration(
                     })
                 });
 
+            let advanced_search_handler: ::gritshield::database::repository::AdminHandlerFn =
+                ::std::sync::Arc::new(move |ctx| {
+                    let table_name = table_name;
+                    Box::pin(async move {
+
+                        ::gritshield::gritadmin::main_handler::handle_custom_search_viewer(
+                            ctx,
+                            // table_name,
+                        )
+                        .await
+                    })
+                });
+
             let meta = ::gritshield::database::repository::ModelMetadata {
                 table_name,
                 route_path,
                 searchable_columns,
                 list_handler,
                 search_handler,
+                delete_handler,
                 patch_handler,
+                advanced_search_handler,
             };
 
             println!("REGISTERING ADMIN MODEL: {}", table_name);
