@@ -79,6 +79,7 @@ pub fn admin_shell(title: &str, content: Markup, is_htmx: bool) -> Response {
                         (content)
                     }
                 }
+                div id="toast-container" class="fixed bottom-4 right-4 z-50 space-y-2" { }
             }
             script {
                 (maud::PreEscaped(include_str!("admin_palette.js")))

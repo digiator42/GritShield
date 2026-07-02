@@ -2,8 +2,9 @@ use crate::database::repository::AdminHandlerFn;
 use crate::database::repository::{CustomQuerySpec, JoinSpec, JqlCompiler, WhereSpec};
 use crate::database::repository::{GritRepository, ADMIN_REGISTRY};
 use crate::deps::sea_orm::{
-    ConnectionTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryOrder,
+    ConnectionTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryOrder, TransactionTrait,
 };
+use crate::security::errors::ShieldError;
 use crate::security::xss::UntrustedString;
 use crate::{admin_shell, prelude::*};
 use maud::html;
@@ -20,7 +21,27 @@ where
     let is_htmx = ctx.req.has_header("hx-request");
     let db = repo.get_db();
 
-    // Parse requested pagination frame page
+    // ---- Sorting ----
+    let sort_col = ctx.query.get("sort").map(|v| v.as_str()).unwrap_or("");
+    let sort_dir = ctx
+        .query
+        .get("direction")
+        .map(|v| v.as_str())
+        .unwrap_or("desc");
+    let mut query = <R::Entity as EntityTrait>::find();
+
+    if let Some(col) = repo.column_from_str(sort_col) {
+        if sort_dir == "asc" {
+            query = query.order_by_asc(col);
+        } else {
+            query = query.order_by_desc(col);
+        }
+    } else {
+        // default order by id desc
+        query = query.order_by_desc(R::id_column());
+    }
+
+    // ---- Pagination ----
     let page = ctx
         .query
         .get("page")
@@ -29,11 +50,7 @@ where
     let is_infinite_scroll = is_htmx && page > 0;
     let page_size = 15;
 
-    // Execute paginated selection queries generically
-    let paginator = <R::Entity as EntityTrait>::find()
-        .order_by_desc(R::id_column())
-        .paginate(db, page_size);
-
+    let paginator = query.paginate(db, page_size);
     let total_pages = paginator.num_pages().await.unwrap_or(0);
     let items = paginator.fetch_page(page).await.unwrap_or_default();
 
@@ -41,11 +58,30 @@ where
     let route_patch_str = format!("/admin/{}/update-cell", table_slug);
     let route_delete_str = format!("/admin/{}/delete", table_slug);
     let route_advanced_str = format!("/admin/{}/query-explorer", table_slug);
+    let route_detail_str = format!("/admin/{}/", table_slug); // used with id appended
+    let route_bulk_delete_str = format!("/admin/{}/bulk-delete", table_slug);
+
+    // Build the sort link helper to preserve current sort parameters
+    let sort_link = |col: &str| {
+        let new_dir = if sort_col == col && sort_dir == "asc" {
+            "desc"
+        } else {
+            "asc"
+        };
+        format!("{}?sort={}&direction={}", route_path_str, col, new_dir)
+    };
 
     let rows_html = html! {
         @for item in items.iter() {
             @let record_id = repo.get_field_as_string(item, "id");
             tr class="divide-x divide-gray-800 hover:bg-gray-900/40 transition group" {
+                // ---- Checkbox column ----
+                td class="p-3 text-center w-10" {
+                    input type="checkbox"
+                        name="selected_ids"
+                        value=(record_id)
+                        class="form-checkbox bg-gray-800 border-gray-700 rounded text-emerald-500 focus:ring-0 focus:ring-offset-0";
+                }
                 @for col in repo.grid_columns().iter() {
                     td class="p-3 text-sm font-medium" {
                         @if col.is_editable {
@@ -63,28 +99,37 @@ where
                         }
                     }
                 }
-                // Inline Delete trigger column
-                td class="p-3 text-center w-20" {
+                // ---- Action column ----
+                td class="p-3 text-center w-24" {
+                    // Detail link (eye icon)
+                    a href=(format!("{}{}", route_detail_str, record_id))
+                      hx-get=(format!("{}{}", route_detail_str, record_id))
+                      hx-target="#main-content"
+                      hx-push-url="true"
+                      class="text-blue-400/60 hover:text-blue-400 p-1 rounded hover:bg-blue-950/30 font-mono text-xs transition duration-150 mr-2" {
+                        "👁"
+                    }
+                    // Delete button
                     button
                         hx-delete=(route_delete_str)
                         hx-vals=(format!("{{\"id\": \"{}\"}}", record_id))
                         hx-target="closest tr"
                         hx-swap="outerHTML"
                         hx-confirm="Are you sure you want to permanently delete this record?"
-                        class="text-red-500/60 hover:text-red-400 p-1 rounded hover:bg-red-950/30 font-mono text-xs group-hover:opacity-100 transition duration-150" {
-                            "Delete"
+                        class="text-red-500/60 hover:text-red-400 p-1 rounded hover:bg-red-950/30 font-mono text-xs transition duration-150" {
+                            "✕"
                     }
                 }
             }
         }
         @if (page + 1) < total_pages {
             tr id="infinite-scroll-spinner"
-                hx-get=(format!("{}?page={}", route_path_str, (page + 1)))
+                hx-get=(format!("{}?page={}&sort={}&direction={}", route_path_str, page + 1, sort_col, sort_dir))
                 hx-trigger="intersect once"
                 hx-target="#infinite-scroll-spinner"
                 hx-swap="outerHTML"
                 class="border-t border-gray-900 bg-gray-950/50 animate-pulse" {
-                td colspan=(repo.grid_columns().len()) class="p-4 text-center" {
+                td colspan=(&(repo.grid_columns().len() + 2)) class="p-4 text-center" {
                     span class="text-xs text-gray-400 font-medium" { "Loading more records..." }
                 }
             }
@@ -92,11 +137,67 @@ where
     };
 
     if is_infinite_scroll {
+        // Infinite scroll: return only the new rows (as a fragment)
         Response::ok(rows_html.into_string())
+    } else if is_htmx {
+        // HTMX request (sort, search, or initial load with HTMX): return only the matrix-wrapper
+        let matrix_html = html! {
+            div id="matrix-wrapper" class="bg-gray-950 border border-gray-800 rounded-xl overflow-hidden shadow-xl" {
+                table class="w-full text-left border-collapse" {
+                    thead class="bg-gray-900/80 border-b border-gray-800 text-xs font-semibold uppercase tracking-wider text-gray-400" {
+                        tr class="divide-x divide-gray-800" {
+                            th class="p-4 text-center w-10" { "" } // checkbox header
+                            @for col in repo.grid_columns().iter() {
+                                th class="p-4" {
+                                    a href=(sort_link(&col.name))
+                                       hx-get=(sort_link(&col.name))
+                                       hx-target="#matrix-wrapper"
+                                       hx-swap="outerHTML"
+                                       class="hover:text-white transition flex items-center gap-1" {
+                                           (col.label)
+                                           @if sort_col == col.name {
+                                               @if sort_dir == "asc" { "↑" } @else { "↓" }
+                                           }
+                                       }
+                                }
+                            }
+                            th class="p-4 text-center w-24" { "Actions" }
+                        }
+                    }
+                    tbody id="table-body" class="divide-y divide-gray-800" { (rows_html) }
+                }
+                // Bulk actions footer (same as before)
+                div class="bg-gray-900/80 border-t border-gray-800 px-4 py-3 flex items-center justify-between" {
+                    div class="flex items-center gap-4" {
+                        span class="text-xs text-gray-400" {
+                            "Selected: "
+                            span id="selected-count" class="font-mono text-emerald-400" { "0" }
+                        }
+                        button
+                            hx-post=(route_bulk_delete_str)
+                            hx-vals="ids=[]"
+                            hx-include="[name='selected_ids']"
+                            hx-target="#matrix-wrapper"
+                            hx-swap="outerHTML"
+                            hx-confirm="Delete all selected records?"
+                            class="bg-red-950/40 hover:bg-red-900/40 text-red-400 text-xs font-mono font-semibold px-4 py-2 rounded-lg transition duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+                            id="bulk-delete-btn"
+                            disabled {
+                                "Delete Selected"
+                        }
+                    }
+                    span class="text-xxs text-gray-500 font-mono" {
+                        "Click headers to sort"
+                    }
+                }
+            }
+        };
+        Response::ok(matrix_html.into_string())
     } else {
         let display_title = format!("{} Workspace Matrix", table_slug.to_uppercase());
         let route_search_str = format!("/admin/{}/search", table_slug);
 
+        // Full page with header, filter, table, and bulk action footer
         let complete_view = html! {
             div class="space-y-6" {
                 div class="bg-gray-950 border border-gray-800 rounded-xl p-4 shadow-xl space-y-3" {
@@ -127,6 +228,7 @@ where
                     }
                 }
 
+
                 div class="flex justify-between items-center" {
                     h1 class="text-2xl font-bold tracking-tight" { (display_title) }
                     input type="text"
@@ -138,16 +240,53 @@ where
                         class="bg-gray-950 border border-gray-800 rounded-lg px-4 py-2 w-80 text-sm focus:outline-none focus:border-emerald-500 transition";
                 }
 
-                // Target wrapper envelope that gets completely replaced during dynamic structural queries
                 div id="matrix-wrapper" class="bg-gray-950 border border-gray-800 rounded-xl overflow-hidden shadow-xl" {
                     table class="w-full text-left border-collapse" {
                         thead class="bg-gray-900/80 border-b border-gray-800 text-xs font-semibold uppercase tracking-wider text-gray-400" {
                             tr class="divide-x divide-gray-800" {
-                                @for col in repo.grid_columns().iter() { th class="p-4" { (col.label) } }
-                                th class="p-4 text-center w-20" { "Actions" }
+                                th class="p-4 text-center w-10" { "" } // checkbox header
+                                @for col in repo.grid_columns().iter() {
+                                    th class="p-4" {
+                                        a href=(sort_link(&col.name))
+                                           hx-get=(sort_link(&col.name))
+                                           hx-target="#matrix-wrapper"
+                                           hx-swap="outerHTML"
+                                           class="hover:text-white transition flex items-center gap-1" {
+                                               (col.label)
+                                               @if sort_col == col.name {
+                                                   @if sort_dir == "asc" { "↑" } @else { "↓" }
+                                               }
+                                           }
+                                    }
+                                }
+                                th class="p-4 text-center w-24" { "Actions" }
                             }
                         }
                         tbody id="table-body" class="divide-y divide-gray-800" { (rows_html) }
+                    }
+                    // ---- Bulk actions footer ----
+                    div class="bg-gray-900/80 border-t border-gray-800 px-4 py-3 flex items-center justify-between" {
+                        div class="flex items-center gap-4" {
+                            span class="text-xs text-gray-400" {
+                                "Selected: "
+                                span id="selected-count" class="font-mono text-emerald-400" { "0" }
+                            }
+                            button
+                                hx-post=(route_bulk_delete_str)
+                                hx-vals="ids=[]" // will be updated by JavaScript
+                                hx-include="[name='selected_ids']"
+                                hx-target="#matrix-wrapper"
+                                hx-swap="outerHTML"
+                                hx-confirm="Delete all selected records?"
+                                class="bg-red-950/40 hover:bg-red-900/40 text-red-400 text-xs font-mono font-semibold px-4 py-2 rounded-lg transition duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+                                id="bulk-delete-btn"
+                                disabled {
+                                    "Delete Selected"
+                            }
+                        }
+                        span class="text-xxs text-gray-500 font-mono" {
+                            "Click headers to sort"
+                        }
                     }
                 }
             }
@@ -228,7 +367,6 @@ where
     <R as GritRepository>::Id: std::str::FromStr,
     <<R as GritRepository>::Id as std::str::FromStr>::Err: std::fmt::Display,
 {
-    // Capture from form data payload or query variables uniformly
     let record_id_raw = match ctx
         .form
         .fields
@@ -237,23 +375,17 @@ where
         .or_else(|| ctx.query.get("id").map(|v| v.as_str()))
     {
         Some(id) => id,
-        None => return Response::bad_request("Missing record target ID matrix"),
+        None => return error_response("Missing record target ID"),
     };
 
-    // Parse identifier mapping straight into underlying Repository model type
     let record_id = match record_id_raw.parse::<<R as GritRepository>::Id>() {
         Ok(id) => id,
-        Err(err) => {
-            return Response::bad_request(format!("Invalid record sequence format: {}", err))
-        }
+        Err(e) => return error_response(format!("Invalid record ID: {}", e)),
     };
 
     match repo.delete_by_id(record_id).await {
-        Ok(_) => {
-            // Returning an empty 200 OK block tells HTMX to clean the target 'closest tr' out of existence safely.
-            Response::ok("")
-        }
-        Err(err) => Response::bad_request(format!("Database removal engine rejection: {}", err)),
+        Ok(_) => Response::ok(""),
+        Err(e) => error_response(format!("Database removal failed: {}", e)),
     }
 }
 
@@ -266,36 +398,25 @@ where
     <<R as GritRepository>::Id as std::str::FromStr>::Err: std::fmt::Display,
 {
     let form = ctx.form.fields;
-
-    // 1. Get the raw string reference first
     let record_id_raw = match form.get("id") {
         Some(id) => id,
-        None => return Response::bad_request("Missing record ID"),
+        None => return error_response("Missing record ID"),
     };
-
-    // 2. Parse directly into the repository's native ID type
     let record_id = match record_id_raw.parse::<<R as GritRepository>::Id>() {
         Ok(id) => id,
-        Err(err) => return Response::bad_request(format!("Invalid record ID format: {}", err)),
+        Err(e) => return error_response(format!("Invalid record ID: {}", e)),
     };
-
     let raw_column = match form.get("column") {
         Some(col) => col.as_str(),
-        None => return Response::bad_request("Missing targeted column"),
+        None => return error_response("Missing targeted column"),
     };
-
-    // Decode the column name in case it contains special characters
     let column_name = Sanitizer::url_decode(raw_column);
-
     let raw_value = match form.get(raw_column) {
         Some(val) => val.as_str(),
-        None => return Response::bad_request("Missing field update payload"),
+        None => return error_response("Missing field update payload"),
     };
-
-    let route_patch_str = format!("/admin/{}/update-cell", table_slug);
     let target_value = Sanitizer::url_decode(raw_value);
 
-    // 3. Pass the correctly typed record_id and clean, decoded string
     match repo
         .update_column_value(record_id, &column_name, target_value)
         .await
@@ -305,7 +426,7 @@ where
             let single_input_html = html! {
                 input type="text"
                     value=(display_value)
-                    hx-patch=(route_patch_str)
+                    hx-patch=(format!("/admin/{}/update-cell", table_slug))
                     hx-trigger="change, keyup[key=='Enter']"
                     name=(column_name)
                     hx-target="this"
@@ -315,7 +436,7 @@ where
             };
             Response::ok(single_input_html.into_string())
         }
-        Err(err) => Response::bad_request(format!("Database field rejection: {}", err)),
+        Err(e) => error_response(format!("Database field rejection: {}", e)),
     }
 }
 
@@ -515,6 +636,7 @@ pub async fn handle_custom_search_viewer(ctx: RequestContext) -> Response {
                     }
                 }.into_string());
             }
+                println!("=====> {:?}", query_results);
 
             // Dynamically discover what columns came back inside the generic payload matrix
             let column_headers: Vec<String> = parsed_spec
@@ -553,7 +675,7 @@ fn render_results_grid(headers: &[String], rows: &[QueryResult]) -> Markup {
                             }
                         }
                     }
-                    tbody class="divide-y divide-gray-800 text-sm font-medium text-gray-300 font-mono text-xs" {
+                    tbody id="table-body" class="divide-y divide-gray-800 text-sm font-medium text-gray-300 font-mono text-xs" {
                         @for row in rows {
                             tr class="divide-x divide-gray-800 hover:bg-gray-900/40 transition" {
                                 @for header in headers {
@@ -582,4 +704,161 @@ fn render_empty_matrix_interface() -> Markup {
             "Input custom workspace tracking logic strings above to view underlying engine definitions..."
         }
     }
+}
+
+/// Render a single record's full details (all columns) in a modal or dedicated page.
+pub async fn handle_detail<R>(ctx: RequestContext, repo: R, table_slug: &'static str) -> Response
+where
+    R: GritRepository + Send + Sync + 'static,
+    <R as GritRepository>::Model: Sync + Send,
+    <R as GritRepository>::Id: std::str::FromStr,
+    <<R as GritRepository>::Id as std::str::FromStr>::Err: std::fmt::Display,
+{
+    let id_str = match ctx.params.get("id").map(|v| v.as_str()) {
+        Some(id) => id,
+        None => return error_response("Missing record ID"),
+    };
+    let id = match id_str.parse::<<R as GritRepository>::Id>() {
+        Ok(id) => id,
+        Err(e) => return error_response(format!("Invalid ID: {}", e)),
+    };
+    let record = match repo.find_by_id(id).await {
+        Ok(Some(r)) => r,
+        Ok(None) => return error_response("Record not found"),
+        Err(e) => return error_response(format!("DB error: {}", e)),
+    };
+
+    let is_htmx = ctx.req.has_header("hx-request");
+    let route_patch_str = format!("/admin/{}/update-cell", table_slug);
+    let route_list_str = format!("/admin/{}", table_slug);
+
+    let detail_html = html! {
+        div class="space-y-6" {
+            div class="flex justify-between items-center" {
+                h1 class="text-2xl font-bold tracking-tight" {
+                    "Record " (id_str) " – " (table_slug)
+                }
+                a href=(route_list_str)
+                  hx-get=(route_list_str)
+                  hx-target="#main-content"
+                  hx-push-url="true"
+                  class="text-emerald-500 hover:underline text-sm" { "← Back to list" }
+            }
+
+            div class="bg-gray-950 border border-gray-800 rounded-xl overflow-hidden shadow-xl" {
+                table class="w-full text-left border-collapse" {
+                    tbody class="divide-y divide-gray-800" {
+                        @for col in repo.grid_columns().iter() {
+                            @let field_value = repo.get_field_as_string(&record, &col.name);
+                            tr class="hover:bg-gray-900/40 transition" {
+                                th class="p-4 text-xs font-semibold uppercase tracking-wider text-gray-400 w-1/4" {
+                                    (col.label)
+                                }
+                                td class="p-4 text-sm font-medium" {
+                                    @if col.is_editable {
+                                        input type="text"
+                                            value=(field_value)
+                                            name=(col.name)
+                                            hx-patch=(route_patch_str)
+                                            hx-trigger="change, keyup[key=='Enter']"
+                                            hx-target="this"
+                                            hx-swap="outerHTML"
+                                            hx-vals=(format!("{{\"id\": \"{}\", \"column\": \"{}\", \"table_to_modify\": \"{}\"}}", id_str, col.name, table_slug))
+                                            class="bg-transparent hover:bg-gray-850 focus:bg-gray-800 px-2 py-1 rounded focus:outline-none w-full border border-transparent focus:border-emerald-600 transition";
+                                    } @else {
+                                        span class="px-2 py-1 text-gray-400 font-mono text-xs" { (field_value) }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    };
+
+    // If called via HTMX, return just the content; otherwise wrap in admin shell.
+    if is_htmx {
+        Response::ok(detail_html.into_string())
+    } else {
+        let title = format!("{} – Record {}", table_slug, id_str);
+        admin_shell(&title, detail_html, false)
+    }
+}
+
+/// Delete multiple records at once.
+pub async fn handle_bulk_delete<R>(
+    ctx: RequestContext,
+    repo: R,
+    _table_slug: &'static str,
+) -> Response
+where
+    R: GritRepository + Send + Sync + 'static,
+    <R as GritRepository>::Model: Sync + Send,
+    <R as GritRepository>::Id: std::str::FromStr,
+    <<R as GritRepository>::Id as std::str::FromStr>::Err: std::fmt::Display,
+{
+    let ids_str = match ctx.form.fields.get("ids") {
+        Some(v) => v.as_str(),
+        None => return error_response("Missing 'ids' field"),
+    };
+    let ids_str = Sanitizer::url_decode(ids_str);
+    let ids: Vec<<R as GritRepository>::Id> = match ids_str
+        .split(',')
+        .filter(|s| !s.is_empty())
+        .map(|s| s.parse())
+        .collect::<Result<Vec<_>, _>>()
+    {
+        Ok(ids) => ids,
+        Err(e) => return error_response(format!("Invalid ID list: {}", e)),
+    };
+    if ids.is_empty() {
+        return error_response("No IDs provided");
+    }
+
+    let db = repo.get_db();
+    let txn = match db.begin().await {
+        Ok(t) => t,
+        Err(e) => return error_response(format!("Transaction start failed: {}", e)),
+    };
+
+    let mut errors = Vec::new();
+    for id in ids {
+        if let Err(e) = repo.delete_by_id(id).await {
+            errors.push(format!("{}", e));
+        }
+    }
+
+    if let Err(e) = txn.commit().await {
+        return error_response(format!("Commit failed: {}", e));
+    }
+
+    if errors.is_empty() {
+        Response::ok("")
+    } else {
+        error_response(format!("Some deletions failed: {}", errors.join("; ")))
+    }
+}
+
+fn error_response(msg: impl ToString) -> Response {
+    let msg = msg.to_string();
+    let mut res = Response::new(400, Sanitizer::trust(&msg));
+    // Set HX-Trigger header to show a toast
+    let trigger = format!(
+        r#"{{"showToast": {{"message": "{}", "type": "error"}}}}"#,
+        msg.replace('"', "\\\"")
+    );
+    res.headers.push(("hx-trigger".to_string(), trigger));
+    res
+}
+
+fn shield_error_response(err: ShieldError) -> Response {
+    let msg = match err {
+        ShieldError::BadRequest(s) => s,
+        ShieldError::NotFound => "Resource not found".to_string(),
+        ShieldError::UnauthorizedAccess => "Unauthorized".to_string(),
+        ShieldError::Forbidden => "Forbidden".to_string(),
+        _ => "Internal server error".to_string(),
+    };
+    error_response(msg)
 }

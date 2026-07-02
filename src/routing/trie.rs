@@ -792,6 +792,36 @@ impl Router {
                     model.advanced_search_handler.clone(),
                     None,
                 );
+
+                // Detail view
+                let detail_path = format!("{}/:id", model.route_path);
+                info!(
+                    "[DYN-ROUTER] Registering: {:<30} {} [{:<6}]",
+                    detail_path,
+                    "->".green(),
+                    method_color("GET")
+                );
+                router.add_route(
+                    HttpMethod::GET,
+                    Box::leak(detail_path.into_boxed_str()),
+                    model.detail_handler.clone(),
+                    None,
+                );
+
+                // Bulk delete
+                let bulk_path = format!("{}/bulk-delete", model.route_path);
+                info!(
+                    "[DYN-ROUTER] Registering: {:<30} {} [{:<6}]",
+                    bulk_path,
+                    "->".green(),
+                    method_color("POST")
+                );
+                router.add_route(
+                    HttpMethod::POST,
+                    Box::leak(bulk_path.into_boxed_str()),
+                    model.bulk_delete_handler.clone(),
+                    None,
+                );
             }
 
             let palette_handler: AdminHandlerFn =

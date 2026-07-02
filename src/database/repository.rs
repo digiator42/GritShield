@@ -106,7 +106,7 @@ impl JqlCompiler {
 
 impl CustomQuerySpec {
     pub fn parse_from_str(input: &str) -> Result<Self, String> {
-        let input = Sanitizer::url_decode(input);
+        let input = Sanitizer::url_decode(input).replace(";", "");
         let normalized = input.replace(",", " ").to_lowercase();
         let tokens: Vec<&str> = normalized.split_whitespace().collect();
 
@@ -204,6 +204,8 @@ pub struct ModelMetadata {
     pub delete_handler: AdminHandlerFn,
     pub patch_handler: AdminHandlerFn,
     pub advanced_search_handler: AdminHandlerFn,
+    pub detail_handler: AdminHandlerFn,
+    pub bulk_delete_handler: AdminHandlerFn,
 }
 
 pub trait AdminFieldParser {
