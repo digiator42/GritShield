@@ -148,6 +148,21 @@ pub fn generate_registration(
                         })
                     });
 
+                let export_handler: ::gritshield::database::repository::AdminHandlerFn =
+                    ::std::sync::Arc::new(move |ctx| {
+                        let table_name = table_name;
+                        Box::pin(async move {
+                            let db = ctx.db.clone().expect("DB connection missing");
+                            let repo = #name { db: (*db).clone() };
+                            ::gritshield::gritadmin::main_handler::handle_export(
+                                ctx,
+                                repo,
+                                table_name,
+                            )
+                            .await
+                        })
+                    });
+
                 let meta = ::gritshield::database::repository::ModelMetadata {
                     table_name,
                     route_path,
@@ -159,6 +174,7 @@ pub fn generate_registration(
                     advanced_search_handler,
                     detail_handler,
                     bulk_delete_handler,
+                    export_handler,
                 };
 
                 println!("REGISTERING ADMIN MODEL: {}", table_name);

@@ -206,6 +206,7 @@ pub struct ModelMetadata {
     pub advanced_search_handler: AdminHandlerFn,
     pub detail_handler: AdminHandlerFn,
     pub bulk_delete_handler: AdminHandlerFn,
+    pub export_handler: AdminHandlerFn,
 }
 
 pub trait AdminFieldParser {

@@ -822,6 +822,21 @@ impl Router {
                     model.bulk_delete_handler.clone(),
                     None,
                 );
+
+                // Export routes
+                let export_path = format!("{}/export", model.route_path);
+                info!(
+                    "[DYN-ROUTER] Registering: {:<30} {} [{:<6}]",
+                    export_path,
+                    "->".green(),
+                    method_color("GET")
+                );
+                router.add_route(
+                    HttpMethod::GET,
+                    Box::leak(export_path.into_boxed_str()),
+                    model.export_handler.clone(),
+                    None,
+                );
             }
 
             let palette_handler: AdminHandlerFn =

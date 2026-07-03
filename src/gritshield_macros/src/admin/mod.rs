@@ -1,7 +1,7 @@
+use crate::core_parser::parse_repository_attributes;
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{DeriveInput, LitStr};
-use crate::core_parser::parse_repository_attributes;
 
 mod ctor_registry;
 
@@ -10,7 +10,7 @@ pub fn expand_admin(input: DeriveInput) -> syn::Result<TokenStream> {
 
     // Use our centralized parser to get layout attributes
     let repo_attrs = parse_repository_attributes(&input.attrs)?;
-    
+
     let mut grid_columns = repo_attrs.grid_columns;
     let searchable_columns = repo_attrs.searchable_columns;
     let read_only_columns = repo_attrs.read_only_columns;

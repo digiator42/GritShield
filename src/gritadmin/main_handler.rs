@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::database::repository::AdminHandlerFn;
+use crate::database::repository::{AdminHandlerFn, GridColumn};
 use crate::database::repository::{CustomQuerySpec, JoinSpec, JqlCompiler, WhereSpec};
 use crate::database::repository::{GritRepository, ADMIN_REGISTRY};
 use crate::deps::sea_orm::{
@@ -10,9 +10,9 @@ use crate::security::errors::ShieldError;
 use crate::security::xss::UntrustedString;
 use crate::{admin_shell, prelude::*};
 use maud::html;
-use sea_orm::QueryResult;
 use sea_orm::ColumnTrait;
 use sea_orm::QueryFilter;
+use sea_orm::QueryResult;
 
 /// Generic dashboard view runner for listing data rows and handling infinite scrolls.
 pub async fn handle_list<R>(ctx: RequestContext, repo: R, table_slug: &'static str) -> Response
@@ -253,62 +253,88 @@ where
         }
     };
 
-    // ---- Build filter bar ----
-    let filter_bar = html! {
-        div class="bg-gray-950 border border-gray-800 rounded-xl p-4 mb-4 shadow-xl space-y-3" {
-            form
-                hx-get=(route_path_str)
-                hx-target="#matrix-wrapper"
-                hx-swap="outerHTML"
-                class="space-y-3" {
-                    div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3" {
-                        @for col in repo.grid_columns().iter() {
-                            @let current_op = filters.get(col.name).map(|(op, _)| op.as_str()).unwrap_or("contains");
-                            @let current_val = filters.get(col.name).map(|(_, v)| v.as_str()).unwrap_or("");
-                            div class="flex items-center gap-1" {
-                                label class="text-xxs font-mono text-gray-500 w-16 truncate" { (col.label) }
-                                select name=(format!("filter__{}__op", col.name)) class="bg-gray-900 border border-gray-800 rounded px-1 py-0.5 text-xs text-gray-300 focus:outline-none focus:border-emerald-500" {
-                                    option value="contains" selected=(&(current_op == "contains")) { "contains" }
-                                    option value="eq" selected=(&(current_op == "eq")) { "=" }
-                                    option value="ne" selected=(&(current_op == "ne")) { "≠" }
-                                    option value="gt" selected=(&(current_op == "gt")) { ">" }
-                                    option value="gte" selected=(&(current_op == "gte")) { "≥" }
-                                    option value="lt" selected=(&(current_op == "lt")) { "<" }
-                                    option value="lte" selected=(&(current_op == "lte")) { "≤" }
-                                    option value="startswith" selected=(&(current_op == "startswith")) { "starts" }
-                                    option value="endswith" selected=(&(current_op == "endswith")) { "ends" }
-                                    option value="is_null" selected=(&(current_op == "is_null")) { "is null" }
-                                    option value="is_not_null" selected=(&(current_op == "is_not_null")) { "not null" }
-                                }
-                                input type="text"
-                                    name=(format!("filter__{}__value", col.name))
-                                    value=(current_val)
-                                    placeholder="value"
-                                    class="bg-gray-900 border border-gray-800 rounded px-2 py-0.5 text-xs flex-1 min-w-0 focus:outline-none focus:border-emerald-500";
-                            }
-                        }
-                    }
-                    div class="flex items-center gap-3 pt-1" {
-                        button type="submit"
-                            class="bg-emerald-950/40 hover:bg-emerald-900/40 text-emerald-400 text-xs font-mono font-semibold px-4 py-1.5 rounded-lg transition duration-150" {
-                            "Apply Filters"
-                        }
-                        a href=(route_path_str)
-                          hx-get=(route_path_str)
-                          hx-target="#matrix-wrapper"
-                          hx-swap="outerHTML"
-                          class="text-gray-400 hover:text-gray-300 text-xs font-mono underline" {
-                              "Clear"
-                        }
-                        @if !filters.is_empty() || search_q.is_some() {
-                            span class="text-xxs text-emerald-500 font-mono" {
-                                (&(filters.len() + if search_q.is_some() { 1 } else { 0 })) " active filter(s)"
-                            }
-                        }
-                    }
+    // Build query string for export (only filters and q, no sort/page)
+    let export_query_string = {
+        let mut parts = Vec::new();
+        for (col, (op, val)) in filters.iter() {
+            parts.push(format!("filter__{}__op={}", col, op));
+            if op != "is_null" && op != "is_not_null" {
+                parts.push(format!("filter__{}__value={}", col, val));
             }
         }
+        if let Some(q) = &search_q {
+            parts.push(format!("q={}", q));
+        }
+        if parts.is_empty() {
+            String::new()
+        } else {
+            format!("?{}", parts.join("&"))
+        }
     };
+    let route_export_str = format!("/admin/{}/export", table_slug);
+
+    // ---- Build filter bar ----
+    let filter_bar = html! {
+            div class="bg-gray-950 border border-gray-800 rounded-xl p-4 mb-4 shadow-xl space-y-3" {
+                form
+                    hx-get=(route_path_str)
+                    hx-target="#matrix-wrapper"
+                    hx-swap="outerHTML"
+                    class="space-y-3" {
+                        div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3" {
+                            @for col in repo.grid_columns().iter() {
+                                @let current_op = filters.get(col.name).map(|(op, _)| op.as_str()).unwrap_or("contains");
+                                @let current_val = filters.get(col.name).map(|(_, v)| v.as_str()).unwrap_or("");
+                                div class="flex items-center gap-1" {
+                                    label class="text-xxs font-mono text-gray-500 w-16 truncate" { (col.label) }
+                                    select name=(format!("filter__{}__op", col.name)) class="bg-gray-900 border border-gray-800 rounded px-1 py-0.5 text-xs text-gray-300 focus:outline-none focus:border-emerald-500" {
+                                        option value="contains" selected=(&(current_op == "contains")) { "contains" }
+                                        option value="eq" selected=(&(current_op == "eq")) { "=" }
+                                        option value="ne" selected=(&(current_op == "ne")) { "≠" }
+                                        option value="gt" selected=(&(current_op == "gt")) { ">" }
+                                        option value="gte" selected=(&(current_op == "gte")) { "≥" }
+                                        option value="lt" selected=(&(current_op == "lt")) { "<" }
+                                        option value="lte" selected=(&(current_op == "lte")) { "≤" }
+                                        option value="startswith" selected=(&(current_op == "startswith")) { "starts" }
+                                        option value="endswith" selected=(&(current_op == "endswith")) { "ends" }
+                                        option value="is_null" selected=(&(current_op == "is_null")) { "is null" }
+                                        option value="is_not_null" selected=(&(current_op == "is_not_null")) { "not null" }
+                                    }
+                                    input type="text"
+                                        name=(format!("filter__{}__value", col.name))
+                                        value=(current_val)
+                                        placeholder="value"
+                                        class="bg-gray-900 border border-gray-800 rounded px-2 py-0.5 text-xs flex-1 min-w-0 focus:outline-none focus:border-emerald-500";
+                                }
+                            }
+                        }
+                        div class="flex items-center gap-3 pt-1" {
+                            button type="submit"
+                                class="bg-emerald-950/40 hover:bg-emerald-900/40 text-emerald-400 text-xs font-mono font-semibold px-4 py-1.5 rounded-lg transition duration-150" {
+                                "Apply Filters"
+                            }
+
+                            a href=(format!("{}{}", route_export_str, export_query_string))
+                            download
+                            class="text-blue-400 hover:text-blue-300 text-xs font-mono underline" {
+                                "⬇️ Export CSV"
+                            }
+                            a href=(route_path_str)
+                              hx-get=(route_path_str)
+                              hx-target="#matrix-wrapper"
+                              hx-swap="outerHTML"
+                              class="text-gray-400 hover:text-gray-300 text-xs font-mono underline" {
+                                  "Clear"
+                            }
+                            @if !filters.is_empty() || search_q.is_some() {
+                                span class="text-xxs text-emerald-500 font-mono" {
+                                    (&(filters.len() + if search_q.is_some() { 1 } else { 0 })) " active filter(s)"
+                                }
+                            }
+                        }
+                }
+            }
+        };
 
     // ---- Build matrix wrapper (includes filter bar + table) ----
     let matrix_html = html! {
@@ -422,6 +448,7 @@ where
         admin_shell(&display_title, complete_view, is_htmx)
     }
 }
+
 /// Generic search query processor handling dynamic query filters with inline drop capabilities.
 pub async fn handle_search<R>(ctx: RequestContext, repo: R, table_slug: &'static str) -> Response
 where
@@ -965,6 +992,146 @@ where
     } else {
         error_response(format!("Some deletions failed: {}", errors.join("; ")))
     }
+}
+
+/// Export current filtered dataset as CSV.
+pub async fn handle_export<R>(ctx: RequestContext, repo: R, table_slug: &'static str) -> Response
+where
+    R: GritRepository + Send + Sync + 'static,
+    <R as GritRepository>::Model: Sync + Send,
+    <R as GritRepository>::Id: std::str::FromStr,
+    <<R as GritRepository>::Id as std::str::FromStr>::Err: std::fmt::Display,
+{
+    use sea_orm::Condition;
+
+    let db = repo.get_db();
+
+    // ---- Parse Filters (same as handle_list) ----
+    let mut op_map: HashMap<String, String> = HashMap::new();
+    let mut val_map: HashMap<String, String> = HashMap::new();
+    let mut search_q = None;
+
+    for (key, value) in ctx.query.iter() {
+        if let Some(stripped) = key.strip_prefix("filter__") {
+            if let Some(rest) = stripped.strip_suffix("__op") {
+                op_map.insert(rest.to_string(), value.as_str().to_string());
+            } else if let Some(rest) = stripped.strip_suffix("__value") {
+                val_map.insert(rest.to_string(), value.as_str().to_string());
+            }
+        } else if key == "q" {
+            search_q = Some(value.as_str().to_string());
+        }
+    }
+
+    let mut filters: HashMap<String, (String, String)> = HashMap::new();
+    for col in op_map.keys() {
+        if let Some(op) = op_map.get(col) {
+            let val = val_map.get(col).cloned().unwrap_or_default();
+            filters.insert(col.clone(), (op.clone(), val));
+        }
+    }
+
+    // ---- Build Query with Filters (no sorting / no pagination) ----
+    let mut query = <R::Entity as EntityTrait>::find();
+    let mut cond = Condition::all();
+
+    for (col_name, (op, val)) in filters.iter() {
+        if let Some(column) = repo.column_from_str(col_name) {
+            match op.as_str() {
+                "eq" => cond = cond.add(column.eq(val.clone())),
+                "ne" => cond = cond.add(column.ne(val.clone())),
+                "gt" => cond = cond.add(column.gt(val.clone())),
+                "gte" => cond = cond.add(column.gte(val.clone())),
+                "lt" => cond = cond.add(column.lt(val.clone())),
+                "lte" => cond = cond.add(column.lte(val.clone())),
+                "contains" => cond = cond.add(column.contains(val.clone())),
+                "startswith" => cond = cond.add(column.starts_with(val.clone())),
+                "endswith" => cond = cond.add(column.ends_with(val.clone())),
+                "is_null" => cond = cond.add(column.is_null()),
+                "is_not_null" => cond = cond.add(column.is_not_null()),
+                _ => {}
+            }
+        }
+    }
+
+    if let Some(ref q) = search_q {
+        if !q.is_empty() {
+            let searchable: Vec<String> = repo
+                .grid_columns()
+                .iter()
+                .map(|c| c.name.to_string())
+                .collect();
+            let mut search_cond = Condition::any();
+            for col_name in searchable {
+                if let Some(column) = repo.column_from_str(&col_name) {
+                    search_cond = search_cond.add(column.contains(q.clone()));
+                }
+            }
+            cond = cond.add(search_cond);
+        }
+    }
+
+    query = query.filter(cond);
+
+    // ---- Fetch All Records (no limit) ----
+    let records = match query.all(db).await {
+        Ok(r) => r,
+        Err(e) => return Response::bad_request(format!("DB error: {}", e)),
+    };
+
+    // ---- Generate CSV ----
+    let columns = repo.grid_columns();
+    let csv_content = export_to_csv(&records, &columns, &repo);
+
+    // ---- Build Download Response ----
+    let filename = format!(
+        "{}_{}.csv",
+        table_slug,
+        chrono::Local::now().format("%Y%m%d_%H%M%S")
+    );
+    let mut res = Response::new(200, Sanitizer::trust(&csv_content));
+    res.headers.push((
+        "Content-Type".to_string(),
+        "text/csv; charset=utf-8".to_string(),
+    ));
+    res.headers.push((
+        "Content-Disposition".to_string(),
+        format!("attachment; filename=\"{}\"", filename),
+    ));
+    res
+}
+
+/// Simple CSV writer (escapes commas and quotes).
+fn export_to_csv<R>(records: &[R::Model], columns: &[GridColumn], repo: &R) -> String
+where
+    R: GritRepository,
+{
+    use std::fmt::Write;
+
+    let mut csv = String::new();
+
+    // Header
+    let header: Vec<&str> = columns.iter().map(|c| c.label).collect();
+    writeln!(csv, "{}", header.join(",")).ok();
+
+    // Rows
+    for record in records {
+        let row: Vec<String> = columns
+            .iter()
+            .map(|col| {
+                let val = repo.get_field_as_string(record, col.name);
+                // Escape: wrap in quotes if it contains comma or quote
+                if val.contains(',') || val.contains('"') {
+                    format!("\"{}\"", val.replace('"', "\"\""))
+                } else {
+                    val
+                }
+            })
+            .collect();
+        writeln!(csv, "{}", row.join(",")).ok();
+    }
+
+    csv
 }
 
 fn error_response(msg: impl ToString) -> Response {
