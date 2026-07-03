@@ -4,8 +4,10 @@ use crate::database::repository::{AdminHandlerFn, GridColumn};
 use crate::database::repository::{CustomQuerySpec, JoinSpec, JqlCompiler, WhereSpec};
 use crate::database::repository::{GritRepository, ADMIN_REGISTRY};
 use crate::deps::sea_orm::{
-    ConnectionTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryOrder, TransactionTrait,
+    ActiveModelTrait, ConnectionTrait, DatabaseConnection, EntityName, EntityTrait, PaginatorTrait,
+    QueryOrder, TransactionTrait,
 };
+use crate::gritadmin::models::audit_log;
 use crate::security::errors::ShieldError;
 use crate::security::xss::UntrustedString;
 use crate::{admin_shell, prelude::*};
@@ -275,66 +277,66 @@ where
 
     // ---- Build filter bar ----
     let filter_bar = html! {
-            div class="bg-gray-950 border border-gray-800 rounded-xl p-4 mb-4 shadow-xl space-y-3" {
-                form
-                    hx-get=(route_path_str)
-                    hx-target="#matrix-wrapper"
-                    hx-swap="outerHTML"
-                    class="space-y-3" {
-                        div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3" {
-                            @for col in repo.grid_columns().iter() {
-                                @let current_op = filters.get(col.name).map(|(op, _)| op.as_str()).unwrap_or("contains");
-                                @let current_val = filters.get(col.name).map(|(_, v)| v.as_str()).unwrap_or("");
-                                div class="flex items-center gap-1" {
-                                    label class="text-xxs font-mono text-gray-500 w-16 truncate" { (col.label) }
-                                    select name=(format!("filter__{}__op", col.name)) class="bg-gray-900 border border-gray-800 rounded px-1 py-0.5 text-xs text-gray-300 focus:outline-none focus:border-emerald-500" {
-                                        option value="contains" selected=(&(current_op == "contains")) { "contains" }
-                                        option value="eq" selected=(&(current_op == "eq")) { "=" }
-                                        option value="ne" selected=(&(current_op == "ne")) { "≠" }
-                                        option value="gt" selected=(&(current_op == "gt")) { ">" }
-                                        option value="gte" selected=(&(current_op == "gte")) { "≥" }
-                                        option value="lt" selected=(&(current_op == "lt")) { "<" }
-                                        option value="lte" selected=(&(current_op == "lte")) { "≤" }
-                                        option value="startswith" selected=(&(current_op == "startswith")) { "starts" }
-                                        option value="endswith" selected=(&(current_op == "endswith")) { "ends" }
-                                        option value="is_null" selected=(&(current_op == "is_null")) { "is null" }
-                                        option value="is_not_null" selected=(&(current_op == "is_not_null")) { "not null" }
-                                    }
-                                    input type="text"
-                                        name=(format!("filter__{}__value", col.name))
-                                        value=(current_val)
-                                        placeholder="value"
-                                        class="bg-gray-900 border border-gray-800 rounded px-2 py-0.5 text-xs flex-1 min-w-0 focus:outline-none focus:border-emerald-500";
+        div class="bg-gray-950 border border-gray-800 rounded-xl p-4 mb-4 shadow-xl space-y-3" {
+            form
+                hx-get=(route_path_str)
+                hx-target="#matrix-wrapper"
+                hx-swap="outerHTML"
+                class="space-y-3" {
+                    div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3" {
+                        @for col in repo.grid_columns().iter() {
+                            @let current_op = filters.get(col.name).map(|(op, _)| op.as_str()).unwrap_or("contains");
+                            @let current_val = filters.get(col.name).map(|(_, v)| v.as_str()).unwrap_or("");
+                            div class="flex items-center gap-1" {
+                                label class="text-xxs font-mono text-gray-500 w-16 truncate" { (col.label) }
+                                select name=(format!("filter__{}__op", col.name)) class="bg-gray-900 border border-gray-800 rounded px-1 py-0.5 text-xs text-gray-300 focus:outline-none focus:border-emerald-500" {
+                                    option value="contains" selected=(&(current_op == "contains")) { "contains" }
+                                    option value="eq" selected=(&(current_op == "eq")) { "=" }
+                                    option value="ne" selected=(&(current_op == "ne")) { "≠" }
+                                    option value="gt" selected=(&(current_op == "gt")) { ">" }
+                                    option value="gte" selected=(&(current_op == "gte")) { "≥" }
+                                    option value="lt" selected=(&(current_op == "lt")) { "<" }
+                                    option value="lte" selected=(&(current_op == "lte")) { "≤" }
+                                    option value="startswith" selected=(&(current_op == "startswith")) { "starts" }
+                                    option value="endswith" selected=(&(current_op == "endswith")) { "ends" }
+                                    option value="is_null" selected=(&(current_op == "is_null")) { "is null" }
+                                    option value="is_not_null" selected=(&(current_op == "is_not_null")) { "not null" }
                                 }
+                                input type="text"
+                                    name=(format!("filter__{}__value", col.name))
+                                    value=(current_val)
+                                    placeholder="value"
+                                    class="bg-gray-900 border border-gray-800 rounded px-2 py-0.5 text-xs flex-1 min-w-0 focus:outline-none focus:border-emerald-500";
                             }
                         }
-                        div class="flex items-center gap-3 pt-1" {
-                            button type="submit"
-                                class="bg-emerald-950/40 hover:bg-emerald-900/40 text-emerald-400 text-xs font-mono font-semibold px-4 py-1.5 rounded-lg transition duration-150" {
-                                "Apply Filters"
-                            }
+                    }
+                    div class="flex items-center gap-3 pt-1" {
+                        button type="submit"
+                            class="bg-emerald-950/40 hover:bg-emerald-900/40 text-emerald-400 text-xs font-mono font-semibold px-4 py-1.5 rounded-lg transition duration-150" {
+                            "Apply Filters"
+                        }
 
-                            a href=(format!("{}{}", route_export_str, export_query_string))
-                            download
-                            class="text-blue-400 hover:text-blue-300 text-xs font-mono underline" {
-                                "⬇️ Export CSV"
-                            }
-                            a href=(route_path_str)
-                              hx-get=(route_path_str)
-                              hx-target="#matrix-wrapper"
-                              hx-swap="outerHTML"
-                              class="text-gray-400 hover:text-gray-300 text-xs font-mono underline" {
-                                  "Clear"
-                            }
-                            @if !filters.is_empty() || search_q.is_some() {
-                                span class="text-xxs text-emerald-500 font-mono" {
-                                    (&(filters.len() + if search_q.is_some() { 1 } else { 0 })) " active filter(s)"
-                                }
+                        a href=(format!("{}{}", route_export_str, export_query_string))
+                        download
+                        class="text-blue-400 hover:text-blue-300 text-xs font-mono underline" {
+                            "⬇️ Export CSV"
+                        }
+                        a href=(route_path_str)
+                          hx-get=(route_path_str)
+                          hx-target="#matrix-wrapper"
+                          hx-swap="outerHTML"
+                          class="text-gray-400 hover:text-gray-300 text-xs font-mono underline" {
+                              "Clear"
+                        }
+                        @if !filters.is_empty() || search_q.is_some() {
+                            span class="text-xxs text-emerald-500 font-mono" {
+                                (&(filters.len() + if search_q.is_some() { 1 } else { 0 })) " active filter(s)"
                             }
                         }
-                }
+                    }
             }
-        };
+        }
+    };
 
     // ---- Build matrix wrapper (includes filter bar + table) ----
     let matrix_html = html! {
@@ -537,7 +539,9 @@ where
         Err(e) => return error_response(format!("Invalid record ID: {}", e)),
     };
 
-    match repo.delete_by_id(record_id).await {
+    let user_id = ctx.get_user_id();
+
+    match repo.delete_by_id(record_id, user_id.as_deref()).await {
         Ok(_) => Response::ok(""),
         Err(e) => error_response(format!("Database removal failed: {}", e)),
     }
@@ -551,7 +555,7 @@ where
     <R as GritRepository>::Id: std::str::FromStr,
     <<R as GritRepository>::Id as std::str::FromStr>::Err: std::fmt::Display,
 {
-    let form = ctx.form.fields;
+    let form = ctx.form.clone().fields;
     let record_id_raw = match form.get("id") {
         Some(id) => id,
         None => return error_response("Missing record ID"),
@@ -571,8 +575,10 @@ where
     };
     let target_value = Sanitizer::url_decode(raw_value);
 
+    let user_id = ctx.get_user_id();
+
     match repo
-        .update_column_value(record_id, &column_name, target_value)
+        .update_column_value(record_id, &column_name, target_value, user_id.as_deref())
         .await
     {
         Ok(updated_model) => {
@@ -886,41 +892,128 @@ where
     let route_patch_str = format!("/admin/{}/update-cell", table_slug);
     let route_list_str = format!("/admin/{}", table_slug);
 
-    let detail_html = html! {
-        div class="space-y-6" {
-            div class="flex justify-between items-center" {
-                h1 class="text-2xl font-bold tracking-tight" {
-                    "Record " (id_str) " – " (table_slug)
-                }
-                a href=(route_list_str)
-                  hx-get=(route_list_str)
-                  hx-target="#main-content"
-                  hx-push-url="true"
-                  class="text-emerald-500 hover:underline text-sm" { "← Back to list" }
-            }
+    println!(
+        "===== Querying audit logs: table_slug={}, id_str={}",
+        table_slug, id_str
+    );
 
-            div class="bg-gray-950 border border-gray-800 rounded-xl overflow-hidden shadow-xl" {
-                table class="w-full text-left border-collapse" {
-                    tbody class="divide-y divide-gray-800" {
-                        @for col in repo.grid_columns().iter() {
-                            @let field_value = repo.get_field_as_string(&record, &col.name);
-                            tr class="hover:bg-gray-900/40 transition" {
-                                th class="p-4 text-xs font-semibold uppercase tracking-wider text-gray-400 w-1/4" {
-                                    (col.label)
+    // Fetch audit logs for this record
+    let logs = audit_log::Entity::find()
+        .filter(audit_log::Column::TableName.eq(table_slug.to_string() + "s"))
+        .filter(audit_log::Column::RecordId.eq(id_str))
+        .order_by_desc(audit_log::Column::Timestamp)
+        .all(repo.get_db())
+        .await
+        .unwrap_or_default();
+
+    println!("===== Found {} audit logs", logs.len());
+
+    let detail_html = html! {
+            div class="space-y-6" {
+                div class="flex justify-between items-center" {
+                    h1 class="text-2xl font-bold tracking-tight" {
+                        "Record " (id_str) " – " (table_slug)
+                    }
+                    a href=(route_list_str)
+                      hx-get=(route_list_str)
+                      hx-target="#main-content"
+                      hx-push-url="true"
+                      class="text-emerald-500 hover:underline text-sm" { "← Back to list" }
+                }
+
+                div class="bg-gray-950 border border-gray-800 rounded-xl overflow-hidden shadow-xl" {
+                    table class="w-full text-left border-collapse" {
+                        tbody class="divide-y divide-gray-800" {
+                            @for col in repo.grid_columns().iter() {
+                                @let field_value = repo.get_field_as_string(&record, &col.name);
+                                tr class="hover:bg-gray-900/40 transition" {
+                                    th class="p-4 text-xs font-semibold uppercase tracking-wider text-gray-400 w-1/4" {
+                                        (col.label)
+                                    }
+                                    td class="p-4 text-sm font-medium" {
+                                        @if col.is_editable {
+                                            input type="text"
+                                                value=(field_value)
+                                                name=(col.name)
+                                                hx-patch=(route_patch_str)
+                                                hx-trigger="change, keyup[key=='Enter']"
+                                                hx-target="this"
+                                                hx-swap="outerHTML"
+                                                hx-vals=(format!("{{\"id\": \"{}\", \"column\": \"{}\", \"table_to_modify\": \"{}\"}}", id_str, col.name, table_slug))
+                                                class="bg-transparent hover:bg-gray-850 focus:bg-gray-800 px-2 py-1 rounded focus:outline-none w-full border border-transparent focus:border-emerald-600 transition";
+                                        } @else {
+                                            span class="px-2 py-1 text-gray-400 font-mono text-xs" { (field_value) }
+                                        }
+                                    }
                                 }
-                                td class="p-4 text-sm font-medium" {
-                                    @if col.is_editable {
-                                        input type="text"
-                                            value=(field_value)
-                                            name=(col.name)
-                                            hx-patch=(route_patch_str)
-                                            hx-trigger="change, keyup[key=='Enter']"
-                                            hx-target="this"
-                                            hx-swap="outerHTML"
-                                            hx-vals=(format!("{{\"id\": \"{}\", \"column\": \"{}\", \"table_to_modify\": \"{}\"}}", id_str, col.name, table_slug))
-                                            class="bg-transparent hover:bg-gray-850 focus:bg-gray-800 px-2 py-1 rounded focus:outline-none w-full border border-transparent focus:border-emerald-600 transition";
-                                    } @else {
-                                        span class="px-2 py-1 text-gray-400 font-mono text-xs" { (field_value) }
+                            }
+                        }
+                    }
+                }
+                div class="mt-8" {
+                    h2 class="text-lg font-semibold tracking-tight text-gray-300 mb-4" { "📜 Audit History" }
+                    div class="bg-gray-950 border border-gray-800 rounded-xl overflow-hidden shadow-xl" {
+                        table class="w-full text-left border-collapse" {
+                            thead class="bg-gray-900/80 border-b border-gray-800 text-xs font-semibold uppercase tracking-wider text-gray-400" {
+                                tr class="divide-x divide-gray-800" {
+                                    th class="p-3" { "Action" }
+                                    th class="p-3" { "User" }
+                                    th class="p-3" { "Timestamp" }
+                                    th class="p-3" { "Changes" }
+                                }
+                            }
+                            tbody class="divide-y divide-gray-800" {
+                                @for log in &logs {
+                                    tr class="hover:bg-gray-900/40 transition" {
+                                        td class="p-3 text-xs font-mono" {
+                                            span class={
+                                                "px-2 py-1 rounded font-semibold "
+                                                @if log.action == "delete" {
+                                                    "bg-red-950/30 text-red-400"
+                                                } @else {
+                                                    "bg-emerald-950/30 text-emerald-400"
+                                                }
+                                            } {
+                                                (log.action.to_uppercase())
+                                            }
+                                        }
+                                        td class="p-3 text-xs font-mono text-gray-400" {
+                                            @if let Some(ref uid) = log.user_id {
+                                                "👤 " (uid)
+                                            } @else {
+                                                span class="text-gray-600" { "🤖 system" }
+                                            }
+                                        }
+                                        td class="p-3 text-xs font-mono text-gray-400" {
+                                            (log.timestamp.format("%Y-%m-%d %H:%M:%S"))
+                                        }
+                                        td class="p-3 text-xs font-mono" {
+                                            @if let Some(old) = &log.old_values {
+                                                @if let Some(new) = &log.new_values {
+                                                    div class="space-y-1" {
+                                                        div class="text-red-400/70" {
+                                                            "− " (old.to_string())
+                                                        }
+                                                        div class="text-emerald-400/70" {
+                                                            "+ " (new.to_string())
+                                                        }
+                                                    }
+                                                } @else {
+                                                    div class="text-red-400" {
+                                                        "🗑️ Deleted"
+                                                    }
+                                                }
+                                            } @else {
+                                                span class="text-gray-500" { "—" }
+                                            }
+                                        }
+                                    }
+                                }
+                                @if logs.is_empty() {
+                                    tr {
+                                        td colspan="4" class="p-8 text-center text-gray-500 text-xs" {
+                                            "No changes recorded yet."
+                                        }
                                     }
                                 }
                             }
@@ -928,8 +1021,7 @@ where
                     }
                 }
             }
-        }
-    };
+        };
 
     // If called via HTMX, return just the content; otherwise wrap in admin shell.
     if is_htmx {
@@ -976,9 +1068,11 @@ where
         Err(e) => return error_response(format!("Transaction start failed: {}", e)),
     };
 
+    let user_id = ctx.get_user_id();
+
     let mut errors = Vec::new();
     for id in ids {
-        if let Err(e) = repo.delete_by_id(id).await {
+        if let Err(e) = repo.delete_by_id(id, user_id.as_deref()).await {
             errors.push(format!("{}", e));
         }
     }

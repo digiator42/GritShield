@@ -714,9 +714,11 @@ pub trait GritRepository {
         Self::Entity::find_by_id(id).one(self.get_db()).await
     }
 
-    async fn delete_by_id(&self, id: Self::Id) -> Result<sea_orm::DeleteResult, sea_orm::DbErr> {
-        Self::Entity::delete_by_id(id).exec(self.get_db()).await
-    }
+    async fn delete_by_id(
+        &self,
+        id: Self::Id,
+        user_id: Option<&str>,
+    ) -> Result<sea_orm::DeleteResult, sea_orm::DbErr>;
 
     // ========== PAgination ============
 
@@ -754,12 +756,27 @@ pub trait GritRepository {
         String::new()
     }
 
+    /// Insert an audit log entry. Default implementation does nothing.
+    async fn audit_log(
+        &self,
+        table_name: &str,
+        record_id: &str,
+        action: &str,
+        old_values: Option<serde_json::Value>,
+        new_values: Option<serde_json::Value>,
+        user_id: Option<&str>,
+    ) -> Result<(), sea_orm::DbErr> {
+        // default no-op – override in macro
+        Ok(())
+    }
+
     /// Performs updates directly onto records dynamically by string field names
     async fn update_column_value(
         &self,
         _id: Self::Id,
         _column_name: &str,
         _value: String,
+        user_id: Option<&str>,
     ) -> Result<Self::Model, sea_orm::DbErr> {
         Err(sea_orm::DbErr::Custom(
             "Dynamic update not implemented for this repository".to_string(),

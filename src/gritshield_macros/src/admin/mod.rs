@@ -208,24 +208,72 @@ pub fn expand_admin(input: DeriveInput) -> syn::Result<TokenStream> {
                 }
 
                 #[allow(unreachable_code)]
-                async fn update_column_value(
+               async fn update_column_value(
                     &self,
                     id: Self::Id,
                     column_name: &str,
-                    value: ::std::string::String
+                    value: ::std::string::String,
+                    user_id: Option<&str>,
                 ) -> ::std::result::Result<Self::Model, ::gritshield::deps::sea_orm::DbErr> {
-                    use ::gritshield::deps::sea_orm::{ActiveModelTrait, EntityTrait};
+                    use ::gritshield::deps::sea_orm::{ActiveModelTrait, EntityTrait, EntityName};
+                    use ::gritshield::deps::serde_json;
+
                     if let ::std::option::Option::Some(record) = #entity_module::Entity::find_by_id(id).one(self.get_db()).await? {
-                        let mut active_model = <Self::ActiveModel as ::gritshield::database::repository::ConvertFromModel<Self::Model>>::from_model(record);
+                        let mut active_model = <Self::ActiveModel as ::gritshield::database::repository::ConvertFromModel<Self::Model>>::from_model(record.clone());
                         match column_name {
                             #(#update_field_tokens)*
                             _ => return ::std::result::Result::Err(::gritshield::deps::sea_orm::DbErr::Custom(::std::format!("Column '{}' is not editable", column_name))),
                         };
                         let updated_model = active_model.update(self.get_db()).await?;
+
+                        // Capture old and new values for audit
+                        let old_json = serde_json::to_value(&record).ok();
+                        let new_json = serde_json::to_value(&updated_model).ok();
+
+                        // Get table name from the entity
+                        let table_name = <#entity_module::Entity as EntityName>::table_name(&#entity_module::Entity);
+
+                        // Log the change
+                        self.audit_log(
+                            table_name,
+                            &format!("{}", id),
+                            "update",
+                            old_json,
+                            new_json,
+                            user_id,
+                        ).await?;
+
                         ::std::result::Result::Ok(updated_model)
                     } else {
                         ::std::result::Result::Err(::gritshield::deps::sea_orm::DbErr::Custom("Target row record not found".to_string()))
                     }
+                }
+
+                async fn audit_log(
+                    &self,
+                    table_name: &str,
+                    record_id: &str,
+                    action: &str,
+                    old_values: Option<serde_json::Value>,
+                    new_values: Option<serde_json::Value>,
+                    user_id: Option<&str>,
+                ) -> Result<(), sea_orm::DbErr> {
+                    use ::gritshield::gritadmin::models::audit_log::{ActiveModel, Entity, Model};
+                    use sea_orm::ActiveModelTrait;
+                    use chrono::Utc;
+
+                    let new_entry = ActiveModel {
+                        table_name: sea_orm::Set(table_name.to_string()),
+                        record_id: sea_orm::Set(record_id.to_string()),
+                        action: sea_orm::Set(action.to_string()),
+                        old_values: sea_orm::Set(old_values),
+                        new_values: sea_orm::Set(new_values),
+                        user_id: sea_orm::Set(user_id.map(|s| s.to_string())),
+                        timestamp: sea_orm::Set(Utc::now().naive_utc()),
+                        ..Default::default()
+                    };
+                    new_entry.insert(self.get_db()).await?;
+                    Ok(())
                 }
 
                 async fn search_admin_fields(&self, text: &str) -> ::std::result::Result<::std::vec::Vec<Self::Model>, ::gritshield::deps::sea_orm::DbErr> {
@@ -250,6 +298,38 @@ pub fn expand_admin(input: DeriveInput) -> syn::Result<TokenStream> {
                     }
 
                     query.filter(condition).all(db).await
+                }
+                async fn delete_by_id(
+                    &self,
+                    id: Self::Id,
+                    user_id: Option<&str>,
+                ) -> ::std::result::Result<::gritshield::deps::sea_orm::DeleteResult, ::gritshield::deps::sea_orm::DbErr> {
+                    use ::gritshield::deps::sea_orm::{EntityTrait, EntityName};
+                    use ::gritshield::deps::serde_json;
+
+                    // Fetch record before deletion for audit
+                    let record = match #entity_module::Entity::find_by_id(id).one(self.get_db()).await? {
+                        Some(r) => r,
+                        None => return ::std::result::Result::Err(::gritshield::deps::sea_orm::DbErr::Custom("Record not found".to_string())),
+                    };
+
+                    let old_json = serde_json::to_value(&record).ok();
+                    let table_name = <#entity_module::Entity as EntityName>::table_name(&#entity_module::Entity);
+
+                    // Delete the record
+                    let res = #entity_module::Entity::delete_by_id(id).exec(self.get_db()).await?;
+
+                    // Log the deletion
+                    self.audit_log(
+                        table_name,
+                        &format!("{}", id),
+                        "delete",
+                        old_json,
+                        None,
+                        user_id,
+                    ).await?;
+
+                    ::std::result::Result::Ok(res)
                 }
             }
 

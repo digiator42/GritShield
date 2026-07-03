@@ -308,6 +308,22 @@ impl RequestContext {
         }
     }
 
+    pub fn get_user_id(&self) -> Option<String> {
+        debug!("[AUTH] Attempting to get ID");
+        // Try session, then JWT claims
+        if let Some(session) = &self.session {
+            if let Ok(s) = session.lock() {
+                if let Some(uid) = s.data.get("user_id") {
+                    return Some(uid.clone());
+                }
+            }
+        }
+        if let Some(claims) = &self.claims {
+            return Some(claims.sub.clone());
+        }
+        None
+    }
+
     /// Explicitly tag the session as authenticated to a specific User Entity ID
     pub fn login_user_id(&self, user_id: &str) {
         debug!("[AUTH] Attempting to login user: {}", user_id);
