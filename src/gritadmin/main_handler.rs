@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::database::repository::AdminHandlerFn;
 use crate::database::repository::{CustomQuerySpec, JoinSpec, JqlCompiler, WhereSpec};
 use crate::database::repository::{GritRepository, ADMIN_REGISTRY};
@@ -9,6 +11,8 @@ use crate::security::xss::UntrustedString;
 use crate::{admin_shell, prelude::*};
 use maud::html;
 use sea_orm::QueryResult;
+use sea_orm::ColumnTrait;
+use sea_orm::QueryFilter;
 
 /// Generic dashboard view runner for listing data rows and handling infinite scrolls.
 pub async fn handle_list<R>(ctx: RequestContext, repo: R, table_slug: &'static str) -> Response
@@ -18,8 +22,40 @@ where
     <R as GritRepository>::Id: std::str::FromStr,
     <<R as GritRepository>::Id as std::str::FromStr>::Err: std::fmt::Display,
 {
+    use sea_orm::Condition;
+
     let is_htmx = ctx.req.has_header("hx-request");
     let db = repo.get_db();
+
+    // ---- Parse Filters ----
+    let mut op_map: HashMap<String, String> = HashMap::new();
+    let mut val_map: HashMap<String, String> = HashMap::new();
+    let mut search_q = None;
+
+    for (key, value) in ctx.query.iter() {
+        if let Some(stripped) = key.strip_prefix("filter__") {
+            if let Some(rest) = stripped.strip_suffix("__op") {
+                op_map.insert(rest.to_string(), value.as_str().to_string());
+            } else if let Some(rest) = stripped.strip_suffix("__value") {
+                val_map.insert(rest.to_string(), value.as_str().to_string());
+            }
+        } else if key == "q" {
+            search_q = Some(value.as_str().to_string());
+        }
+    }
+
+    // Combine ops and values
+    let mut filters: HashMap<String, (String, String)> = HashMap::new();
+    for col in op_map.keys() {
+        if let Some(op) = op_map.get(col) {
+            let val = val_map.get(col).cloned().unwrap_or_default();
+            filters.insert(col.clone(), (op.clone(), val));
+        }
+    }
+
+    // ---- Debug output ----
+    println!("===== Filters parsed: {:?}", filters);
+    println!("===== Search q: {:?}", search_q);
 
     // ---- Sorting ----
     let sort_col = ctx.query.get("sort").map(|v| v.as_str()).unwrap_or("");
@@ -30,6 +66,49 @@ where
         .unwrap_or("desc");
     let mut query = <R::Entity as EntityTrait>::find();
 
+    // ---- Apply Filters ----
+    let mut cond = Condition::all();
+
+    for (col_name, (op, val)) in filters.iter() {
+        if let Some(column) = repo.column_from_str(col_name) {
+            match op.as_str() {
+                "eq" => cond = cond.add(column.eq(val.clone())),
+                "ne" => cond = cond.add(column.ne(val.clone())),
+                "gt" => cond = cond.add(column.gt(val.clone())),
+                "gte" => cond = cond.add(column.gte(val.clone())),
+                "lt" => cond = cond.add(column.lt(val.clone())),
+                "lte" => cond = cond.add(column.lte(val.clone())),
+                "contains" => cond = cond.add(column.contains(val.clone())),
+                "startswith" => cond = cond.add(column.starts_with(val.clone())),
+                "endswith" => cond = cond.add(column.ends_with(val.clone())),
+                "is_null" => cond = cond.add(column.is_null()),
+                "is_not_null" => cond = cond.add(column.is_not_null()),
+                _ => {}
+            }
+        }
+    }
+
+    // 2. Apply global search (q) – uses searchable columns
+    if let Some(ref q) = search_q {
+        if !q.is_empty() {
+            let searchable: Vec<String> = repo
+                .grid_columns()
+                .iter()
+                .map(|c| c.name.to_string())
+                .collect();
+            let mut search_cond = Condition::any();
+            for col_name in searchable {
+                if let Some(column) = repo.column_from_str(&col_name) {
+                    search_cond = search_cond.add(column.contains(q.clone()));
+                }
+            }
+            cond = cond.add(search_cond);
+        }
+    }
+
+    query = query.filter(cond);
+
+    // ---- Apply Sorting ----
     if let Some(col) = repo.column_from_str(sort_col) {
         if sort_dir == "asc" {
             query = query.order_by_asc(col);
@@ -37,7 +116,6 @@ where
             query = query.order_by_desc(col);
         }
     } else {
-        // default order by id desc
         query = query.order_by_desc(R::id_column());
     }
 
@@ -54,28 +132,70 @@ where
     let total_pages = paginator.num_pages().await.unwrap_or(0);
     let items = paginator.fetch_page(page).await.unwrap_or_default();
 
+    // ---- Build URLs with filters preserved ----
     let route_path_str = format!("/admin/{}", table_slug);
     let route_patch_str = format!("/admin/{}/update-cell", table_slug);
     let route_delete_str = format!("/admin/{}/delete", table_slug);
     let route_advanced_str = format!("/admin/{}/query-explorer", table_slug);
-    let route_detail_str = format!("/admin/{}/", table_slug); // used with id appended
+    let route_detail_str = format!("/admin/{}/", table_slug);
     let route_bulk_delete_str = format!("/admin/{}/bulk-delete", table_slug);
 
-    // Build the sort link helper to preserve current sort parameters
+    // Helper to build query string with current filters, sort, and page
+    let build_query_string =
+        |page_override: Option<u64>, sort_override: Option<(String, String)>| {
+            let mut parts = Vec::new();
+            // Add filters: output both op and value parameters
+            for (col, (op, val)) in filters.iter() {
+                parts.push(format!("filter__{}__op={}", col, op));
+                if op != "is_null" && op != "is_not_null" {
+                    parts.push(format!("filter__{}__value={}", col, val));
+                }
+            }
+            // Add search q
+            if let Some(q) = &search_q {
+                parts.push(format!("q={}", q));
+            }
+            // Sort
+            let (s_col, s_dir) = match sort_override {
+                Some((c, d)) => (c, d),
+                None => (sort_col.to_string(), sort_dir.to_string()),
+            };
+            if !s_col.is_empty() {
+                parts.push(format!("sort={}", s_col));
+                parts.push(format!("direction={}", s_dir));
+            }
+            // Page
+            if let Some(p) = page_override {
+                parts.push(format!("page={}", p));
+            } else if page > 0 {
+                parts.push(format!("page={}", page));
+            }
+            if parts.is_empty() {
+                String::new()
+            } else {
+                format!("?{}", parts.join("&"))
+            }
+        };
+
+    // Sort link helper
     let sort_link = |col: &str| {
         let new_dir = if sort_col == col && sort_dir == "asc" {
             "desc"
         } else {
             "asc"
         };
-        format!("{}?sort={}&direction={}", route_path_str, col, new_dir)
+        format!(
+            "{}{}",
+            route_path_str,
+            build_query_string(None, Some((col.to_string(), new_dir.to_string())))
+        )
     };
 
+    // ---- Render rows ----
     let rows_html = html! {
         @for item in items.iter() {
             @let record_id = repo.get_field_as_string(item, "id");
             tr class="divide-x divide-gray-800 hover:bg-gray-900/40 transition group" {
-                // ---- Checkbox column ----
                 td class="p-3 text-center w-10" {
                     input type="checkbox"
                         name="selected_ids"
@@ -99,24 +219,21 @@ where
                         }
                     }
                 }
-                // ---- Action column ----
                 td class="p-3 text-center w-24" {
-                    // Detail link (eye icon)
                     a href=(format!("{}{}", route_detail_str, record_id))
                       hx-get=(format!("{}{}", route_detail_str, record_id))
                       hx-target="#main-content"
                       hx-push-url="true"
-                      class="text-blue-400/60 hover:text-blue-400 p-1 rounded hover:bg-blue-950/30 font-mono text-xs transition duration-150 mr-2" {
+                      class="text-blue-400/60 hover:text-blue-400 p-1 rounded hover:bg-blue-950/30 font-mono text-xs opacity-0 group-hover:opacity-100 transition duration-150 mr-2" {
                         "👁"
                     }
-                    // Delete button
                     button
                         hx-delete=(route_delete_str)
                         hx-vals=(format!("{{\"id\": \"{}\"}}", record_id))
                         hx-target="closest tr"
                         hx-swap="outerHTML"
                         hx-confirm="Are you sure you want to permanently delete this record?"
-                        class="text-red-500/60 hover:text-red-400 p-1 rounded hover:bg-red-950/30 font-mono text-xs transition duration-150" {
+                        class="text-red-500/60 hover:text-red-400 p-1 rounded hover:bg-red-950/30 font-mono text-xs opacity-0 group-hover:opacity-100 transition duration-150" {
                             "✕"
                     }
                 }
@@ -124,7 +241,7 @@ where
         }
         @if (page + 1) < total_pages {
             tr id="infinite-scroll-spinner"
-                hx-get=(format!("{}?page={}&sort={}&direction={}", route_path_str, page + 1, sort_col, sort_dir))
+                hx-get=(format!("{}{}", route_path_str, build_query_string(Some(page + 1), None)))
                 hx-trigger="intersect once"
                 hx-target="#infinite-scroll-spinner"
                 hx-swap="outerHTML"
@@ -136,17 +253,72 @@ where
         }
     };
 
-    if is_infinite_scroll {
-        // Infinite scroll: return only the new rows (as a fragment)
-        Response::ok(rows_html.into_string())
-    } else if is_htmx {
-        // HTMX request (sort, search, or initial load with HTMX): return only the matrix-wrapper
-        let matrix_html = html! {
-            div id="matrix-wrapper" class="bg-gray-950 border border-gray-800 rounded-xl overflow-hidden shadow-xl" {
+    // ---- Build filter bar ----
+    let filter_bar = html! {
+        div class="bg-gray-950 border border-gray-800 rounded-xl p-4 mb-4 shadow-xl space-y-3" {
+            form
+                hx-get=(route_path_str)
+                hx-target="#matrix-wrapper"
+                hx-swap="outerHTML"
+                class="space-y-3" {
+                    div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3" {
+                        @for col in repo.grid_columns().iter() {
+                            @let current_op = filters.get(col.name).map(|(op, _)| op.as_str()).unwrap_or("contains");
+                            @let current_val = filters.get(col.name).map(|(_, v)| v.as_str()).unwrap_or("");
+                            div class="flex items-center gap-1" {
+                                label class="text-xxs font-mono text-gray-500 w-16 truncate" { (col.label) }
+                                select name=(format!("filter__{}__op", col.name)) class="bg-gray-900 border border-gray-800 rounded px-1 py-0.5 text-xs text-gray-300 focus:outline-none focus:border-emerald-500" {
+                                    option value="contains" selected=(&(current_op == "contains")) { "contains" }
+                                    option value="eq" selected=(&(current_op == "eq")) { "=" }
+                                    option value="ne" selected=(&(current_op == "ne")) { "≠" }
+                                    option value="gt" selected=(&(current_op == "gt")) { ">" }
+                                    option value="gte" selected=(&(current_op == "gte")) { "≥" }
+                                    option value="lt" selected=(&(current_op == "lt")) { "<" }
+                                    option value="lte" selected=(&(current_op == "lte")) { "≤" }
+                                    option value="startswith" selected=(&(current_op == "startswith")) { "starts" }
+                                    option value="endswith" selected=(&(current_op == "endswith")) { "ends" }
+                                    option value="is_null" selected=(&(current_op == "is_null")) { "is null" }
+                                    option value="is_not_null" selected=(&(current_op == "is_not_null")) { "not null" }
+                                }
+                                input type="text"
+                                    name=(format!("filter__{}__value", col.name))
+                                    value=(current_val)
+                                    placeholder="value"
+                                    class="bg-gray-900 border border-gray-800 rounded px-2 py-0.5 text-xs flex-1 min-w-0 focus:outline-none focus:border-emerald-500";
+                            }
+                        }
+                    }
+                    div class="flex items-center gap-3 pt-1" {
+                        button type="submit"
+                            class="bg-emerald-950/40 hover:bg-emerald-900/40 text-emerald-400 text-xs font-mono font-semibold px-4 py-1.5 rounded-lg transition duration-150" {
+                            "Apply Filters"
+                        }
+                        a href=(route_path_str)
+                          hx-get=(route_path_str)
+                          hx-target="#matrix-wrapper"
+                          hx-swap="outerHTML"
+                          class="text-gray-400 hover:text-gray-300 text-xs font-mono underline" {
+                              "Clear"
+                        }
+                        @if !filters.is_empty() || search_q.is_some() {
+                            span class="text-xxs text-emerald-500 font-mono" {
+                                (&(filters.len() + if search_q.is_some() { 1 } else { 0 })) " active filter(s)"
+                            }
+                        }
+                    }
+            }
+        }
+    };
+
+    // ---- Build matrix wrapper (includes filter bar + table) ----
+    let matrix_html = html! {
+        div id="matrix-wrapper" class="space-y-4" {
+            (filter_bar)
+            div class="bg-gray-950 border border-gray-800 rounded-xl overflow-hidden shadow-xl" {
                 table class="w-full text-left border-collapse" {
                     thead class="bg-gray-900/80 border-b border-gray-800 text-xs font-semibold uppercase tracking-wider text-gray-400" {
                         tr class="divide-x divide-gray-800" {
-                            th class="p-4 text-center w-10" { "" } // checkbox header
+                            th class="p-4 text-center w-10" { "" }
                             @for col in repo.grid_columns().iter() {
                                 th class="p-4" {
                                     a href=(sort_link(&col.name))
@@ -166,7 +338,6 @@ where
                     }
                     tbody id="table-body" class="divide-y divide-gray-800" { (rows_html) }
                 }
-                // Bulk actions footer (same as before)
                 div class="bg-gray-900/80 border-t border-gray-800 px-4 py-3 flex items-center justify-between" {
                     div class="flex items-center gap-4" {
                         span class="text-xs text-gray-400" {
@@ -191,15 +362,21 @@ where
                     }
                 }
             }
-        };
+        }
+    };
+
+    // ---- Return response ----
+    if is_infinite_scroll {
+        Response::ok(rows_html.into_string())
+    } else if is_htmx {
         Response::ok(matrix_html.into_string())
     } else {
         let display_title = format!("{} Workspace Matrix", table_slug.to_uppercase());
         let route_search_str = format!("/admin/{}/search", table_slug);
 
-        // Full page with header, filter, table, and bulk action footer
         let complete_view = html! {
             div class="space-y-6" {
+                // JQL Explorer (unchanged)
                 div class="bg-gray-950 border border-gray-800 rounded-xl p-4 shadow-xl space-y-3" {
                     div class="flex items-center justify-between" {
                         h2 class="text-xs font-bold tracking-wider text-emerald-500 uppercase font-mono" {
@@ -216,7 +393,6 @@ where
                             hx-target="#matrix-wrapper"
                             hx-swap="outerHTML"
                             class="bg-gray-900 border border-gray-800 rounded-lg px-4 py-2.5 flex-1 text-xs font-mono text-emerald-400 focus:outline-none focus:border-emerald-500 placeholder-gray-600 transition shadow-inner";
-
                         button
                             hx-get=(route_advanced_str)
                             hx-include="[name='jql']"
@@ -228,7 +404,7 @@ where
                     }
                 }
 
-
+                // Title and simple search (kept for compatibility)
                 div class="flex justify-between items-center" {
                     h1 class="text-2xl font-bold tracking-tight" { (display_title) }
                     input type="text"
@@ -240,61 +416,12 @@ where
                         class="bg-gray-950 border border-gray-800 rounded-lg px-4 py-2 w-80 text-sm focus:outline-none focus:border-emerald-500 transition";
                 }
 
-                div id="matrix-wrapper" class="bg-gray-950 border border-gray-800 rounded-xl overflow-hidden shadow-xl" {
-                    table class="w-full text-left border-collapse" {
-                        thead class="bg-gray-900/80 border-b border-gray-800 text-xs font-semibold uppercase tracking-wider text-gray-400" {
-                            tr class="divide-x divide-gray-800" {
-                                th class="p-4 text-center w-10" { "" } // checkbox header
-                                @for col in repo.grid_columns().iter() {
-                                    th class="p-4" {
-                                        a href=(sort_link(&col.name))
-                                           hx-get=(sort_link(&col.name))
-                                           hx-target="#matrix-wrapper"
-                                           hx-swap="outerHTML"
-                                           class="hover:text-white transition flex items-center gap-1" {
-                                               (col.label)
-                                               @if sort_col == col.name {
-                                                   @if sort_dir == "asc" { "↑" } @else { "↓" }
-                                               }
-                                           }
-                                    }
-                                }
-                                th class="p-4 text-center w-24" { "Actions" }
-                            }
-                        }
-                        tbody id="table-body" class="divide-y divide-gray-800" { (rows_html) }
-                    }
-                    // ---- Bulk actions footer ----
-                    div class="bg-gray-900/80 border-t border-gray-800 px-4 py-3 flex items-center justify-between" {
-                        div class="flex items-center gap-4" {
-                            span class="text-xs text-gray-400" {
-                                "Selected: "
-                                span id="selected-count" class="font-mono text-emerald-400" { "0" }
-                            }
-                            button
-                                hx-post=(route_bulk_delete_str)
-                                hx-vals="ids=[]" // will be updated by JavaScript
-                                hx-include="[name='selected_ids']"
-                                hx-target="#matrix-wrapper"
-                                hx-swap="outerHTML"
-                                hx-confirm="Delete all selected records?"
-                                class="bg-red-950/40 hover:bg-red-900/40 text-red-400 text-xs font-mono font-semibold px-4 py-2 rounded-lg transition duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
-                                id="bulk-delete-btn"
-                                disabled {
-                                    "Delete Selected"
-                            }
-                        }
-                        span class="text-xxs text-gray-500 font-mono" {
-                            "Click headers to sort"
-                        }
-                    }
-                }
+                (matrix_html)
             }
         };
         admin_shell(&display_title, complete_view, is_htmx)
     }
 }
-
 /// Generic search query processor handling dynamic query filters with inline drop capabilities.
 pub async fn handle_search<R>(ctx: RequestContext, repo: R, table_slug: &'static str) -> Response
 where
