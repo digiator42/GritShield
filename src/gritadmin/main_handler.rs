@@ -217,7 +217,11 @@ where
                                 hx-vals=(format!("{{\"id\": \"{}\", \"column\": \"{}\", \"table_to_modify\": \"{}\"}}", record_id, col.name, table_slug))
                                 class="bg-transparent hover:bg-gray-850 focus:bg-gray-800 px-2 py-1 rounded focus:outline-none w-full border border-transparent focus:border-emerald-600 transition";
                         } @else {
-                            span class="px-2 py-1 text-gray-400 font-mono text-xs" { (repo.get_field_as_string(item, &col.name)) }
+                            span class="px-2 py-1 text-gray-400 font-mono text-xs" { (if repo.get_field_as_string(item, &col.name).len() > 100 {
+                                repo.get_field_as_string(item, &col.name)[..100].to_string() + " ..."
+                            } else {
+                                repo.get_field_as_string(item, &col.name)
+                            }) }
                         }
                     }
                 }
@@ -342,8 +346,8 @@ where
     let matrix_html = html! {
         div id="matrix-wrapper" class="space-y-4" {
             (filter_bar)
-            div class="bg-gray-950 border border-gray-800 rounded-xl overflow-hidden shadow-xl" {
-                table class="w-full text-left border-collapse" {
+            div class="bg-gray-950 border border-gray-800 rounded-xl shadow-xl overflow-x-auto table-scroll" {
+                table class="w-full table-auto text-left border-collapse" {
                     thead class="bg-gray-900/80 border-b border-gray-800 text-xs font-semibold uppercase tracking-wider text-gray-400" {
                         tr class="divide-x divide-gray-800" {
                             th class="p-4 text-center w-10" { "" }
@@ -738,7 +742,7 @@ pub async fn handle_search_palette(ctx: RequestContext) -> Response {
                                    onclick="document.getElementById('command-palette').classList.add('hidden')"
                                    class="text-xxs text-emerald-500 hover:underline font-mono" { "Go →" }
                             }
-                            table class="w-full text-left border-collapse pointer-events-none select-none opacity-85" {
+                            table class="w-full text-left border-collapse pointer-events-none select-none opacity-85 table-scroll" {
                                 tbody class="divide-y divide-gray-900/60 bg-gray-950/20" {
                                     (maud::PreEscaped(rows_snippet))
                                 }
@@ -827,7 +831,7 @@ fn render_results_grid(headers: &[String], rows: &[QueryResult]) -> Markup {
                 "Result Matrix View"
             }
             div class="bg-gray-950 border border-gray-800 rounded-xl overflow-x-auto shadow-xl" {
-                table class="w-full text-left border-collapse" {
+                table class="w-full text-left border-collapse table-scroll" {
                     thead class="bg-gray-900/80 border-b border-gray-800 text-xs font-semibold uppercase tracking-wider text-gray-400 font-mono" {
                         tr class="divide-x divide-gray-800" {
                             @for header in headers {
@@ -897,7 +901,6 @@ where
         table_slug, id_str
     );
 
-
     // Fetch audit logs for this record
     let logs = audit_log::Entity::find()
         .filter(audit_log::Column::TableName.eq(repo.table_name()))
@@ -922,7 +925,7 @@ where
                   class="text-emerald-500 hover:underline text-sm" { "← Back to list" }
             }
 
-            div class="bg-gray-950 border border-gray-800 rounded-xl overflow-hidden shadow-xl" {
+            div class="bg-gray-950 border border-gray-800 rounded-xl shadow-xl overflow-x-auto" {
                 table class="w-full text-left border-collapse" {
                     tbody class="divide-y divide-gray-800" {
                         @for col in repo.grid_columns().iter() {
@@ -953,7 +956,7 @@ where
             }
             div class="mt-8" {
                 h2 class="text-lg font-semibold tracking-tight text-gray-300 mb-4" { "📜 Audit History" }
-                div class="bg-gray-950 border border-gray-800 rounded-xl overflow-hidden shadow-xl" {
+                div class="bg-gray-950 border border-gray-800 rounded-xl shadow-xl overflow-x-auto" {
                     table class="w-full text-left border-collapse" {
                         thead class="bg-gray-900/80 border-b border-gray-800 text-xs font-semibold uppercase tracking-wider text-gray-400" {
                             tr class="divide-x divide-gray-800" {

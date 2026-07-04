@@ -19,6 +19,63 @@ pub fn admin_shell(title: &str, content: Markup, is_htmx: bool) -> Response {
                     "
                     .htmx-indicator { display: none !important; }
                     .htmx-request .htmx-indicator, .htmx-request.htmx-indicator { display: flex !important; }
+                    /* ─── Custom Scrollbar ─── */
+                /* WebKit/Blink (Chrome, Edge, Safari) */
+                ::-webkit-scrollbar {
+                    width: 10px;
+                    height: 10px;
+                }
+
+                ::-webkit-scrollbar-track {
+                    background: #1a1a1a;
+                    border-radius: 8px;
+                }
+
+                ::-webkit-scrollbar-thumb {
+                    background: linear-gradient(180deg, #f97316, #dc2626);
+                    border-radius: 8px;
+                    border: 2px solid #1a1a1a;
+                }
+
+                ::-webkit-scrollbar-thumb:hover {
+                    background: linear-gradient(180deg, #fb923c, #ef4444);
+                }
+
+                ::-webkit-scrollbar-corner {
+                    background: transparent;
+                }
+
+                /* ─── Firefox ─── */
+                * {
+                    scrollbar-width: thin;
+                    scrollbar-color: #f97316 #1a1a1a;
+                }
+
+                /* ─── Table Scrollbar (Override) ─── */
+                .table-scroll::-webkit-scrollbar {
+                    width: 8px;
+                    height: 8px;
+                }
+
+                .table-scroll::-webkit-scrollbar-track {
+                    background: #0d0d0d;
+                    border-radius: 6px;
+                }
+
+                .table-scroll::-webkit-scrollbar-thumb {
+                    background: linear-gradient(180deg, #f59e0b, #dc2626);
+                    border-radius: 6px;
+                    border: 1px solid #0d0d0d;
+                }
+
+                .table-scroll::-webkit-scrollbar-thumb:hover {
+                    background: linear-gradient(180deg, #fbbf24, #ef4444);
+                }
+
+                .table-scroll {
+                    scrollbar-width: thin;
+                    scrollbar-color: #f59e0b #0d0d0d;
+                }
                     "
                 }
             }
