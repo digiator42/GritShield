@@ -6,13 +6,12 @@ use syn::{Ident, LitStr};
 pub fn generate_registration(
     name: &Ident,
     entity_module: &TokenStream,
-    repo_name_lower: &str,
-    route_path_literal: &LitStr,
+    route_slug: &str,
     searchable_literals: &[LitStr],
     is_internal: bool,
 ) -> TokenStream {
     let initializer_name = Ident::new(
-        &format!("init_meta_{}", repo_name_lower),
+        &format!("init_meta_{}", route_slug),
         proc_macro2::Span::call_site(),
     );
 
@@ -26,10 +25,15 @@ pub fn generate_registration(
     quote! {
             #[#crate_root::startup::ctor(unsafe)]
             fn #initializer_name() {
-                let table_name: &'static str = #repo_name_lower;
+                use #crate_root::deps::sea_orm::EntityName;
 
-                let route_path: &'static str =
-                    Box::leak(::std::string::String::from(#route_path_literal).into_boxed_str());
+                let table_name_str = <#entity_module::Entity as EntityName>::table_name(&#entity_module::Entity);
+                let table_name: &'static str = Box::leak(table_name_str.to_string().into_boxed_str());
+
+                let table_slug: &'static str = #route_slug;
+
+                let route_path_str = format!("/admin/{}", table_name);
+                let route_path: &'static str = Box::leak(route_path_str.into_boxed_str());
 
                 let searchable_columns: Vec<&'static str> = vec![
                     #(
@@ -173,7 +177,7 @@ pub fn generate_registration(
 
                 let meta = #crate_root::database::repository::ModelMetadata {
                     table_name,
-                    table_slug: #repo_name_lower,
+                    table_slug,
                     route_path,
                     searchable_columns,
                     list_handler,

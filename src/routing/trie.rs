@@ -855,6 +855,18 @@ impl Router {
                 );
             }
 
+            // Dashboard route
+            let dashboard_handler: AdminHandlerFn = Arc::new(|ctx| Box::pin(handle_dashboard(ctx)));
+
+            info!(
+                "[DYN-ROUTER] Registering: {:<30} {} [{:<6}]",
+                "/admin/dashboard",
+                format!("->").green(),
+                method_color("GET")
+            );
+            router.add_route(HttpMethod::GET, "/admin/dashboard", dashboard_handler, None);
+
+            // Search Palette route
             let palette_handler: AdminHandlerFn =
                 Arc::new(|ctx| Box::pin(handle_search_palette(ctx)));
 

@@ -98,9 +98,9 @@ pub fn expand_admin(input: DeriveInput) -> syn::Result<TokenStream> {
         }
     }
 
+    // Use repo_name_lower as the route slug (e.g., "user")
     let repo_name_lower = name.to_string().replace("Repository", "").to_lowercase();
-    let route_path_str = format!("/admin/{}", repo_name_lower);
-    let route_path_literal = syn::LitStr::new(&route_path_str, proc_macro2::Span::call_site());
+    let route_slug = repo_name_lower.clone();
 
     let searchable_literals: Vec<LitStr> = searchable_columns
         .iter()
@@ -110,8 +110,7 @@ pub fn expand_admin(input: DeriveInput) -> syn::Result<TokenStream> {
     let ctor_registration_block = ctor_registry::generate_registration(
         name,
         &entity_module,
-        &repo_name_lower,
-        &route_path_literal,
+        &route_slug,
         &searchable_literals,
         is_internal,
     );

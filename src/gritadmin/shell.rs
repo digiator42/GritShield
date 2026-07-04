@@ -95,7 +95,7 @@ pub fn admin_shell(title: &str, content: Markup, is_htmx: bool) -> Response {
                                         .map(|c| c.to_uppercase().to_string())
                                         .unwrap_or_default()
                                         + &table_name[1..]
-                                );
+                                ).replace("_", "");
                                 a href=(meta.route_path)
                                    hx-get=(meta.route_path)
                                    hx-target="#main-content"
@@ -105,6 +105,12 @@ pub fn admin_shell(title: &str, content: Markup, is_htmx: bool) -> Response {
 
                             // Static core application views can stay down here
                             hr class="border-gray-800 my-4";
+                            a href="/admin/dashboard"
+                            hx-get="/admin/dashboard"
+                            hx-target="#main-content"
+                            hx-push-url="true"
+                            class="block p-2 hover:bg-gray-800 rounded transition text-gray-400" { "📊 Dashboard" }
+
                             a href="/admin/settings"
                                hx-get="/admin/settings"
                                hx-target="#main-content"

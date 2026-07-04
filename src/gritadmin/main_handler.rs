@@ -4,8 +4,8 @@ use crate::database::repository::{AdminHandlerFn, GridColumn};
 use crate::database::repository::{CustomQuerySpec, JoinSpec, JqlCompiler, WhereSpec};
 use crate::database::repository::{GritRepository, ADMIN_REGISTRY};
 use crate::deps::sea_orm::{
-    ActiveModelTrait, ConnectionTrait, DatabaseConnection, EntityName, EntityTrait, PaginatorTrait,
-    QueryOrder, TransactionTrait,
+    ActiveModelTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityName, EntityTrait,
+    PaginatorTrait, QueryOrder, Statement, TransactionTrait,
 };
 use crate::gritadmin::models::audit_log;
 use crate::security::errors::ShieldError;
@@ -32,10 +32,7 @@ fn get_target_table_slug(col_name: &str) -> Option<String> {
     let base = col_name.trim_end_matches("_id");
 
     // Try both singular and plural forms
-    let candidates = vec![
-        base.to_string(),
-        format!("{}s", base),
-    ];
+    let candidates = vec![base.to_string(), format!("{}s", base)];
 
     println!("======>> {:?}", candidates);
 
@@ -1241,6 +1238,195 @@ where
         format!("attachment; filename=\"{}\"", filename),
     ));
     res
+}
+
+/// Dashboard view showing counts and recent records for all registered tables.
+pub async fn handle_dashboard(ctx: RequestContext) -> Response {
+    let db = match ctx.db.clone() {
+        Some(d) => d,
+        None => return Response::bad_request("Database connection missing"),
+    };
+
+    // ---- Collect all table info while holding the lock ----
+    let table_infos: Vec<(String, String, String)> = {
+        let registry = ADMIN_REGISTRY.lock().unwrap();
+        registry
+            .iter()
+            .map(|(table_slug, meta)| {
+                (
+                    meta.table_name.to_string(), // actual DB table name
+                    table_slug.to_string(),      // route slug
+                    meta.route_path.to_string(),
+                )
+            })
+            .collect()
+    };
+
+    let mut cards: Vec<maud::PreEscaped<String>> = Vec::new();
+
+    for (table_name, table_slug, route_path) in &table_infos {
+        // ---- Count total records ----
+        let count_sql = format!("SELECT COUNT(*) as count FROM {}", table_name);
+        let count_stmt = Statement::from_string(DbBackend::Sqlite, count_sql);
+        let count_result = match db.query_one(count_stmt).await {
+            Ok(Some(row)) => row.try_get::<i64>("", "count").unwrap_or(0),
+            _ => 0,
+        };
+
+        // ---- Fetch recent 5 records ----
+        let recent_sql = format!("SELECT * FROM {} ORDER BY id DESC LIMIT 5", table_name);
+        let recent_stmt = Statement::from_string(DbBackend::Sqlite, recent_sql);
+        let recent_rows = match db.query_all(recent_stmt).await {
+            Ok(rows) => rows,
+            Err(_) => Vec::new(),
+        };
+
+        let recent_html = if recent_rows.is_empty() {
+            html! { div class="text-gray-500 text-xs" { "No recent records" } }
+        } else {
+            let first_row = &recent_rows[0];
+            let column_names: Vec<String> = first_row
+                .column_names()
+                .iter()
+                .map(|c| c.to_string())
+                .collect();
+
+            let rows_html: Vec<Markup> = recent_rows
+                .iter()
+                .map(|row| {
+                    // Get ID by index
+                    let id_val: String = row
+                        .try_get_by_index::<String>(0)
+                        .or_else(|_| row.try_get("", "id"))
+                        .unwrap_or("".to_string());
+
+                    // Get first two data columns (skip ID)
+                    let mut cols = Vec::new();
+                    for (i, col_name) in column_names.iter().enumerate().take(3) {
+                        if i == 0 {
+                            continue;
+                        }
+                        let val: String = row
+                            .try_get_by_index::<String>(i)
+                            .or_else(|_| row.try_get("", col_name))
+                            .unwrap_or("".to_string());
+                        cols.push(val);
+                        if cols.len() >= 2 {
+                            break;
+                        }
+                    }
+
+                    html! {
+                        tr {
+                            td class="p-1" { (id_val) }
+                            @for col_val in &cols {
+                                td class="p-1 truncate max-w-[100px]" { (col_val) }
+                            }
+                            td class="p-1" {
+                                a href=(format!("/admin/{}/{}", table_slug, id_val))
+                                  hx-get=(format!("/admin/{}/{}", table_slug, id_val))
+                                  hx-target="#main-content"
+                                  hx-push-url="true"
+                                  class="text-blue-400 hover:underline" {
+                                      "View"
+                                  }
+                            }
+                        }
+                    }
+                })
+                .collect();
+
+            let header_cols: Vec<String> = column_names
+                .iter()
+                .skip(1)
+                .take(2)
+                .map(|c| c.to_string())
+                .collect();
+
+            html! {
+                table class="w-full text-left text-xs" {
+                    thead {
+                        tr class="text-gray-500" {
+                            th class="p-1" { "ID" }
+                            @for col in &header_cols {
+                                th class="p-1" { (col) }
+                            }
+                            th class="p-1" { "Actions" }
+                        }
+                    }
+                    tbody {
+                        @for row_html in rows_html {
+                            (row_html)
+                        }
+                    }
+                }
+            }
+        };
+
+        let card: maud::PreEscaped<String> = html! {
+            div class="bg-gray-950 border border-gray-800 rounded-xl p-4 shadow-xl" {
+                div class="flex justify-between items-start" {
+                    div {
+                        h3 class="text-lg font-bold text-emerald-400" { (table_slug) }
+                        p class="text-3xl font-mono text-gray-200" { (count_result) }
+                    }
+                    a href=(route_path)
+                      hx-get=(route_path)
+                      hx-target="#main-content"
+                      hx-push-url="true"
+                      class="text-xs text-gray-500 hover:text-gray-300" {
+                          "View all →"
+                      }
+                }
+                div class="mt-3 max-h-48 overflow-y-auto" {
+                    (recent_html)
+                }
+            }
+        };
+
+        cards.push(card);
+    }
+
+    // ---- Overall Summary ----
+    let mut total_records: i64 = 0;
+    for (table_name, table_slug, _) in &table_infos {
+        let count_sql = format!("SELECT COUNT(*) as count FROM {}", table_name);
+        let stmt = Statement::from_string(DbBackend::Sqlite, count_sql);
+        let count = db
+            .query_one(stmt)
+            .await
+            .ok()
+            .flatten()
+            .and_then(|row| row.try_get::<i64>("", "count").ok())
+            .unwrap_or(0);
+        total_records += count;
+    }
+
+    let summary = html! {
+        div class="bg-gray-950 border border-gray-800 rounded-xl p-4 shadow-xl col-span-full" {
+            h2 class="text-xl font-bold text-gray-300" { "📊 Overall Metrics" }
+            p class="text-4xl font-mono text-emerald-400" { (total_records) " records across " (table_infos.len()) " tables" }
+        }
+    };
+
+    let dashboard_html = html! {
+        div class="space-y-6" {
+            h1 class="text-3xl font-bold tracking-tight" { "Dashboard" }
+            div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" {
+                (summary)
+                @for card in cards {
+                    (card)
+                }
+            }
+        }
+    };
+
+    let is_htmx = ctx.req.has_header("hx-request");
+    if is_htmx {
+        Response::ok(dashboard_html.into_string())
+    } else {
+        admin_shell("Dashboard", dashboard_html, false)
+    }
 }
 
 /// Simple CSV writer (escapes commas and quotes).
