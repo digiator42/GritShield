@@ -1,5 +1,4 @@
 use chrono::NaiveDateTime;
-use gritshield_macros::{GritModel, GritRelation};
 use sea_orm::entity::prelude::*;
 use sea_orm::prelude::Json;
 use serde::{Deserialize, Serialize};

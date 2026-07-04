@@ -9,14 +9,22 @@ pub fn generate_registration(
     repo_name_lower: &str,
     route_path_literal: &LitStr,
     searchable_literals: &[LitStr],
+    is_internal: bool,
 ) -> TokenStream {
     let initializer_name = Ident::new(
         &format!("init_meta_{}", repo_name_lower),
         proc_macro2::Span::call_site(),
     );
 
+        // Determine the crate root based on detection
+    let crate_root = if is_internal {
+        quote! { crate }
+    } else {
+        quote! { ::gritshield }
+    };
+
     quote! {
-            #[::gritshield::startup::ctor(unsafe)]
+            #[#crate_root::startup::ctor(unsafe)]
             fn #initializer_name() {
                 let table_name: &'static str = #repo_name_lower;
 
@@ -29,7 +37,7 @@ pub fn generate_registration(
                     ),*
                 ];
 
-                let list_handler: ::gritshield::database::repository::AdminHandlerFn =
+                let list_handler: #crate_root::database::repository::AdminHandlerFn =
                     ::std::sync::Arc::new(move |ctx| {
                         let table_name = table_name;
                         Box::pin(async move {
@@ -38,7 +46,7 @@ pub fn generate_registration(
                                 db: (*db).clone(),
                             };
 
-                            ::gritshield::gritadmin::main_handler::handle_list(
+                            #crate_root::gritadmin::main_handler::handle_list(
                                 ctx,
                                 repo,
                                 table_name,
@@ -47,7 +55,7 @@ pub fn generate_registration(
                         })
                     });
 
-                let search_handler: ::gritshield::database::repository::AdminHandlerFn =
+                let search_handler: #crate_root::database::repository::AdminHandlerFn =
                     ::std::sync::Arc::new(move |ctx| {
                         let table_name = table_name;
                         Box::pin(async move {
@@ -56,7 +64,7 @@ pub fn generate_registration(
                                 db: (*db).clone(),
                             };
 
-                            ::gritshield::gritadmin::main_handler::handle_search(
+                            #crate_root::gritadmin::main_handler::handle_search(
                                 ctx,
                                 repo,
                                 table_name,
@@ -65,7 +73,7 @@ pub fn generate_registration(
                         })
                     });
 
-                let delete_handler: ::gritshield::database::repository::AdminHandlerFn =
+                let delete_handler: #crate_root::database::repository::AdminHandlerFn =
                     ::std::sync::Arc::new(move |ctx| {
                         let table_name = table_name;
                         Box::pin(async move {
@@ -74,7 +82,7 @@ pub fn generate_registration(
                                 db: (*db).clone(),
                             };
 
-                            ::gritshield::gritadmin::main_handler::handle_delete(
+                            #crate_root::gritadmin::main_handler::handle_delete(
                                 ctx,
                                 repo,
                                 table_name,
@@ -83,7 +91,7 @@ pub fn generate_registration(
                         })
                     });
 
-                let patch_handler: ::gritshield::database::repository::AdminHandlerFn =
+                let patch_handler: #crate_root::database::repository::AdminHandlerFn =
                     ::std::sync::Arc::new(move |ctx| {
                         let table_name = table_name;
                         Box::pin(async move {
@@ -92,7 +100,7 @@ pub fn generate_registration(
                                 db: (*db).clone(),
                             };
 
-                            ::gritshield::gritadmin::main_handler::handle_patch(
+                            #crate_root::gritadmin::main_handler::handle_patch(
                                 ctx,
                                 repo,
                                 table_name,
@@ -101,12 +109,12 @@ pub fn generate_registration(
                         })
                     });
 
-                let advanced_search_handler: ::gritshield::database::repository::AdminHandlerFn =
+                let advanced_search_handler: #crate_root::database::repository::AdminHandlerFn =
                     ::std::sync::Arc::new(move |ctx| {
                         let table_name = table_name;
                         Box::pin(async move {
 
-                            ::gritshield::gritadmin::main_handler::handle_custom_search_viewer(
+                            #crate_root::gritadmin::main_handler::handle_custom_search_viewer(
                                 ctx,
                                 // table_name,
                             )
@@ -114,14 +122,14 @@ pub fn generate_registration(
                         })
                     });
 
-                let detail_handler: ::gritshield::database::repository::AdminHandlerFn =
+                let detail_handler: #crate_root::database::repository::AdminHandlerFn =
                     ::std::sync::Arc::new(move |ctx| {
-                        use gritshield::routing::trie::IntoResponse;
+                        use #crate_root::routing::trie::IntoResponse;
                         let table_name = table_name;
                         Box::pin(async move {
                             let db = ctx.db.clone().expect("DB connection missing");
                             let repo = #name { db: (*db).clone() };
-                            ::gritshield::gritadmin::main_handler::handle_detail(
+                            #crate_root::gritadmin::main_handler::handle_detail(
                                 ctx,
                                 repo,
                                 table_name,
@@ -131,14 +139,14 @@ pub fn generate_registration(
                         })
                     });
 
-                let bulk_delete_handler: ::gritshield::database::repository::AdminHandlerFn =
+                let bulk_delete_handler: #crate_root::database::repository::AdminHandlerFn =
                     ::std::sync::Arc::new(move |ctx| {
-                        use gritshield::routing::trie::IntoResponse;
+                        use #crate_root::routing::trie::IntoResponse;
                         let table_name = table_name;
                         Box::pin(async move {
                             let db = ctx.db.clone().expect("DB connection missing");
                             let repo = #name { db: (*db).clone() };
-                            ::gritshield::gritadmin::main_handler::handle_bulk_delete(
+                            #crate_root::gritadmin::main_handler::handle_bulk_delete(
                                 ctx,
                                 repo,
                                 table_name,
@@ -148,13 +156,13 @@ pub fn generate_registration(
                         })
                     });
 
-                let export_handler: ::gritshield::database::repository::AdminHandlerFn =
+                let export_handler: #crate_root::database::repository::AdminHandlerFn =
                     ::std::sync::Arc::new(move |ctx| {
                         let table_name = table_name;
                         Box::pin(async move {
                             let db = ctx.db.clone().expect("DB connection missing");
                             let repo = #name { db: (*db).clone() };
-                            ::gritshield::gritadmin::main_handler::handle_export(
+                            #crate_root::gritadmin::main_handler::handle_export(
                                 ctx,
                                 repo,
                                 table_name,
@@ -163,7 +171,7 @@ pub fn generate_registration(
                         })
                     });
 
-                let meta = ::gritshield::database::repository::ModelMetadata {
+                let meta = #crate_root::database::repository::ModelMetadata {
                     table_name,
                     route_path,
                     searchable_columns,
@@ -179,7 +187,7 @@ pub fn generate_registration(
 
                 println!("REGISTERING ADMIN MODEL: {}", table_name);
 
-                ::gritshield::database::repository::register_model(table_name, meta);
+                #crate_root::database::repository::register_model(table_name, meta);
             }
         }
 }

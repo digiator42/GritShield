@@ -1,7 +1,8 @@
 use crate::core_parser::parse_repository_attributes;
-use proc_macro2::TokenStream;
+use proc_macro2::{Ident, Span, TokenStream};
 use quote::quote;
-use syn::{DeriveInput, LitStr};
+use quote::ToTokens;
+use syn::{DeriveInput, LitStr, Path};
 
 mod ctor_registry;
 
@@ -16,13 +17,31 @@ pub fn expand_admin(input: DeriveInput) -> syn::Result<TokenStream> {
     let read_only_columns = repo_attrs.read_only_columns;
 
     // Resolve model module path
-    let entity_module = match repo_attrs.entity_module_path {
+    let entity_module = match &repo_attrs.entity_module_path {
         Some(path) => quote! { #path },
         None => {
             let repo_name_lower = name.to_string().replace("Repository", "").to_lowercase();
             let module_ident = syn::Ident::new(&repo_name_lower, name.span());
             quote! { crate::models::#module_ident }
         }
+    };
+
+    // Check if the entity path starts with "crate::gritadmin" (internal framework model)
+    let is_internal = if let Some(path) = &repo_attrs.entity_module_path {
+        let segments: Vec<_> = path.segments.iter().collect();
+        segments.len() >= 2 && segments[0].ident == "crate" && segments[1].ident == "gritadmin"
+    } else {
+        // No entity path provided → external user model
+        false
+    };
+
+    // Determine the crate root based on detection
+    let crate_root = if is_internal {
+        println!("====>> DETECTED INTERNAL (framework model)");
+        quote! { crate }
+    } else {
+        println!("====>> DETECTED EXTERNAL (user model)");
+        quote! { ::gritshield }
     };
 
     if grid_columns.is_empty() {
@@ -38,8 +57,15 @@ pub fn expand_admin(input: DeriveInput) -> syn::Result<TokenStream> {
     let mut get_field_tokens = Vec::new();
     let mut update_field_tokens = Vec::new();
 
+    let all_readonly = read_only_columns.len() == 1 && read_only_columns[0] == "all";
+
     for col in &grid_columns {
-        let is_editable = col != "id" && !read_only_columns.contains(col);
+        let is_editable = if all_readonly {
+            false // All columns are read-only
+        } else {
+            col != "id" && !read_only_columns.contains(col)
+        };
+
         let label_str = if col.is_empty() {
             String::new()
         } else {
@@ -48,7 +74,7 @@ pub fn expand_admin(input: DeriveInput) -> syn::Result<TokenStream> {
         };
 
         grid_column_tokens.push(quote! {
-            ::gritshield::database::repository::GridColumn {
+            #crate_root::database::repository::GridColumn {
                 name: #col,
                 label: #label_str,
                 is_editable: #is_editable,
@@ -63,12 +89,12 @@ pub fn expand_admin(input: DeriveInput) -> syn::Result<TokenStream> {
 
         if is_editable {
             update_field_tokens.push(quote! {
-                #col => {
-                    let parsed_val = AdminFieldParse::parse_field(&value)
-                        .map_err(|e| ::gritshield::deps::sea_orm::DbErr::Custom(::std::format!("Failed to parse column '{}': {}", #col, e)))?;
-                    active_model.#field_ident = ::gritshield::deps::sea_orm::Set(parsed_val);
-                }
-            });
+            #col => {
+                let parsed_val = AdminFieldParse::parse_field(&value)
+                    .map_err(|e| #crate_root::deps::sea_orm::DbErr::Custom(::std::format!("Failed to parse column '{}': {}", #col, e)))?;
+                active_model.#field_ident = #crate_root::deps::sea_orm::Set(parsed_val);
+            }
+        });
         }
     }
 
@@ -87,11 +113,12 @@ pub fn expand_admin(input: DeriveInput) -> syn::Result<TokenStream> {
         &repo_name_lower,
         &route_path_literal,
         &searchable_literals,
+        is_internal,
     );
 
     Ok(quote! {
         const _: () = {
-            use ::gritshield::deps::sea_orm;
+            use #crate_root::deps::sea_orm;
 
             trait AdminFieldFormat {
                 fn to_display_str(&self) -> ::std::string::String;
@@ -127,9 +154,9 @@ pub fn expand_admin(input: DeriveInput) -> syn::Result<TokenStream> {
             impl_admin_field!(f32);
             impl_admin_field!(f64);
             impl_admin_field!(bool);
-            impl_admin_field!(::gritshield::deps::chrono::NaiveDate);
-            impl_admin_field!(::gritshield::deps::uuid::Uuid);
-            impl_admin_field!(::gritshield::deps::rust_decimal::Decimal);
+            impl_admin_field!(#crate_root::deps::chrono::NaiveDate);
+            impl_admin_field!(#crate_root::deps::uuid::Uuid);
+            impl_admin_field!(#crate_root::deps::rust_decimal::Decimal);
 
             impl<T> AdminFieldFormat for ::std::option::Option<T>
             where
@@ -156,32 +183,32 @@ pub fn expand_admin(input: DeriveInput) -> syn::Result<TokenStream> {
                 }
             }
 
-            impl AdminFieldFormat for ::gritshield::deps::chrono::NaiveDateTime {
+            impl AdminFieldFormat for #crate_root::deps::chrono::NaiveDateTime {
                 fn to_display_str(&self) -> ::std::string::String {
                     self.format("%Y-%m-%d %H:%M:%S").to_string()
                 }
             }
-            impl AdminFieldParse for ::gritshield::deps::chrono::NaiveDateTime {
+            impl AdminFieldParse for #crate_root::deps::chrono::NaiveDateTime {
                 fn parse_field(s: &str) -> ::std::result::Result<Self, ::std::string::String> {
-                    ::gritshield::deps::chrono::NaiveDateTime::parse_from_str(s.trim(), "%Y-%m-%d %H:%M:%S")
-                        .or_else(|_| ::gritshield::deps::chrono::NaiveDateTime::parse_from_str(s.trim(), "%Y-%m-%dT%H:%M:%S"))
+                    #crate_root::deps::chrono::NaiveDateTime::parse_from_str(s.trim(), "%Y-%m-%d %H:%M:%S")
+                        .or_else(|_| #crate_root::deps::chrono::NaiveDateTime::parse_from_str(s.trim(), "%Y-%m-%dT%H:%M:%S"))
                         .map_err(|e| ::std::format!("Invalid datetime format: {}", e))
                 }
             }
 
-            impl AdminFieldFormat for ::gritshield::deps::serde_json::Value {
+            impl AdminFieldFormat for #crate_root::deps::serde_json::Value {
                 fn to_display_str(&self) -> ::std::string::String {
                     self.to_string()
                 }
             }
-            impl AdminFieldParse for ::gritshield::deps::serde_json::Value {
+            impl AdminFieldParse for #crate_root::deps::serde_json::Value {
                 fn parse_field(s: &str) -> ::std::result::Result<Self, ::std::string::String> {
-                    ::gritshield::deps::serde_json::from_str(s).map_err(|e| ::std::format!("Invalid JSON syntax: {}", e))
+                    #crate_root::deps::serde_json::from_str(s).map_err(|e| ::std::format!("Invalid JSON syntax: {}", e))
                 }
             }
 
-            #[::gritshield::deps::async_trait]
-            impl ::gritshield::database::repository::GritRepository for #name {
+            #[#crate_root::deps::async_trait]
+            impl #crate_root::database::repository::GritRepository for #name {
                 type Entity = #entity_module::Entity;
                 type Model = #entity_module::Model;
                 type Column = #entity_module::Column;
@@ -196,7 +223,7 @@ pub fn expand_admin(input: DeriveInput) -> syn::Result<TokenStream> {
                     #entity_module::Column::Id
                 }
 
-                fn grid_columns(&self) -> ::std::vec::Vec<::gritshield::database::repository::GridColumn> {
+                fn grid_columns(&self) -> ::std::vec::Vec<#crate_root::database::repository::GridColumn> {
                     ::std::vec![ #(#grid_column_tokens),* ]
                 }
 
@@ -214,15 +241,15 @@ pub fn expand_admin(input: DeriveInput) -> syn::Result<TokenStream> {
                     column_name: &str,
                     value: ::std::string::String,
                     user_id: Option<&str>,
-                ) -> ::std::result::Result<Self::Model, ::gritshield::deps::sea_orm::DbErr> {
-                    use ::gritshield::deps::sea_orm::{ActiveModelTrait, EntityTrait, EntityName};
-                    use ::gritshield::deps::serde_json;
+                ) -> ::std::result::Result<Self::Model, #crate_root::deps::sea_orm::DbErr> {
+                    use #crate_root::deps::sea_orm::{ActiveModelTrait, EntityTrait, EntityName};
+                    use #crate_root::deps::serde_json;
 
                     if let ::std::option::Option::Some(record) = #entity_module::Entity::find_by_id(id).one(self.get_db()).await? {
-                        let mut active_model = <Self::ActiveModel as ::gritshield::database::repository::ConvertFromModel<Self::Model>>::from_model(record.clone());
+                        let mut active_model = <Self::ActiveModel as #crate_root::database::repository::ConvertFromModel<Self::Model>>::from_model(record.clone());
                         match column_name {
                             #(#update_field_tokens)*
-                            _ => return ::std::result::Result::Err(::gritshield::deps::sea_orm::DbErr::Custom(::std::format!("Column '{}' is not editable", column_name))),
+                            _ => return ::std::result::Result::Err(#crate_root::deps::sea_orm::DbErr::Custom(::std::format!("Column '{}' is not editable", column_name))),
                         };
                         let updated_model = active_model.update(self.get_db()).await?;
 
@@ -245,7 +272,7 @@ pub fn expand_admin(input: DeriveInput) -> syn::Result<TokenStream> {
 
                         ::std::result::Result::Ok(updated_model)
                     } else {
-                        ::std::result::Result::Err(::gritshield::deps::sea_orm::DbErr::Custom("Target row record not found".to_string()))
+                        ::std::result::Result::Err(#crate_root::deps::sea_orm::DbErr::Custom("Target row record not found".to_string()))
                     }
                 }
 
@@ -258,7 +285,7 @@ pub fn expand_admin(input: DeriveInput) -> syn::Result<TokenStream> {
                     new_values: Option<serde_json::Value>,
                     user_id: Option<&str>,
                 ) -> Result<(), sea_orm::DbErr> {
-                    use ::gritshield::gritadmin::models::audit_log::{ActiveModel, Entity, Model};
+                    use #crate_root::gritadmin::models::audit_log::{ActiveModel, Entity, Model};
                     use sea_orm::ActiveModelTrait;
                     use chrono::Utc;
 
@@ -276,9 +303,9 @@ pub fn expand_admin(input: DeriveInput) -> syn::Result<TokenStream> {
                     Ok(())
                 }
 
-                async fn search_admin_fields(&self, text: &str) -> ::std::result::Result<::std::vec::Vec<Self::Model>, ::gritshield::deps::sea_orm::DbErr> {
-                    use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait, Iterable, Iden};
-                    use ::gritshield::deps::sea_orm::sea_query::{Expr, ExprTrait, Alias};
+                async fn search_admin_fields(&self, text: &str) -> ::std::result::Result<::std::vec::Vec<Self::Model>, #crate_root::deps::sea_orm::DbErr> {
+                    use #crate_root::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait, Iterable, Iden};
+                    use #crate_root::deps::sea_orm::sea_query::{Expr, ExprTrait, Alias};
 
                     let db = &self.db;
                     let mut query = #entity_module::Entity::find();
@@ -287,7 +314,7 @@ pub fn expand_admin(input: DeriveInput) -> syn::Result<TokenStream> {
                         return query.all(db).await;
                     }
 
-                    let mut condition = ::gritshield::deps::sea_orm::Condition::any();
+                    let mut condition = #crate_root::deps::sea_orm::Condition::any();
                     let configured_search_strings = ::std::vec![ #(#searchable_columns),* ];
 
                     for col in <#entity_module::Column as Iterable>::iter() {
@@ -303,14 +330,14 @@ pub fn expand_admin(input: DeriveInput) -> syn::Result<TokenStream> {
                     &self,
                     id: Self::Id,
                     user_id: Option<&str>,
-                ) -> ::std::result::Result<::gritshield::deps::sea_orm::DeleteResult, ::gritshield::deps::sea_orm::DbErr> {
-                    use ::gritshield::deps::sea_orm::{EntityTrait, EntityName};
-                    use ::gritshield::deps::serde_json;
+                ) -> ::std::result::Result<#crate_root::deps::sea_orm::DeleteResult, #crate_root::deps::sea_orm::DbErr> {
+                    use #crate_root::deps::sea_orm::{EntityTrait, EntityName};
+                    use #crate_root::deps::serde_json;
 
                     // Fetch record before deletion for audit
                     let record = match #entity_module::Entity::find_by_id(id).one(self.get_db()).await? {
                         Some(r) => r,
-                        None => return ::std::result::Result::Err(::gritshield::deps::sea_orm::DbErr::Custom("Record not found".to_string())),
+                        None => return ::std::result::Result::Err(#crate_root::deps::sea_orm::DbErr::Custom("Record not found".to_string())),
                     };
 
                     let old_json = serde_json::to_value(&record).ok();
@@ -333,7 +360,7 @@ pub fn expand_admin(input: DeriveInput) -> syn::Result<TokenStream> {
                 }
             }
 
-            impl ::gritshield::database::repository::ConvertFromModel<#entity_module::Model> for #entity_module::ActiveModel {
+            impl #crate_root::database::repository::ConvertFromModel<#entity_module::Model> for #entity_module::ActiveModel {
                 fn from_model(model: #entity_module::Model) -> Self {
                     use sea_orm::IntoActiveModel;
                     model.into_active_model()
