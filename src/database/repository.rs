@@ -197,6 +197,7 @@ pub type AdminHandlerFn =
 #[derive(Clone)]
 pub struct ModelMetadata {
     pub table_name: &'static str,
+    pub table_slug: &'static str,
     pub route_path: &'static str,
     pub searchable_columns: Vec<&'static str>,
     pub list_handler: AdminHandlerFn,

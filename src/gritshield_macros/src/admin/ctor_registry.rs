@@ -173,6 +173,7 @@ pub fn generate_registration(
 
                 let meta = #crate_root::database::repository::ModelMetadata {
                     table_name,
+                    table_slug: #repo_name_lower,
                     route_path,
                     searchable_columns,
                     list_handler,

@@ -16,6 +16,38 @@ use sea_orm::ColumnTrait;
 use sea_orm::QueryFilter;
 use sea_orm::QueryResult;
 
+/// Check if a column name looks like a foreign key.
+fn is_foreign_key_column(col_name: &str) -> bool {
+    col_name.ends_with("_id")
+}
+
+/// Try to resolve the target table slug for a foreign key column.
+/// e.g., "user_id" → "user" (or "users" if registered).
+fn get_target_table_slug(col_name: &str) -> Option<String> {
+    if !is_foreign_key_column(col_name) {
+        return None;
+    }
+
+    // Remove "_id" suffix
+    let base = col_name.trim_end_matches("_id");
+
+    // Try both singular and plural forms
+    let candidates = vec![
+        base.to_string(),
+        format!("{}s", base),
+    ];
+
+    println!("======>> {:?}", candidates);
+
+    let registry = ADMIN_REGISTRY.lock().unwrap();
+    for candidate in candidates {
+        if registry.contains_key(&candidate.as_str()) {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
 /// Generic dashboard view runner for listing data rows and handling infinite scrolls.
 pub async fn handle_list<R>(ctx: RequestContext, repo: R, table_slug: &'static str) -> Response
 where
@@ -205,10 +237,25 @@ where
                         class="form-checkbox bg-gray-800 border-gray-700 rounded text-emerald-500 focus:ring-0 focus:ring-offset-0";
                 }
                 @for col in repo.grid_columns().iter() {
+                    @let raw_val = repo.get_field_as_string(item, &col.name);
                     td class="p-3 text-sm font-medium" {
-                        @if col.is_editable {
+                        @if is_foreign_key_column(&col.name) && !raw_val.is_empty() {
+                            // Foreign keys always render as links (even if editable)
+                            @if let Some(target_slug) = get_target_table_slug(&col.name) {
+                                a href=(format!("/admin/{}/{}", target_slug, raw_val))
+                                hx-get=(format!("/admin/{}/{}", target_slug, raw_val))
+                                hx-target="#main-content"
+                                hx-push-url="true"
+                                class="text-blue-400 hover:text-blue-300 underline font-mono text-xs" {
+                                    (raw_val)
+                                }
+                            } @else {
+                                span class="px-2 py-1 text-gray-400 font-mono text-xs" { (raw_val) }
+                            }
+                        } @else if col.is_editable {
+                            // Regular editable field (not a foreign key)
                             input type="text"
-                                value=(repo.get_field_as_string(item, &col.name))
+                                value=(raw_val)
                                 name=(col.name)
                                 hx-patch=(route_patch_str)
                                 hx-trigger="change, keyup[key=='Enter']"
@@ -217,11 +264,8 @@ where
                                 hx-vals=(format!("{{\"id\": \"{}\", \"column\": \"{}\", \"table_to_modify\": \"{}\"}}", record_id, col.name, table_slug))
                                 class="bg-transparent hover:bg-gray-850 focus:bg-gray-800 px-2 py-1 rounded focus:outline-none w-full border border-transparent focus:border-emerald-600 transition";
                         } @else {
-                            span class="px-2 py-1 text-gray-400 font-mono text-xs" { (if repo.get_field_as_string(item, &col.name).len() > 100 {
-                                repo.get_field_as_string(item, &col.name)[..100].to_string() + " ..."
-                            } else {
-                                repo.get_field_as_string(item, &col.name)
-                            }) }
+                            // Read-only field (not a foreign key)
+                            span class="px-2 py-1 text-gray-400 font-mono text-xs" { (raw_val) }
                         }
                     }
                 }

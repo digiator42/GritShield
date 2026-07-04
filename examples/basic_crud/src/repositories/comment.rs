@@ -2,8 +2,8 @@ use gritshield::GritAdmin;
 
 #[derive(Clone, GritAdmin)]
 #[repository(
-    searchable = ["id", "post_id", "created_at", "content"],
-    grid_columns = ["id", "post_id", "content", "created_at"],
+    searchable = ["id", "post_id", "created_at", "content", "user_id",],
+    grid_columns = ["id", "post_id", "user_id", "content", "created_at"],
     read_only = ["created_at"],
 )]
 pub struct CommentRepository {
