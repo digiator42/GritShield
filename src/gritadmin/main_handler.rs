@@ -179,22 +179,40 @@ where
     let mut search_q = None;
 
     for (key, value) in ctx.query.iter() {
+        // Decode special characters immediately at the entry boundary
+        let decoded_value = urlencoding::decode(value.as_str())
+            .map(|s| s.into_owned())
+            .unwrap_or_else(|_| value.as_str().to_string());
+
         if let Some(stripped) = key.strip_prefix("filter__") {
             if let Some(rest) = stripped.strip_suffix("__op") {
-                op_map.insert(rest.to_string(), value.as_str().to_string());
+                op_map.insert(rest.to_string(), decoded_value);
             } else if let Some(rest) = stripped.strip_suffix("__value") {
-                val_map.insert(rest.to_string(), value.as_str().to_string());
+                val_map.insert(rest.to_string(), decoded_value);
             }
         } else if key == "q" {
-            search_q = Some(value.as_str().to_string());
+            search_q = Some(decoded_value);
         }
     }
 
     // Combine ops and values
+    // Only treat a column as "filtered" if the user actually picked an operator for it.
+    // The filter form always submits every grid column's select/input (even ones nobody
+    // touched), and those used to default to a real "contains" op with an empty value —
+    // "contains('')" is a SQL LIKE '%%', which evaluates to NULL (excluded) on any row
+    // where that untouched column happens to be NULL. So every extra untouched column
+    // silently ANDed in a chance-to-exclude-rows condition, making combined filters look
+    // like only one of them was "winning". Skipping unset columns entirely fixes that.
     let mut filters: HashMap<String, (String, String)> = HashMap::new();
     for col in op_map.keys() {
         if let Some(op) = op_map.get(col) {
+            if op.is_empty() {
+                continue; // "— no filter —" selected: this column isn't being filtered
+            }
             let val = val_map.get(col).cloned().unwrap_or_default();
+            if val.is_empty() && op != "is_null" && op != "is_not_null" {
+                continue; // no value entered: don't apply an accidental empty-match filter
+            }
             filters.insert(col.clone(), (op.clone(), val));
         }
     }
@@ -307,12 +325,13 @@ where
             for (col, (op, val)) in filters.iter() {
                 parts.push(format!("filter__{}__op={}", col, op));
                 if op != "is_null" && op != "is_not_null" {
-                    parts.push(format!("filter__{}__value={}", col, val));
+                    // parts.push(format!("filter__{}__value={}", col, val));
+                    parts.push(format!("filter__{}__value={}", col, Sanitizer::url_encode(val)));
                 }
             }
             // Add search q
             if let Some(q) = &search_q {
-                parts.push(format!("q={}", q));
+                parts.push(format!("q={}", Sanitizer::url_encode(q)));
             }
             // Sort
             let (s_col, s_dir) = match sort_override {
@@ -382,11 +401,11 @@ where
         for (col, (op, val)) in filters.iter() {
             parts.push(format!("filter__{}__op={}", col, op));
             if op != "is_null" && op != "is_not_null" {
-                parts.push(format!("filter__{}__value={}", col, val));
+                parts.push(format!("filter__{}__value={}", col, Sanitizer::url_encode(val)));
             }
         }
         if let Some(q) = &search_q {
-            parts.push(format!("q={}", q));
+            parts.push(format!("q={}", Sanitizer::url_encode(q)));
         }
         if !sort_col.is_empty() {
             parts.push(format!("sort={}", sort_col));
@@ -419,11 +438,11 @@ where
         for (col, (op, val)) in filters.iter() {
             parts.push(format!("filter__{}__op={}", col, op));
             if op != "is_null" && op != "is_not_null" {
-                parts.push(format!("filter__{}__value={}", col, val));
+                parts.push(format!("filter__{}__value={}", col, Sanitizer::url_encode(val)));
             }
         }
         if let Some(q) = &search_q {
-            parts.push(format!("q={}", q));
+            parts.push(format!("q={}", Sanitizer::url_encode(q)));
         }
         if parts.is_empty() {
             String::new()
@@ -443,22 +462,23 @@ where
                 class="space-y-3" {
                     div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3" {
                         @for col in repo.grid_columns().iter() {
-                            @let current_op = filters.get(col.name).map(|(op, _)| op.as_str()).unwrap_or("contains");
+                            @let current_op = filters.get(col.name).map(|(op, _)| op.as_str()).unwrap_or("");
                             @let current_val = filters.get(col.name).map(|(_, v)| v.as_str()).unwrap_or("");
                             div class="flex items-center gap-1" {
                                 label class="text-xxs font-mono text-gray-500 w-16 truncate" { (col.label) }
                                 select name=(format!("filter__{}__op", col.name)) class="bg-gray-900 border border-gray-800 rounded px-1 py-0.5 text-xs text-gray-300 focus:outline-none focus:border-emerald-500" {
-                                    option value="contains" selected=(&(current_op == "contains")) { "contains" }
-                                    option value="eq" selected=(&(current_op == "eq")) { "=" }
-                                    option value="ne" selected=(&(current_op == "ne")) { "≠" }
-                                    option value="gt" selected=(&(current_op == "gt")) { ">" }
-                                    option value="gte" selected=(&(current_op == "gte")) { "≥" }
-                                    option value="lt" selected=(&(current_op == "lt")) { "<" }
-                                    option value="lte" selected=(&(current_op == "lte")) { "≤" }
-                                    option value="startswith" selected=(&(current_op == "startswith")) { "starts" }
-                                    option value="endswith" selected=(&(current_op == "endswith")) { "ends" }
-                                    option value="is_null" selected=(&(current_op == "is_null")) { "is null" }
-                                    option value="is_not_null" selected=(&(current_op == "is_not_null")) { "not null" }
+                                    option value="" selected?[current_op.is_empty()] { "— no filter —" }
+                                    option value="contains" selected?[current_op == "contains"] { "contains" }
+                                    option value="eq" selected?[current_op == "eq"] { "=" }
+                                    option value="ne" selected?[current_op == "ne"] { "≠" }
+                                    option value="gt" selected?[current_op == "gt"] { ">" }
+                                    option value="gte" selected?[current_op == "gte"] { "≥" }
+                                    option value="lt" selected?[current_op == "lt"] { "<" }
+                                    option value="lte" selected?[current_op == "lte"] { "≤" }
+                                    option value="startswith" selected?[current_op == "startswith"] { "starts" }
+                                    option value="endswith" selected?[current_op == "endswith"] { "ends" }
+                                    option value="is_null" selected?[current_op == "is_null"] { "is null" }
+                                    option value="is_not_null" selected?[current_op == "is_not_null"] { "not null" }
                                 }
                                 input type="text"
                                     name=(format!("filter__{}__value", col.name))
@@ -603,7 +623,7 @@ where
                                 name="page_display"
                                 min="1"
                                 max=(total_pages)
-                                // value=(&(page + 1))
+                                value=(&(page + 1))
                                 hx-get=(format!("{}{}", route_path_str, jump_base_qs))
                                 hx-trigger="keyup[key=='Enter'] changed delay:500ms"
                                 hx-target="#matrix-wrapper"

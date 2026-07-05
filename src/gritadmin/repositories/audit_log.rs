@@ -4,6 +4,7 @@ use crate::GritAdmin;
 #[repository(
     entity = "crate::gritadmin::models::audit_log",
     searchable = ["table_name", "record_id", "action", "old_values", "new_values", "user_id", "timestamp"],
+    // grid_columns = ["id", "table_name", "record_id", "action", "old_values", "new_values", "user_id", "timestamp"],
     read_only = ["all"]
 )]
 pub struct AuditLogRepository {
