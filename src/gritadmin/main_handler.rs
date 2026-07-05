@@ -45,6 +45,121 @@ fn get_target_table_slug(col_name: &str) -> Option<String> {
     None
 }
 
+/// Unified row renderer shared by the main matrix grid, quick search, and (via consistent
+/// styling) the JQL result viewer. Centralizing this means inline-edit inputs, FK links,
+/// and row actions never drift out of sync between the different ways rows get fetched.
+fn render_grid_rows<R>(
+    repo: &R,
+    items: &[R::Model],
+    table_slug: &'static str,
+    show_checkbox: bool,
+) -> Markup
+where
+    R: GritRepository,
+{
+    let route_patch_str = format!("/admin/{}/update-cell", table_slug);
+    let route_delete_str = format!("/admin/{}/delete", table_slug);
+    let route_detail_str = format!("/admin/{}/", table_slug);
+
+    html! {
+        @for item in items.iter() {
+            @let record_id = repo.get_field_as_string(item, "id");
+            tr class="divide-x divide-gray-800 hover:bg-gray-900/40 transition group" {
+                @if show_checkbox {
+                    td class="p-3 text-center w-10" {
+                        input type="checkbox"
+                            name="selected_ids"
+                            value=(record_id)
+                            class="form-checkbox bg-gray-800 border-gray-700 rounded text-emerald-500 focus:ring-0 focus:ring-offset-0";
+                    }
+                }
+                @for col in repo.grid_columns().iter() {
+                    @let raw_val = repo.get_field_as_string(item, &col.name);
+                    td class="p-3 text-sm font-medium" {
+                        @if is_foreign_key_column(&col.name) && !raw_val.is_empty() {
+                            // Foreign keys always render as links (even if editable)
+                            @if let Some(target_slug) = get_target_table_slug(&col.name) {
+                                a href=(format!("/admin/{}/{}", target_slug, raw_val))
+                                hx-get=(format!("/admin/{}/{}", target_slug, raw_val))
+                                hx-target="#main-content"
+                                hx-push-url="true"
+                                class="text-blue-400 hover:text-blue-300 underline font-mono text-xs" {
+                                    (raw_val)
+                                }
+                            } @else {
+                                span class="px-2 py-1 text-gray-400 font-mono text-xs" { (raw_val) }
+                            }
+                        } @else if col.is_editable {
+                            // Regular editable field (not a foreign key)
+                            input type="text"
+                                value=(raw_val)
+                                name=(col.name)
+                                hx-patch=(route_patch_str)
+                                hx-trigger="change, keyup[key=='Enter']"
+                                hx-target="this"
+                                hx-swap="outerHTML"
+                                hx-vals=(format!("{{\"id\": \"{}\", \"column\": \"{}\", \"table_to_modify\": \"{}\"}}", record_id, col.name, table_slug))
+                                class="bg-transparent hover:bg-gray-850 focus:bg-gray-800 px-2 py-1 rounded focus:outline-none w-full border border-transparent focus:border-emerald-600 transition";
+                        } @else {
+                            // Read-only field (not a foreign key)
+                            span class="px-2 py-1 text-gray-400 font-mono text-xs" { (raw_val) }
+                        }
+                    }
+                }
+                td class="p-3 text-center w-24" {
+                    a href=(format!("{}{}", route_detail_str, record_id))
+                      hx-get=(format!("{}{}", route_detail_str, record_id))
+                      hx-target="#main-content"
+                      hx-push-url="true"
+                      class="text-blue-400/60 hover:text-blue-400 p-1 rounded hover:bg-blue-950/30 font-mono text-xs opacity-0 group-hover:opacity-100 transition duration-150 mr-2" {
+                        "👁"
+                    }
+                    button
+                        hx-delete=(route_delete_str)
+                        hx-vals=(format!("{{\"id\": \"{}\"}}", record_id))
+                        hx-target="closest tr"
+                        hx-swap="outerHTML"
+                        hx-confirm="Are you sure you want to permanently delete this record?"
+                        class="text-red-500/60 hover:text-red-400 p-1 rounded hover:bg-red-950/30 font-mono text-xs opacity-0 group-hover:opacity-100 transition duration-150" {
+                            "✕"
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Build a windowed pagination sequence of 1-indexed page numbers with `None` standing
+/// in for an ellipsis gap, e.g. current=6, total=20 → [1, …, 4, 5, 6, 7, 8, …, 20].
+fn build_page_window(current_1based: u64, total: u64) -> Vec<Option<u64>> {
+    if total <= 1 {
+        return (1..=total).map(Some).collect();
+    }
+
+    let lo = current_1based.saturating_sub(2).max(1);
+    let hi = (current_1based + 2).min(total);
+
+    let mut pages: Vec<u64> = vec![1];
+    for p in lo..=hi {
+        if p != 1 {
+            pages.push(p);
+        }
+    }
+    if *pages.last().unwrap() != total {
+        pages.push(total);
+    }
+    pages.dedup();
+
+    let mut windowed = Vec::with_capacity(pages.len() + 2);
+    for (i, &p) in pages.iter().enumerate() {
+        if i > 0 && p > pages[i - 1] + 1 {
+            windowed.push(None);
+        }
+        windowed.push(Some(p));
+    }
+    windowed
+}
+
 /// Generic dashboard view runner for listing data rows and handling infinite scrolls.
 pub async fn handle_list<R>(ctx: RequestContext, repo: R, table_slug: &'static str) -> Response
 where
@@ -156,11 +271,24 @@ where
         .get("page")
         .and_then(|v| v.parse::<u64>().ok())
         .unwrap_or(0);
-    let is_infinite_scroll = is_htmx && page > 0;
+
+    // ---- Panel target detection ----
+    // Every hx-get this handler renders links for tags itself with `partial=`, so we always
+    // know exactly how much of the page to render back, instead of guessing from `page > 0`
+    // (which broke as soon as a second page-driven feature — page-jump — was introduced):
+    //   - partial=rows   → the infinite-scroll spinner asking for the next chunk of <tr>s
+    //   - partial=matrix → sort/filter/JQL-reset/page-jump asking to replace #matrix-wrapper
+    //   - (absent)       → a top-level route visit (sidebar, command palette, FK link, or a
+    //                      plain browser load) that should render the FULL workspace view,
+    //                      JQL explorer included, whether or not it's an htmx request.
+    let partial = ctx.query.get("partial").map(|v| v.as_str()).unwrap_or("");
+    let is_row_append = partial == "rows";
+    let is_matrix_only = partial == "matrix";
     let page_size = 15;
 
     let paginator = query.paginate(db, page_size);
     let total_pages = paginator.num_pages().await.unwrap_or(0);
+    let total_items = paginator.num_items().await.unwrap_or(0);
     let items = paginator.fetch_page(page).await.unwrap_or_default();
 
     // ---- Build URLs with filters preserved ----
@@ -208,7 +336,17 @@ where
             }
         };
 
-    // Sort link helper
+    // Tags a query string (as produced by build_query_string, which may be "") with a
+    // `partial=` marker so handle_list knows how much of the page to send back.
+    let with_partial = |qs: String, mode: &str| -> String {
+        if qs.is_empty() {
+            format!("?partial={}", mode)
+        } else {
+            format!("{}&partial={}", qs, mode)
+        }
+    };
+
+    // Sort link helper — always a matrix-only refresh (replaces #matrix-wrapper)
     let sort_link = |col: &str| {
         let new_dir = if sort_col == col && sort_dir == "asc" {
             "desc"
@@ -218,77 +356,52 @@ where
         format!(
             "{}{}",
             route_path_str,
-            build_query_string(None, Some((col.to_string(), new_dir.to_string())))
+            with_partial(
+                build_query_string(None, Some((col.to_string(), new_dir.to_string()))),
+                "matrix"
+            )
         )
     };
 
-    // ---- Render rows ----
-    let rows_html = html! {
-        @for item in items.iter() {
-            @let record_id = repo.get_field_as_string(item, "id");
-            tr class="divide-x divide-gray-800 hover:bg-gray-900/40 transition group" {
-                td class="p-3 text-center w-10" {
-                    input type="checkbox"
-                        name="selected_ids"
-                        value=(record_id)
-                        class="form-checkbox bg-gray-800 border-gray-700 rounded text-emerald-500 focus:ring-0 focus:ring-offset-0";
-                }
-                @for col in repo.grid_columns().iter() {
-                    @let raw_val = repo.get_field_as_string(item, &col.name);
-                    td class="p-3 text-sm font-medium" {
-                        @if is_foreign_key_column(&col.name) && !raw_val.is_empty() {
-                            // Foreign keys always render as links (even if editable)
-                            @if let Some(target_slug) = get_target_table_slug(&col.name) {
-                                a href=(format!("/admin/{}/{}", target_slug, raw_val))
-                                hx-get=(format!("/admin/{}/{}", target_slug, raw_val))
-                                hx-target="#main-content"
-                                hx-push-url="true"
-                                class="text-blue-400 hover:text-blue-300 underline font-mono text-xs" {
-                                    (raw_val)
-                                }
-                            } @else {
-                                span class="px-2 py-1 text-gray-400 font-mono text-xs" { (raw_val) }
-                            }
-                        } @else if col.is_editable {
-                            // Regular editable field (not a foreign key)
-                            input type="text"
-                                value=(raw_val)
-                                name=(col.name)
-                                hx-patch=(route_patch_str)
-                                hx-trigger="change, keyup[key=='Enter']"
-                                hx-target="this"
-                                hx-swap="outerHTML"
-                                hx-vals=(format!("{{\"id\": \"{}\", \"column\": \"{}\", \"table_to_modify\": \"{}\"}}", record_id, col.name, table_slug))
-                                class="bg-transparent hover:bg-gray-850 focus:bg-gray-800 px-2 py-1 rounded focus:outline-none w-full border border-transparent focus:border-emerald-600 transition";
-                        } @else {
-                            // Read-only field (not a foreign key)
-                            span class="px-2 py-1 text-gray-400 font-mono text-xs" { (raw_val) }
-                        }
-                    }
-                }
-                td class="p-3 text-center w-24" {
-                    a href=(format!("{}{}", route_detail_str, record_id))
-                      hx-get=(format!("{}{}", route_detail_str, record_id))
-                      hx-target="#main-content"
-                      hx-push-url="true"
-                      class="text-blue-400/60 hover:text-blue-400 p-1 rounded hover:bg-blue-950/30 font-mono text-xs opacity-0 group-hover:opacity-100 transition duration-150 mr-2" {
-                        "👁"
-                    }
-                    button
-                        hx-delete=(route_delete_str)
-                        hx-vals=(format!("{{\"id\": \"{}\"}}", record_id))
-                        hx-target="closest tr"
-                        hx-swap="outerHTML"
-                        hx-confirm="Are you sure you want to permanently delete this record?"
-                        class="text-red-500/60 hover:text-red-400 p-1 rounded hover:bg-red-950/30 font-mono text-xs opacity-0 group-hover:opacity-100 transition duration-150" {
-                            "✕"
-                    }
-                }
+    // Page-jump link helper (pagination bar) — takes a 0-indexed target page and, like
+    // sort_link, always asks for a matrix-only refresh so it fully replaces the current
+    // page's rows instead of appending (that's the infinite-scroll spinner's job).
+    let page_url = |target_page: u64| {
+        format!(
+            "{}{}",
+            route_path_str,
+            with_partial(build_query_string(Some(target_page), None), "matrix")
+        )
+    };
+
+    // Base query string (filters + sort + partial=matrix, deliberately WITHOUT a page
+    // number) for the numeric "jump to page" input — the input supplies its own page
+    // number via hx-vals, so baking one in here would collide with it.
+    let jump_base_qs = {
+        let mut parts = Vec::new();
+        for (col, (op, val)) in filters.iter() {
+            parts.push(format!("filter__{}__op={}", col, op));
+            if op != "is_null" && op != "is_not_null" {
+                parts.push(format!("filter__{}__value={}", col, val));
             }
         }
+        if let Some(q) = &search_q {
+            parts.push(format!("q={}", q));
+        }
+        if !sort_col.is_empty() {
+            parts.push(format!("sort={}", sort_col));
+            parts.push(format!("direction={}", sort_dir));
+        }
+        parts.push("partial=matrix".to_string());
+        format!("?{}", parts.join("&"))
+    };
+
+    // ---- Render rows (shared with handle_search) ----
+    let rows_html = html! {
+        (render_grid_rows(&repo, &items, table_slug, true))
         @if (page + 1) < total_pages {
             tr id="infinite-scroll-spinner"
-                hx-get=(format!("{}{}", route_path_str, build_query_string(Some(page + 1), None)))
+                hx-get=(format!("{}{}", route_path_str, with_partial(build_query_string(Some(page + 1), None), "rows")))
                 hx-trigger="intersect once"
                 hx-target="#infinite-scroll-spinner"
                 hx-swap="outerHTML"
@@ -324,7 +437,7 @@ where
     let filter_bar = html! {
         div class="bg-gray-950 border border-gray-800 rounded-xl p-4 mb-4 shadow-xl space-y-3" {
             form
-                hx-get=(route_path_str)
+                hx-get=(format!("{}?partial=matrix", route_path_str))
                 hx-target="#matrix-wrapper"
                 hx-swap="outerHTML"
                 class="space-y-3" {
@@ -367,7 +480,7 @@ where
                             "⬇️ Export CSV"
                         }
                         a href=(route_path_str)
-                          hx-get=(route_path_str)
+                          hx-get=(format!("{}?partial=matrix", route_path_str))
                           hx-target="#matrix-wrapper"
                           hx-swap="outerHTML"
                           class="text-gray-400 hover:text-gray-300 text-xs font-mono underline" {
@@ -434,16 +547,91 @@ where
                         "Click headers to sort"
                     }
                 }
+                @if total_pages > 1 {
+                    div class="bg-gray-950 border-t border-gray-800 px-4 py-3 flex flex-wrap items-center justify-between gap-3" {
+                        span class="text-xxs font-mono text-gray-500" {
+                            "Page " span class="text-gray-300 font-semibold" { (&(page + 1)) } " of " (total_pages)
+                            " · " (total_items) " record" @if total_items != 1 { "s" }
+                        }
+                        div class="flex items-center gap-1" {
+                            @if page > 0 {
+                                a href=(page_url(page - 1))
+                                  hx-get=(page_url(page - 1))
+                                  hx-target="#matrix-wrapper"
+                                  hx-swap="outerHTML"
+                                  hx-push-url="true"
+                                  class="px-2 py-1 text-xs font-mono rounded bg-gray-800 hover:bg-gray-700 text-gray-300 transition" { "‹ Prev" }
+                            } @else {
+                                span class="px-2 py-1 text-xs font-mono rounded bg-gray-900 text-gray-700 cursor-not-allowed" { "‹ Prev" }
+                            }
+
+                            @for entry in build_page_window(page + 1, total_pages) {
+                                @match entry {
+                                    Some(p) => {
+                                        @if p == page + 1 {
+                                            span class="px-2.5 py-1 text-xs font-mono rounded bg-emerald-950/50 text-emerald-400 border border-emerald-800/60" { (p) }
+                                        } @else {
+                                            a href=(page_url(p - 1))
+                                              hx-get=(page_url(p - 1))
+                                              hx-target="#matrix-wrapper"
+                                              hx-swap="outerHTML"
+                                              hx-push-url="true"
+                                              class="px-2.5 py-1 text-xs font-mono rounded bg-gray-800 hover:bg-gray-700 text-gray-300 transition" { (p) }
+                                        }
+                                    }
+                                    None => {
+                                        span class="px-1 text-xs text-gray-600 select-none" { "…" }
+                                    }
+                                }
+                            }
+
+                            @if (page + 1) < total_pages {
+                                a href=(page_url(page + 1))
+                                  hx-get=(page_url(page + 1))
+                                  hx-target="#matrix-wrapper"
+                                  hx-swap="outerHTML"
+                                  hx-push-url="true"
+                                  class="px-2 py-1 text-xs font-mono rounded bg-gray-800 hover:bg-gray-700 text-gray-300 transition" { "Next ›" }
+                            } @else {
+                                span class="px-2 py-1 text-xs font-mono rounded bg-gray-900 text-gray-700 cursor-not-allowed" { "Next ›" }
+                            }
+
+                            span class="w-px h-5 bg-gray-800 mx-1" {}
+
+                            label class="text-xxs font-mono text-gray-500" { "Go to" }
+                            input type="number"
+                                name="page_display"
+                                min="1"
+                                max=(total_pages)
+                                // value=(&(page + 1))
+                                hx-get=(format!("{}{}", route_path_str, jump_base_qs))
+                                hx-trigger="keyup[key=='Enter'] changed delay:500ms"
+                                hx-target="#matrix-wrapper"
+                                hx-swap="outerHTML"
+                                hx-push-url="true"
+                                hx-vals=(format!("js:{{page: Math.max(0, Math.min((this.value|0) - 1, {}))}}", total_pages.saturating_sub(1)))
+                                class="w-16 bg-gray-900 border border-gray-800 rounded px-2 py-1 text-xs text-center focus:outline-none focus:border-emerald-500";
+                        }
+                    }
+                }
             }
         }
     };
 
     // ---- Return response ----
-    if is_infinite_scroll {
+    if is_row_append {
+        // Infinite-scroll spinner: append-only, just the new <tr>s.
         Response::ok(rows_html.into_string())
-    } else if is_htmx {
+    } else if is_matrix_only {
+        // Sort / filter / clear / page-jump: replace #matrix-wrapper only, leave the
+        // JQL explorer and title above it untouched.
         Response::ok(matrix_html.into_string())
     } else {
+        // Top-level route visit — sidebar nav, command palette, a FK "jump to related
+        // table" link, or a plain (non-htmx) browser load. All of these swap in the
+        // FULL workspace view, so the JQL explorer stays visible no matter how you
+        // arrived at this table. admin_shell itself still decides whether to wrap this
+        // in the full <html> shell (non-htmx) or return it bare (htmx into #main-content).
         let display_title = format!("{} Workspace Matrix", table_slug.to_uppercase());
         let route_search_str = format!("/admin/{}/search", table_slug);
 
@@ -519,44 +707,11 @@ where
         repo.search_admin_fields(&query).await.unwrap_or_default()
     };
 
-    let route_patch_str = format!("/admin/{}/update-cell", table_slug);
-    let route_delete_str = format!("/admin/{}/delete", table_slug);
-
-    let rows_html = html! {
-        @for item in items.iter() {
-            @let record_id = repo.get_field_as_string(item, "id");
-            tr class="divide-x divide-gray-800 hover:bg-gray-900/40 transition group" {
-                @for col in repo.grid_columns().iter() {
-                    td class="p-3 text-sm font-medium" {
-                        @if col.is_editable {
-                            input type="text"
-                                value=(repo.get_field_as_string(item, &col.name))
-                                name=(col.name)
-                                hx-patch=(route_patch_str)
-                                hx-trigger="change"
-                                hx-target="this"
-                                hx-swap="outerHTML"
-                                hx-vals=(format!("{{\"id\": \"{}\", \"column\": \"{}\", \"table_to_modify\": \"{}\"}}", record_id, col.name, table_slug))
-                                class="bg-transparent hover:bg-gray-850 focus:bg-gray-800 px-2 py-1 rounded focus:outline-none w-full border border-transparent focus:border-emerald-600 transition";
-                        } @else {
-                            span class="px-2 py-1 text-gray-400 font-mono text-xs" { (repo.get_field_as_string(item, &col.name)) }
-                        }
-                    }
-                }
-                td class="p-3 text-center w-20" {
-                    button
-                        hx-delete=(route_delete_str)
-                        hx-vals=(format!("{{\"id\": \"{}\"}}", record_id))
-                        hx-target="closest tr"
-                        hx-swap="outerHTML"
-                        hx-confirm="Are you sure you want to permanently delete this record?"
-                        class="text-red-500/60 hover:text-red-400 p-1 rounded hover:bg-red-950/30 font-mono text-xs opacity-0 group-hover:opacity-100 transition duration-150" {
-                            "Drop"
-                    }
-                }
-            }
-        }
-    };
+    // Same row template as the main matrix (checkbox, FK links, inline edit, view/delete
+    // icons) — previously this duplicated an older, slightly different template that was
+    // missing the checkbox column and FK linking, so bulk-select and "jump to related
+    // record" silently didn't work when rows came from quick search.
+    let rows_html = render_grid_rows(&repo, &items, table_slug, true);
     Response::ok(rows_html.into_string())
 }
 
