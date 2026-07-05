@@ -3,7 +3,7 @@ use std::str::FromStr;
 
 /// A wrapper around a String that has NOT been sanitized.
 /// It cannot be printed or converted to a byte array directly.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub struct UntrustedString(String);
 
 impl UntrustedString {
@@ -42,7 +42,7 @@ impl fmt::Display for UntrustedString {
 
 /// The inner safe string for HTML rendering.
 /// It can only be created by passing an UntrustedString through the sanitizer.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct SafeHtml(String);
 
 impl SafeHtml {

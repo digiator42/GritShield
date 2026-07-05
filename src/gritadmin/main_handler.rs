@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::database::repository::{AdminHandlerFn, GridColumn};
+use crate::database::repository::{AdminHandlerFn, GridColumn, DynamicColumnSpec};
 use crate::database::repository::{CustomQuerySpec, JoinSpec, JqlCompiler, WhereSpec};
 use crate::database::repository::{GritRepository, ADMIN_REGISTRY};
 use crate::deps::sea_orm::{
@@ -15,6 +15,7 @@ use maud::html;
 use sea_orm::ColumnTrait;
 use sea_orm::QueryFilter;
 use sea_orm::QueryResult;
+use sea_orm::sea_query::{Alias, ColumnDef, Table};
 
 /// Check if a column name looks like a foreign key.
 fn is_foreign_key_column(col_name: &str) -> bool {
@@ -690,44 +691,65 @@ where
 
         let complete_view = html! {
             div class="space-y-6" {
-                // JQL Explorer (unchanged)
-                div class="bg-gray-950 border border-gray-800 rounded-xl p-4 shadow-xl space-y-3" {
-                    div class="flex items-center justify-between" {
-                        h2 class="text-xs font-bold tracking-wider text-emerald-500 uppercase font-mono" {
-                            "Matrix Query Explorer JQL"
-                        }
-                        span class="text-xxs font-mono text-gray-500" { "Supports SELECT ... FROM ... JOIN ... WHERE ..." }
+            // JQL Explorer
+            div id="jql-container" class="bg-gray-950 border border-gray-800 rounded-xl p-4 shadow-xl space-y-3 opacity-changing" {
+                div class="flex items-center justify-between" {
+                    h2 class="text-xs font-bold tracking-wider text-emerald-500 uppercase font-mono" {
+                        "Matrix Query Explorer JQL"
                     }
-                    div class="flex gap-2" {
-                        input type="text"
-                            name="jql"
-                            placeholder="select id,title from projects join assignments on projects.id = assignments.project_id where status = 'active'"
-                            hx-get=(route_advanced_str)
-                            hx-trigger="keyup[key=='Enter']"
-                            hx-target="#matrix-wrapper"
-                            hx-swap="outerHTML"
-                            class="bg-gray-900 border border-gray-800 rounded-lg px-4 py-2.5 flex-1 text-xs font-mono text-emerald-400 focus:outline-none focus:border-emerald-500 placeholder-gray-600 transition shadow-inner";
-                        button
-                            hx-get=(route_advanced_str)
-                            hx-include="[name='jql']"
-                            hx-target="#matrix-wrapper"
-                            hx-swap="outerHTML"
-                            class="bg-emerald-950/40 border border-emerald-800/60 hover:bg-emerald-900/40 text-emerald-400 text-xs font-mono font-semibold px-4 py-2 rounded-lg transition duration-150" {
-                                "Run Query"
-                        }
+                    span class="text-xxs font-mono text-gray-500" { "Supports SELECT ... FROM ... JOIN ... WHERE ..." }
+                }
+                div class="flex gap-2" {
+                    input type="text"
+                        id="jql-input"
+                        name="jql"
+                        placeholder="select id,title from projects join assignments on projects.id = assignments.project_id where status = 'active'"
+                        hx-get=(route_advanced_str)
+                        hx-trigger="keyup[key=='Enter']"
+                        hx-target="#matrix-wrapper"
+                        hx-indicator="#jql-container"
+                        hx-swap="outerHTML"
+                        class="bg-gray-900 border border-gray-800 rounded-lg px-4 py-2.5 flex-1 text-xs font-mono text-emerald-400 focus:outline-none focus:border-emerald-500 placeholder-gray-600 transition shadow-inner";
+
+                    button
+                        hx-get=(route_advanced_str)
+                        hx-include="#jql-input"
+                        hx-target="#matrix-wrapper"
+                        hx-indicator="#jql-container"
+                        hx-swap="outerHTML"
+                        class="bg-emerald-950/40 border border-emerald-800/60 hover:bg-emerald-900/40 text-emerald-400 text-xs font-mono font-semibold px-4 py-2 rounded-lg transition duration-150 flex items-center justify-center space-x-2" {
+
+                            // Using a unique display indicator class rule protects layout boundaries from HTMX's 'block' display override
+                            span class="htmx-indicator animate-spin-custom leading-none flex items-center justify-center" {
+                                svg class="w-3 h-3 text-emerald-400" fill="none" viewBox="0 0 24 24" {
+                                    circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" {}
+                                    path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" {}
+                                }
+                            }
+
+                            span { "Run Query" }
                     }
                 }
+            }
 
-                // Title and simple search (kept for compatibility)
+                // Title and simple search
                 div class="flex justify-between items-center" {
                     h1 class="text-2xl font-bold tracking-tight" { (display_title) }
                     input type="text"
                         name="q"
                         placeholder="Basic keyword lookup..."
                         hx-get=(route_search_str)
-                        hx-trigger="keyup changed delay:300ms"
+                        hx-trigger="keyup changed delay:300ms, search"
                         hx-target="#table-body"
+                        hx-indicator="#search-spinner"
                         class="bg-gray-950 border border-gray-800 rounded-lg px-4 py-2 w-80 text-sm focus:outline-none focus:border-emerald-500 transition";
+                    // The inline absolute loader matching our targeted ID
+                    div id="search-spinner" class="htmx-indicator absolute left-2.5 top-1/2 -translate-y-1/2" {
+                        svg class="animate-spin-custom h-3.5 w-3.5 text-emerald-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" {
+                            circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" {}
+                            path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" {}
+                        }
+                    }
                 }
 
                 (matrix_html)
@@ -1083,7 +1105,12 @@ where
     }
 }
 
-fn render_results_grid<R>(headers: &[String], rows: &[QueryResult], table_slug: &str, repo: &R) -> Markup 
+fn render_results_grid<R>(
+    headers: &[String],
+    rows: &[QueryResult],
+    table_slug: &str,
+    repo: &R,
+) -> Markup
 where
     R: GritRepository,
 {
@@ -1094,23 +1121,41 @@ where
 
     // Helper closure to safely extract dynamic record row IDs across driver naming variations
     let extract_record_id = |row: &QueryResult, header: &str, col_name: &str| -> Option<String> {
-        if header.to_lowercase() == "id" || header.ends_with(".id") || col_name.to_lowercase() == "id" {
-            if let Ok(Some(val)) = row.try_get::<Option<i64>>("", header).or_else(|_| row.try_get::<Option<i64>>("", col_name)) {
+        if header.to_lowercase() == "id"
+            || header.ends_with(".id")
+            || col_name.to_lowercase() == "id"
+        {
+            if let Ok(Some(val)) = row
+                .try_get::<Option<i64>>("", header)
+                .or_else(|_| row.try_get::<Option<i64>>("", col_name))
+            {
                 return Some(val.to_string());
             }
-            if let Ok(Some(val)) = row.try_get::<Option<i32>>("", header).or_else(|_| row.try_get::<Option<i32>>("", col_name)) {
+            if let Ok(Some(val)) = row
+                .try_get::<Option<i32>>("", header)
+                .or_else(|_| row.try_get::<Option<i32>>("", col_name))
+            {
                 return Some(val.to_string());
             }
-            if let Ok(Some(val)) = row.try_get::<Option<String>>("", header).or_else(|_| row.try_get::<Option<String>>("", col_name)) {
+            if let Ok(Some(val)) = row
+                .try_get::<Option<String>>("", header)
+                .or_else(|_| row.try_get::<Option<String>>("", col_name))
+            {
                 return Some(val);
             }
-            
+
             let h_lower = header.to_lowercase();
             let c_lower = col_name.to_lowercase();
-            if let Ok(Some(val)) = row.try_get::<Option<i64>>("", &h_lower).or_else(|_| row.try_get::<Option<i64>>("", &c_lower)) {
+            if let Ok(Some(val)) = row
+                .try_get::<Option<i64>>("", &h_lower)
+                .or_else(|_| row.try_get::<Option<i64>>("", &c_lower))
+            {
                 return Some(val.to_string());
             }
-            if let Ok(Some(val)) = row.try_get::<Option<String>>("", &h_lower).or_else(|_| row.try_get::<Option<String>>("", &c_lower)) {
+            if let Ok(Some(val)) = row
+                .try_get::<Option<String>>("", &h_lower)
+                .or_else(|_| row.try_get::<Option<String>>("", &c_lower))
+            {
                 return Some(val);
             }
         }
@@ -1119,14 +1164,29 @@ where
 
     // Helper closure to safely cascade lookup cell values across type primitives and name permutations
     let extract_cell_value = |row: &QueryResult, header: &str, col_name: &str| -> String {
-        let lookups = [header, col_name, &header.to_lowercase(), &col_name.to_lowercase()];
-        
+        let lookups = [
+            header,
+            col_name,
+            &header.to_lowercase(),
+            &col_name.to_lowercase(),
+        ];
+
         for key in lookups {
-            if let Ok(Some(s)) = row.try_get::<Option<String>>("", key) { return s; }
-            if let Ok(Some(i)) = row.try_get::<Option<i64>>("", key) { return i.to_string(); }
-            if let Ok(Some(i)) = row.try_get::<Option<i32>>("", key) { return i.to_string(); }
-            if let Ok(Some(b)) = row.try_get::<Option<bool>>("", key) { return b.to_string(); }
-            if let Ok(Some(f)) = row.try_get::<Option<f64>>("", key) { return f.to_string(); }
+            if let Ok(Some(s)) = row.try_get::<Option<String>>("", key) {
+                return s;
+            }
+            if let Ok(Some(i)) = row.try_get::<Option<i64>>("", key) {
+                return i.to_string();
+            }
+            if let Ok(Some(i)) = row.try_get::<Option<i32>>("", key) {
+                return i.to_string();
+            }
+            if let Ok(Some(b)) = row.try_get::<Option<bool>>("", key) {
+                return b.to_string();
+            }
+            if let Ok(Some(f)) = row.try_get::<Option<f64>>("", key) {
+                return f.to_string();
+            }
         }
         "".to_string()
     };
@@ -1230,6 +1290,12 @@ where
                                                 class="text-red-500/60 hover:text-red-400 p-1 rounded hover:bg-red-950/30 font-mono text-xs opacity-0 group-hover:opacity-100 transition duration-150" {
                                                     "✕"
                                                 }
+                                        } @else {
+                                            // The native title attribute bypasses all CSS overflow clipping bugs entirely
+                                            div class="inline-block cursor-help select-none px-2 py-1 text-gray-600 font-mono text-xs"
+                                                title="Record ID missing: Perhaps you query on different table" {
+                                                "N/A"
+                                            }
                                         }
                                     }
                                 }
@@ -1237,7 +1303,7 @@ where
                         }
                     }
                 }
-                
+
                 div class="bg-gray-900/40 px-4 py-3 border-t border-gray-800 flex justify-between items-center text-xxs font-mono text-gray-500" {
                     span { "Metrics: " span class="text-emerald-400 font-semibold" { (rows.len()) } " entries collected successfully" }
                     a href=(format!("/admin/{}", table_slug))
@@ -1777,6 +1843,158 @@ pub async fn handle_dashboard(ctx: RequestContext) -> Response {
     }
 }
 
+
+pub async fn handle_create_table_dynamic(
+    db: &DatabaseConnection,
+    table_name: String,
+    columns: Vec<DynamicColumnSpec>,
+) -> Result<String, String> {
+    let clean_name = table_name.trim().to_lowercase();
+    if clean_name.is_empty() {
+        return Err("Table name cannot be blank".to_string());
+    }
+
+    let backend = db.get_database_backend();
+
+    // Construct the standard query builder structure abstractly
+    let mut stmt_builder = Table::create();
+    stmt_builder
+        .table(Alias::new(&clean_name))
+        .if_not_exists()
+        // Always enforce standard structural primary big integer identity
+        .col(
+            ColumnDef::new(Alias::new("id"))
+                .big_integer()
+                .not_null()
+                .auto_increment()
+                .primary_key(),
+        );
+
+    // Loop through dynamic choices requested via our developer UI panel
+    for col in &columns {
+        let col_name = col.name.trim().to_lowercase();
+        if col_name.is_empty() || col_name == "id" {
+            continue; // Skip invalid choices or explicit primary key overwrites
+        }
+
+        let mut column_definition = ColumnDef::new(Alias::new(col_name));
+
+        // Map polymorphic type abstractions directly to standard native equivalents
+        match col.r#type.as_str() {
+            "int" => { column_definition.integer().not_null(); },
+            "bool" => { column_definition.boolean().not_null(); },
+            "datetime" => { column_definition.date_time().not_null(); },
+            "float" => { column_definition.float().not_null(); },
+            _ => { column_definition.string().not_null(); } // Fallback default map string
+        };
+
+        stmt_builder.col(&mut column_definition);
+    }
+
+    // Turn abstract definitions seamlessly into engine-specific dialects
+    let sql_statement = backend.build(&stmt_builder);
+
+    match db.execute(sql_statement).await {
+        Ok(_) => {
+            // 1. Automatically derive PascalCase for the Repository struct name without external crates
+            let capitalized_repo_name = clean_name
+                .split('_')
+                .map(|word| {
+                    let mut chars = word.chars();
+                    match chars.next() {
+                        None => String::new(),
+                        Some(first_char) => first_char.to_uppercase().collect::<String>() + chars.as_str(),
+                    }
+                })
+                .collect::<String>();
+
+            // 2. Dynamic generation buffers for the model fields and annotations
+            let mut model_fields_boilerplate = String::new();
+            let mut grid_columns_list = vec![r#""id""#.to_string()];
+            let mut searchable_columns_list = Vec::new();
+
+            // All dynamic templates require a primary identity anchor field
+            model_fields_boilerplate.push_str("    #[sea_orm(primary_key)]\n    pub id: i32,\n");
+
+            // 3. Scan attributes map to build out type systems and permissions
+            for col in &columns {
+                let rust_type = match col.r#type.as_str() {
+                    "string" => {
+                        searchable_columns_list.push(format!(r#""{}""#, col.name));
+                        "String"
+                    }
+                    "int" => "i32",
+                    "bool" => "bool",
+                    "datetime" => "chrono::NaiveDateTime",
+                    "float" => "f32",
+                    _ => "String",
+                };
+
+                model_fields_boilerplate.push_str(&format!("    pub {}: {},\n", col.name, rust_type));
+                grid_columns_list.push(format!(r#""{}""#, col.name));
+            }
+
+            // 4. Construct complete static code macro definition block
+            let static_code_snippet = format!(
+r#"
+// Add this boilerplate code block to your entities module
+
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel, serde::Serialize, serde::Deserialize)]
+#[sea_orm(table_name = "{}")]
+pub struct Model {{
+{}
+}}
+
+#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+pub enum Relation {{}}
+
+impl ActiveModelBehavior for ActiveModel {{}}
+
+// GritAdmin Repository Macro Definition
+
+#[derive(GritAdmin)]
+#[repository(
+    searchable = [{}],
+    grid_columns = [{}],
+    read_only = ["id"]
+)]
+pub struct {}Repository;
+"#,
+                clean_name,
+                model_fields_boilerplate,
+                searchable_columns_list.join(", "),
+                grid_columns_list.join(", "),
+                capitalized_repo_name
+            );
+
+            // 5. Build standard styled markup payload for immediate display inside your workspace UI
+            let ui_response_markup = format!(
+                r#"<div class="space-y-4 animate-slide-in">
+                    <div class="p-4 bg-emerald-950/20 border border-emerald-800/50 text-emerald-400 rounded-xl text-sm font-medium">
+                        ✨ Successfully deployed live table <code>{}</code> with custom schema configuration matrix.
+                    </div>
+                    
+                    <div class="bg-gray-950 border border-gray-800 rounded-xl overflow-hidden shadow-2xl">
+                        <div class="bg-gray-900 px-4 py-2 border-b border-gray-800 flex justify-between items-center">
+                            <span class="text-xxs font-mono uppercase tracking-wider text-gray-500">GritAdmin Macro Architecture</span>
+                            <button onclick="navigator.clipboard.writeText(document.getElementById('generated-code-block').innerText); alert('Boilerplate copied to clipboard!');" 
+                                    class="text-xxs font-mono bg-gray-850 hover:bg-gray-800 text-gray-300 px-2 py-1 rounded transition border border-gray-700">
+                                Copy
+                            </button>
+                        </div>
+                        <pre id="generated-code-block" class="p-4 text-xs font-mono text-gray-300 overflow-x-auto selection:bg-emerald-800/40 select-text bg-gray-950/40"><code>{}</code></pre>
+                    </div>
+                </div>"#,
+                clean_name,
+                html_escape::encode_safe(&static_code_snippet)
+            );
+
+            Ok(ui_response_markup)
+        }
+        Err(e) => Err(format!("Database schema execution failure: {}", e)),
+    }
+}
+
 /// Simple CSV writer (escapes commas and quotes).
 fn export_to_csv<R>(records: &[R::Model], columns: &[GridColumn], repo: &R) -> String
 where
@@ -1810,7 +2028,7 @@ where
     csv
 }
 
-fn error_response(msg: impl ToString) -> Response {
+pub fn error_response(msg: impl ToString) -> Response {
     let msg = msg.to_string();
     let mut res = Response::new(400, Sanitizer::trust(&msg));
     // Set HX-Trigger header to show a toast
@@ -1822,7 +2040,19 @@ fn error_response(msg: impl ToString) -> Response {
     res
 }
 
-fn shield_error_response(err: ShieldError) -> Response {
+pub fn success_response(msg: impl ToString) -> Response {
+    let msg = msg.to_string();
+    let mut res = Response::new(200, Sanitizer::trust(&msg));
+
+    // Optional: Trigger a success toast using hx-trigger headers if your UI uses them
+    let trigger = format!(
+        r#"{{"showToast": {{"message": "Table created successfully!", "type": "success"}}}}"#
+    );
+    res.headers.push(("hx-trigger".to_string(), trigger));
+    res
+}
+
+pub fn shield_error_response(err: ShieldError) -> Response {
     let msg = match err {
         ShieldError::BadRequest(s) => s,
         ShieldError::NotFound => "Resource not found".to_string(),

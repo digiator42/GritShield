@@ -1,5 +1,5 @@
 use crate::core::logger::{self, log_request_summary, LogLevel};
-use crate::database::repository::AdminHandlerFn;
+use crate::database::repository::{AdminHandlerFn, DynamicColumnSpec};
 use crate::gritadmin::main_handler::*;
 use crate::protocol::form::FormData;
 use crate::protocol::request::{HttpMethod, Request};
@@ -881,6 +881,83 @@ impl Router {
                 HttpMethod::GET,
                 "/admin/api/search-palette",
                 palette_handler,
+                None,
+            );
+
+            // Map route handler registration tracking inside your system framework block
+            let create_table_handler: AdminHandlerFn = Arc::new(|ctx| {
+                Box::pin(async move {
+                    let db = &ctx
+                        .db
+                        .as_deref()
+                        .expect("Database connection is not mounted in the context");
+
+                    // 1. Parse the explicit dynamic Table Title identity
+                    let table_name = ctx
+                        .form
+                        .fields
+                        .get("table_name")
+                        .cloned()
+                        .unwrap_or_default();
+
+                    // 2. Extract the hidden structured serialized properties configuration string
+                    let columns_json = ctx
+                        .form
+                        .fields
+                        .get("columns_data")
+                        .cloned()
+                        .unwrap_or_default();
+
+                    let columns_json_trimmed = columns_json.as_str().trim();
+
+                    if columns_json_trimmed.is_empty() {
+                        return error_response(
+                            "Columns configuration specification cannot be blank.",
+                        );
+                    }
+
+                    // Defensive Guard: If the framework extraction left form percent encoding tokens intact, clean them up
+                    let sanitized_json = if columns_json_trimmed.contains('%') {
+                        urlencoding::decode(columns_json_trimmed)
+                            .map(|s| s.into_owned())
+                            .unwrap_or_else(|_| columns_json_trimmed.to_string())
+                    } else {
+                        columns_json_trimmed.to_string()
+                    };
+
+                    // Deserialize configuration map array smoothly using serde json extensions
+                    let parsed_columns: Vec<DynamicColumnSpec> =
+                        match serde_json::from_str(&sanitized_json) {
+                            Ok(cols) => cols,
+                            Err(err) => {
+                                return error_response(format!(
+                                    "Invalid attributes specification structure: {}",
+                                    err
+                                ))
+                            }
+                        };
+
+                    // 3. Execute query against updated polymorphic migration handler
+                    match handle_create_table_dynamic(db, table_name.to_string(), parsed_columns)
+                        .await
+                    {
+                        Ok(success_msg) => success_response(success_msg),
+                        Err(error_msg) => error_response(error_msg),
+                    }
+                })
+            });
+
+            info!(
+                "[DYN-ROUTER] Registering: {:<30} {} [{:<6}]",
+                "/admin/api/create-table",
+                format!("->").green(),
+                method_color("POST")
+            );
+
+            router.add_route(
+                HttpMethod::POST,
+                "/admin/api/create-table",
+                create_table_handler,
                 None,
             );
         }

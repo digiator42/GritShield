@@ -40,6 +40,13 @@ pub struct WhereSpec {
     pub value: String,
 }
 
+
+#[derive(serde::Deserialize, Debug)]
+pub struct DynamicColumnSpec {
+    pub name: String,
+    pub r#type: String,
+}
+
 /// Dynamic compiler translating structural specs into database-agnostic statements
 pub struct JqlCompiler;
 
