@@ -177,6 +177,7 @@ where
     let mut op_map: HashMap<String, String> = HashMap::new();
     let mut val_map: HashMap<String, String> = HashMap::new();
     let mut search_q = None;
+    let mut infinite_scroll = false; // On by default
 
     for (key, value) in ctx.query.iter() {
         // Decode special characters immediately at the entry boundary
@@ -192,6 +193,8 @@ where
             }
         } else if key == "q" {
             search_q = Some(decoded_value);
+        } else if key == "infinite" {
+            infinite_scroll = decoded_value.as_str() == "true";
         }
     }
 
@@ -333,6 +336,9 @@ where
             if let Some(q) = &search_q {
                 parts.push(format!("q={}", Sanitizer::url_encode(q)));
             }
+            // Retain scroll preference state across page jumps/sort actions
+            parts.push(format!("infinite={}", infinite_scroll));
+
             // Sort
             let (s_col, s_dir) = match sort_override {
                 Some((c, d)) => (c, d),
@@ -411,6 +417,7 @@ where
             parts.push(format!("sort={}", sort_col));
             parts.push(format!("direction={}", sort_dir));
         }
+        parts.push(format!("infinite={}", infinite_scroll));
         parts.push("partial=matrix".to_string());
         format!("?{}", parts.join("&"))
     };
@@ -418,7 +425,7 @@ where
     // ---- Render rows (shared with handle_search) ----
     let rows_html = html! {
         (render_grid_rows(&repo, &items, table_slug, true))
-        @if (page + 1) < total_pages {
+        @if infinite_scroll && (page + 1) < total_pages {
             tr id="infinite-scroll-spinner"
                 hx-get=(format!("{}{}", route_path_str, with_partial(build_query_string(Some(page + 1), None), "rows")))
                 hx-trigger="intersect once"
@@ -505,6 +512,20 @@ where
                           hx-swap="outerHTML"
                           class="text-gray-400 hover:text-gray-300 text-xs font-mono underline" {
                               "Clear"
+                        }
+                        // --- Scroll Toggle Control ---
+                        span class="text-gray-800 font-mono text-xs mx-1" { "|" }
+                        label class="text-xxs font-mono text-gray-500" { "Navigation:" }
+                        select name="infinite"
+                            hx-get=(format!("{}?partial=matrix", route_path_str))
+                            hx-include="closest form"
+                            hx-target="#matrix-wrapper"
+                            hx-swap="outerHTML"
+                            class="bg-gray-900 border border-gray-800 rounded px-2 py-0.5 text-xs text-gray-300 focus:outline-none focus:border-emerald-500 cursor-pointer" {
+                            
+                            // Use ?[condition] to completely omit the attribute when false
+                            option value="true" selected?[infinite_scroll] { "Infinite Scroll" }
+                            option value="false" selected?[!infinite_scroll] { "Standard Pagination" }
                         }
                         @if !filters.is_empty() || search_q.is_some() {
                             span class="text-xxs text-emerald-500 font-mono" {
