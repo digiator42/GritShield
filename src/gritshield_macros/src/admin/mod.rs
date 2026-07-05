@@ -187,11 +187,18 @@ pub fn expand_admin(input: DeriveInput) -> syn::Result<TokenStream> {
                     self.format("%Y-%m-%d %H:%M:%S").to_string()
                 }
             }
+
             impl AdminFieldParse for #crate_root::deps::chrono::NaiveDateTime {
                 fn parse_field(s: &str) -> ::std::result::Result<Self, ::std::string::String> {
-                    #crate_root::deps::chrono::NaiveDateTime::parse_from_str(s.trim(), "%Y-%m-%d %H:%M:%S")
-                        .or_else(|_| #crate_root::deps::chrono::NaiveDateTime::parse_from_str(s.trim(), "%Y-%m-%dT%H:%M:%S"))
-                        .map_err(|e| ::std::format!("Invalid datetime format: {}", e))
+                    let clean = s.trim();
+                    #crate_root::deps::chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%d %H:%M:%S")
+                        .or_else(|_| #crate_root::deps::chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%dT%H:%M:%S"))
+                        .or_else(|_| {
+                            // Fallback validation for short dates (e.g., "2026-07-05") without timestamps
+                            #crate_root::deps::chrono::NaiveDate::parse_from_str(clean, "%Y-%m-%d")
+                                .map(|d| d.and_hms_opt(0, 0, 0).unwrap())
+                        })
+                        .map_err(|e| ::std::format!("Invalid datetime format: {}. Expected formats: YYYY-MM-DD HH:MM:SS or YYYY-MM-DD", e))
                 }
             }
 
@@ -234,7 +241,7 @@ pub fn expand_admin(input: DeriveInput) -> syn::Result<TokenStream> {
                 }
 
                 #[allow(unreachable_code)]
-               async fn update_column_value(
+                async fn update_column_value(
                     &self,
                     id: Self::Id,
                     column_name: &str,

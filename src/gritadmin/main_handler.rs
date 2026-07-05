@@ -329,7 +329,11 @@ where
                 parts.push(format!("filter__{}__op={}", col, op));
                 if op != "is_null" && op != "is_not_null" {
                     // parts.push(format!("filter__{}__value={}", col, val));
-                    parts.push(format!("filter__{}__value={}", col, Sanitizer::url_encode(val)));
+                    parts.push(format!(
+                        "filter__{}__value={}",
+                        col,
+                        Sanitizer::url_encode(val)
+                    ));
                 }
             }
             // Add search q
@@ -407,7 +411,11 @@ where
         for (col, (op, val)) in filters.iter() {
             parts.push(format!("filter__{}__op={}", col, op));
             if op != "is_null" && op != "is_not_null" {
-                parts.push(format!("filter__{}__value={}", col, Sanitizer::url_encode(val)));
+                parts.push(format!(
+                    "filter__{}__value={}",
+                    col,
+                    Sanitizer::url_encode(val)
+                ));
             }
         }
         if let Some(q) = &search_q {
@@ -445,7 +453,11 @@ where
         for (col, (op, val)) in filters.iter() {
             parts.push(format!("filter__{}__op={}", col, op));
             if op != "is_null" && op != "is_not_null" {
-                parts.push(format!("filter__{}__value={}", col, Sanitizer::url_encode(val)));
+                parts.push(format!(
+                    "filter__{}__value={}",
+                    col,
+                    Sanitizer::url_encode(val)
+                ));
             }
         }
         if let Some(q) = &search_q {
@@ -522,7 +534,7 @@ where
                             hx-target="#matrix-wrapper"
                             hx-swap="outerHTML"
                             class="bg-gray-900 border border-gray-800 rounded px-2 py-0.5 text-xs text-gray-300 focus:outline-none focus:border-emerald-500 cursor-pointer" {
-                            
+
                             // Use ?[condition] to completely omit the attribute when false
                             option value="true" selected?[infinite_scroll] { "Infinite Scroll" }
                             option value="false" selected?[!infinite_scroll] { "Standard Pagination" }
@@ -995,9 +1007,18 @@ pub async fn handle_search_palette(ctx: RequestContext) -> Response {
 }
 
 /// Unified asynchronous query execution engine matching web interface requests
-pub async fn handle_custom_search_viewer(ctx: RequestContext) -> Response {
+pub async fn handle_custom_search_viewer<R>(
+    ctx: RequestContext,
+    repo: R,
+    table_slug: &'static str,
+) -> Response
+where
+    R: GritRepository + Send + Sync + 'static,
+    <R as GritRepository>::Model: Sync + Send,
+    <R as GritRepository>::Id: std::str::FromStr,
+    <<R as GritRepository>::Id as std::str::FromStr>::Err: std::fmt::Display,
+{
     let query_input = ctx.query.get("jql").map(|v| v.as_str()).unwrap_or("");
-
     let db = ctx.db.clone().expect("DB connection missing");
 
     println!("====>>query_input {:?}", query_input);
@@ -1012,11 +1033,11 @@ pub async fn handle_custom_search_viewer(ctx: RequestContext) -> Response {
         Err(err) => {
             println!("====>>Parsed {:?}", err);
             return Response::ok(html! {
-            div id="matrix-wrapper" class="bg-red-950/20 border border-red-900/50 rounded-xl p-4 font-mono text-xs text-red-400" {
-                span class="font-bold uppercase block mb-1" { "⚠️ Syntax Mapping Error:" }
-                (err)
-            }
-        }.into_string());
+                div id="matrix-wrapper" class="bg-red-950/20 border border-red-900/50 rounded-xl p-4 font-mono text-xs text-red-400" {
+                    span class="font-bold uppercase block mb-1" { "⚠️ Syntax Mapping Error:" }
+                    (err)
+                }
+            }.into_string());
         }
     };
 
@@ -1032,12 +1053,12 @@ pub async fn handle_custom_search_viewer(ctx: RequestContext) -> Response {
         Ok(query_results) => {
             if query_results.is_empty() {
                 return Response::ok(html! {
-                    div class="p-6 text-center text-gray-500 font-mono text-xs border border-gray-800 rounded-xl" {
+                    div id="matrix-wrapper" class="p-6 text-center text-gray-500 font-mono text-xs border border-gray-800 rounded-xl" {
                         "Query completed successfully. Execution returned an empty zero-row dataset."
                     }
                 }.into_string());
             }
-                println!("=====> {:?}", query_results);
+            println!("=====> {:?}", query_results);
 
             // Dynamically discover what columns came back inside the generic payload matrix
             let column_headers: Vec<String> = parsed_spec
@@ -1049,7 +1070,8 @@ pub async fn handle_custom_search_viewer(ctx: RequestContext) -> Response {
                 })
                 .collect();
 
-            let rendered_view = render_results_grid(&column_headers, &query_results);
+            // Pass down &repo into the grid to draw editable fields matching your layout rules
+            let rendered_view = render_results_grid(&column_headers, &query_results, table_slug, &repo);
             Response::ok(rendered_view.into_string())
         }
         Err(db_err) => Response::ok(html! {
@@ -1061,7 +1083,54 @@ pub async fn handle_custom_search_viewer(ctx: RequestContext) -> Response {
     }
 }
 
-fn render_results_grid(headers: &[String], rows: &[QueryResult]) -> Markup {
+fn render_results_grid<R>(headers: &[String], rows: &[QueryResult], table_slug: &str, repo: &R) -> Markup 
+where
+    R: GritRepository,
+{
+    let route_patch_str = format!("/admin/{}/update-cell", table_slug);
+    let route_delete_str = format!("/admin/{}/delete", table_slug);
+    let route_detail_str = format!("/admin/{}/", table_slug);
+    let grid_cols = repo.grid_columns();
+
+    // Helper closure to safely extract dynamic record row IDs across driver naming variations
+    let extract_record_id = |row: &QueryResult, header: &str, col_name: &str| -> Option<String> {
+        if header.to_lowercase() == "id" || header.ends_with(".id") || col_name.to_lowercase() == "id" {
+            if let Ok(Some(val)) = row.try_get::<Option<i64>>("", header).or_else(|_| row.try_get::<Option<i64>>("", col_name)) {
+                return Some(val.to_string());
+            }
+            if let Ok(Some(val)) = row.try_get::<Option<i32>>("", header).or_else(|_| row.try_get::<Option<i32>>("", col_name)) {
+                return Some(val.to_string());
+            }
+            if let Ok(Some(val)) = row.try_get::<Option<String>>("", header).or_else(|_| row.try_get::<Option<String>>("", col_name)) {
+                return Some(val);
+            }
+            
+            let h_lower = header.to_lowercase();
+            let c_lower = col_name.to_lowercase();
+            if let Ok(Some(val)) = row.try_get::<Option<i64>>("", &h_lower).or_else(|_| row.try_get::<Option<i64>>("", &c_lower)) {
+                return Some(val.to_string());
+            }
+            if let Ok(Some(val)) = row.try_get::<Option<String>>("", &h_lower).or_else(|_| row.try_get::<Option<String>>("", &c_lower)) {
+                return Some(val);
+            }
+        }
+        None
+    };
+
+    // Helper closure to safely cascade lookup cell values across type primitives and name permutations
+    let extract_cell_value = |row: &QueryResult, header: &str, col_name: &str| -> String {
+        let lookups = [header, col_name, &header.to_lowercase(), &col_name.to_lowercase()];
+        
+        for key in lookups {
+            if let Ok(Some(s)) = row.try_get::<Option<String>>("", key) { return s; }
+            if let Ok(Some(i)) = row.try_get::<Option<i64>>("", key) { return i.to_string(); }
+            if let Ok(Some(i)) = row.try_get::<Option<i32>>("", key) { return i.to_string(); }
+            if let Ok(Some(b)) = row.try_get::<Option<bool>>("", key) { return b.to_string(); }
+            if let Ok(Some(f)) = row.try_get::<Option<f64>>("", key) { return f.to_string(); }
+        }
+        "".to_string()
+    };
+
     html! {
         div id="matrix-wrapper" class="space-y-4" {
             div class="text-xxs font-mono uppercase tracking-wider text-emerald-500 font-bold" {
@@ -1072,27 +1141,110 @@ fn render_results_grid(headers: &[String], rows: &[QueryResult]) -> Markup {
                     thead class="bg-gray-900/80 border-b border-gray-800 text-xs font-semibold uppercase tracking-wider text-gray-400 font-mono" {
                         tr class="divide-x divide-gray-800" {
                             @for header in headers {
-                                th class="p-3" { (header) }
+                                th class="p-3 text-xs font-semibold text-gray-400" { (header) }
+                            }
+                            @if headers.iter().any(|h| {
+                                let c = if let Some(idx) = h.rfind('.') { &h[idx + 1..] } else { h.as_str() };
+                                c.to_lowercase() == "id"
+                            }) {
+                                th class="p-3 text-center w-24 text-emerald-400 font-bold font-mono text-xs" { "Actions" }
                             }
                         }
                     }
-                    tbody id="table-body" class="divide-y divide-gray-800 text-sm font-medium text-gray-300 font-mono text-xs" {
+                    tbody id="table-body" class="divide-y divide-gray-850 text-xs font-medium text-gray-300 font-mono" {
                         @for row in rows {
-                            tr class="divide-x divide-gray-800 hover:bg-gray-900/40 transition" {
+                            // 1. Simplify ID tracking: extract substring and find the row ID value
+                            @let record_id = {
+                                let mut found_id = "null".to_string();
+                                for h in headers {
+                                    let c_name = if let Some(idx) = h.rfind('.') { &h[idx + 1..] } else { h.as_str() };
+                                    if c_name.to_lowercase() == "id" {
+                                        if let Some(id_str) = extract_record_id(row, h, c_name) {
+                                            found_id = id_str;
+                                            break;
+                                        }
+                                    }
+                                }
+                                found_id
+                            };
+
+                            tr class="divide-x divide-gray-800 hover:bg-gray-900/40 transition group" {
                                 @for header in headers {
-                                    // Extract fields out of returned queries by simple positional index configuration or labels
-                                    @let field_val = row
-                                        .try_get_by_index::<String>(headers.iter().position(|h| h == header).unwrap_or(0))
-                                        .unwrap_or_else(|_| "NULL".to_string());
-                                    td class="p-3" { (field_val) }
+                                    @let col_name = if let Some(idx) = header.rfind('.') { &header[idx + 1..] } else { header.as_str() };
+                                    @let cell_val = extract_cell_value(row, header, col_name);
+
+                                    // 2. Simplify Editability: check if the short column name is registered as editable
+                                    @let is_editable = grid_cols.iter().any(|c| {
+                                        c.name.to_lowercase() == col_name.to_lowercase() && c.is_editable
+                                    });
+
+                                    td class="p-3 text-sm font-medium" {
+                                        @if is_foreign_key_column(col_name) && !cell_val.is_empty() {
+                                            @if let Some(target_slug) = get_target_table_slug(col_name) {
+                                                a href=(format!("/admin/{}/{}", target_slug, cell_val))
+                                                   hx-get=(format!("/admin/{}/{}", target_slug, cell_val))
+                                                   hx-target="#main-content"
+                                                   hx-push-url="true"
+                                                   class="text-blue-400 hover:text-blue-300 underline font-mono text-xs" {
+                                                    (cell_val)
+                                                }
+                                            } @else {
+                                                span class="px-2 py-1 text-gray-400 font-mono text-xs" { (cell_val) }
+                                            }
+                                        } @else if is_editable && record_id != "null" {
+                                            input type="text"
+                                                value=(cell_val)
+                                                name=(col_name)
+                                                hx-patch=(route_patch_str)
+                                                hx-trigger="change, keyup[key=='Enter']"
+                                                hx-target="this"
+                                                hx-swap="outerHTML"
+                                                hx-vals=(format!("{{\"id\": \"{}\", \"column\": \"{}\", \"table_to_modify\": \"{}\"}}", record_id, col_name, table_slug))
+                                                class="bg-transparent hover:bg-gray-850 focus:bg-gray-800 px-2 py-1 rounded focus:outline-none w-full border border-transparent focus:border-emerald-600 transition";
+                                        } @else {
+                                            span class="px-2 py-1 text-gray-400 font-mono text-xs" { (cell_val) }
+                                        }
+                                    }
+                                }
+
+                                // 3. Actions context visibility
+                                @if headers.iter().any(|h| {
+                                    let c = if let Some(idx) = h.rfind('.') { &h[idx + 1..] } else { h.as_str() };
+                                    c.to_lowercase() == "id"
+                                }) {
+                                    td class="p-3 text-center w-24 whitespace-nowrap" {
+                                        @if record_id != "null" {
+                                            a href=(format!("{}{}", route_detail_str, record_id))
+                                              hx-get=(format!("{}{}", route_detail_str, record_id))
+                                              hx-target="#main-content"
+                                              hx-push-url="true"
+                                              class="text-blue-400/60 hover:text-blue-400 p-1 rounded hover:bg-blue-950/30 font-mono text-xs opacity-0 group-hover:opacity-100 transition duration-150 mr-2" {
+                                                "👁"
+                                              }
+                                            button
+                                                hx-delete=(route_delete_str)
+                                                hx-vals=(format!("{{\"id\": \"{}\"}}", record_id))
+                                                hx-target="closest tr"
+                                                hx-swap="outerHTML"
+                                                hx-confirm="Are you sure you want to permanently delete this record?"
+                                                class="text-red-500/60 hover:text-red-400 p-1 rounded hover:bg-red-950/30 font-mono text-xs opacity-0 group-hover:opacity-100 transition duration-150" {
+                                                    "✕"
+                                                }
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
-                    div class="bg-gray-900/40 px-4 py-2 border-t border-gray-850 flex justify-between items-center text-xxs font-mono text-gray-500" {
-                        span { "Metrics: " (rows.len()) " entries collected successfully" }
-                        a href="#" hx-get=(format!("/admin/{}", "table_slug")) hx-target="#matrix-wrapper" hx-swap="outerHTML" class="text-emerald-500 hover:underline" { "Reset Grid Matrix ↺" }
-                    }
+                }
+                
+                div class="bg-gray-900/40 px-4 py-3 border-t border-gray-800 flex justify-between items-center text-xxs font-mono text-gray-500" {
+                    span { "Metrics: " span class="text-emerald-400 font-semibold" { (rows.len()) } " entries collected successfully" }
+                    a href=(format!("/admin/{}", table_slug))
+                       hx-get=(format!("/admin/{}?partial=matrix", table_slug))
+                       hx-target="#matrix-wrapper"
+                       hx-swap="outerHTML"
+                       class="text-emerald-500 hover:underline font-semibold font-mono" { "Reset Grid Matrix ↺" }
                 }
             }
         }
