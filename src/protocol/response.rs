@@ -47,10 +47,22 @@ impl Cookie {
     }
 }
 
+#[derive(Clone)]
 pub enum ResponseBody {
     Html(SafeHtml),
     StaticFile(String),
     Json(String),
+}
+
+// impl as_str to ResponseBody
+impl ResponseBody {
+    pub fn as_str(&self) -> Option<&str> {
+        match self {
+            ResponseBody::Html(safe_html) => std::str::from_utf8(safe_html.as_bytes()).ok(),
+            ResponseBody::StaticFile(_) => None,
+            ResponseBody::Json(json_str) => Some(json_str.as_str()),
+        }
+    }
 }
 
 /// Framework extension trait to safely convert multiple variants into structural response bodies
@@ -154,6 +166,8 @@ pub struct Response {
     pub cookies: Vec<Cookie>,
     pub body: ResponseBody,
 }
+
+
 
 impl Response {
     pub fn new(status: u16, body: SafeHtml) -> Self {

@@ -181,7 +181,7 @@ pub fn admin_shell(title: &str, content: Markup, is_htmx: bool) -> Response {
                             // Button to open the luxury dynamic builder modal
                             button 
                                 onclick="document.getElementById('schema-modal').classList.remove('hidden')"
-                                class="bg-emerald-950/40 border border-emerald-800/60 hover:bg-emerald-900/40 text-emerald-400 text-xxs font-mono font-semibold px-3 py-1.5 rounded-lg transition duration-150 shadow-md" {
+                                class="bg-emerald-950/40 w-full border border-emerald-800/60 hover:bg-emerald-900/40 text-emerald-400 text-xxs font-mono font-semibold px-3 py-1.5 rounded-lg transition duration-150 shadow-md" {
                                 "Create Table"
                             }
                         }

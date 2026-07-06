@@ -42,7 +42,7 @@ impl fmt::Display for UntrustedString {
 
 /// The inner safe string for HTML rendering.
 /// It can only be created by passing an UntrustedString through the sanitizer.
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct SafeHtml(String);
 
 impl SafeHtml {

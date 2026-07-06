@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
-use crate::database::repository::{AdminHandlerFn, GridColumn, DynamicColumnSpec};
+use crate::database::repository::{
+    AdminHandlerFn, DynamicColumnSpec, GridColumn, ACTIONS_REGISTRY,
+};
 use crate::database::repository::{CustomQuerySpec, JoinSpec, JqlCompiler, WhereSpec};
 use crate::database::repository::{GritRepository, ADMIN_REGISTRY};
 use crate::deps::sea_orm::{
@@ -8,14 +10,15 @@ use crate::deps::sea_orm::{
     PaginatorTrait, QueryOrder, Statement, TransactionTrait,
 };
 use crate::gritadmin::models::audit_log;
+use crate::protocol::response::IntoResponseBody;
 use crate::security::errors::ShieldError;
 use crate::security::xss::UntrustedString;
 use crate::{admin_shell, prelude::*};
 use maud::html;
+use sea_orm::sea_query::{Alias, ColumnDef, Table};
 use sea_orm::ColumnTrait;
 use sea_orm::QueryFilter;
 use sea_orm::QueryResult;
-use sea_orm::sea_query::{Alias, ColumnDef, Table};
 
 /// Check if a column name looks like a foreign key.
 fn is_foreign_key_column(col_name: &str) -> bool {
@@ -61,6 +64,11 @@ where
     let route_patch_str = format!("/admin/{}/update-cell", table_slug);
     let route_delete_str = format!("/admin/{}/delete", table_slug);
     let route_detail_str = format!("/admin/{}/", table_slug);
+
+    println!("===== ACTIONS_REGISTRY for table '{}': {:?}", table_slug, {
+        let registry = ACTIONS_REGISTRY.lock().unwrap();
+        registry.get(table_slug).map(|v| v.len()).unwrap_or(0)
+    });
 
     html! {
         @for item in items.iter() {
@@ -123,6 +131,33 @@ where
                         hx-confirm="Are you sure you want to permanently delete this record?"
                         class="text-red-500/60 hover:text-red-400 p-1 rounded hover:bg-red-950/30 font-mono text-xs opacity-0 group-hover:opacity-100 transition duration-150" {
                             "✕"
+                    }
+
+                    // ---- Custom Actions Dropdown ----
+                    @if let Some(actions) = ACTIONS_REGISTRY.lock().unwrap().get(table_slug) {
+                        div class="relative inline-block group-hover:opacity-100 opacity-0 transition duration-150" {
+                            button
+                                class="text-gray-400 hover:text-gray-300 font-mono text-xs p-1"
+                                onclick="this.nextElementSibling.classList.toggle('hidden')" {
+                                    "⚡"
+                                }
+                            div class="hidden absolute right-0 mt-1 w-36 bg-gray-950 border border-gray-800 rounded-lg shadow-xl z-10" {
+                                @for action in actions {
+                                    button
+                                        hx-post=(format!("/admin/{}/action/{}", table_slug, action.label))
+                                        hx-vals=(format!("{{\"ids\": [\"{}\"]}}", record_id))
+                                        hx-target="this"
+                                        hx-swap="none"
+                                        hx-confirm=(format!("Execute '{}' on this record?", action.label))
+                                        class=(format!("block w-full text-left px-3 py-2 text-xs font-mono hover:bg-gray-800/60 transition {}", action.color)) {
+                                            @if let Some(icon) = action.icon {
+                                                (icon) " "
+                                            }
+                                            (action.label)
+                                        }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -1843,7 +1878,6 @@ pub async fn handle_dashboard(ctx: RequestContext) -> Response {
     }
 }
 
-
 pub async fn handle_create_table_dynamic(
     db: &DatabaseConnection,
     table_name: String,
@@ -1881,11 +1915,21 @@ pub async fn handle_create_table_dynamic(
 
         // Map polymorphic type abstractions directly to standard native equivalents
         match col.r#type.as_str() {
-            "int" => { column_definition.integer().not_null(); },
-            "bool" => { column_definition.boolean().not_null(); },
-            "datetime" => { column_definition.date_time().not_null(); },
-            "float" => { column_definition.float().not_null(); },
-            _ => { column_definition.string().not_null(); } // Fallback default map string
+            "int" => {
+                column_definition.integer().not_null();
+            }
+            "bool" => {
+                column_definition.boolean().not_null();
+            }
+            "datetime" => {
+                column_definition.date_time().not_null();
+            }
+            "float" => {
+                column_definition.float().not_null();
+            }
+            _ => {
+                column_definition.string().not_null();
+            } // Fallback default map string
         };
 
         stmt_builder.col(&mut column_definition);
@@ -1896,19 +1940,21 @@ pub async fn handle_create_table_dynamic(
 
     match db.execute(sql_statement).await {
         Ok(_) => {
-            // 1. Automatically derive PascalCase for the Repository struct name without external crates
+            // Automatically derive PascalCase for the Repository struct name without external crates
             let capitalized_repo_name = clean_name
                 .split('_')
                 .map(|word| {
                     let mut chars = word.chars();
                     match chars.next() {
                         None => String::new(),
-                        Some(first_char) => first_char.to_uppercase().collect::<String>() + chars.as_str(),
+                        Some(first_char) => {
+                            first_char.to_uppercase().collect::<String>() + chars.as_str()
+                        }
                     }
                 })
                 .collect::<String>();
 
-            // 2. Dynamic generation buffers for the model fields and annotations
+            // Dynamic generation buffers for the model fields and annotations
             let mut model_fields_boilerplate = String::new();
             let mut grid_columns_list = vec![r#""id""#.to_string()];
             let mut searchable_columns_list = Vec::new();
@@ -1916,7 +1962,7 @@ pub async fn handle_create_table_dynamic(
             // All dynamic templates require a primary identity anchor field
             model_fields_boilerplate.push_str("    #[sea_orm(primary_key)]\n    pub id: i32,\n");
 
-            // 3. Scan attributes map to build out type systems and permissions
+            // Scan attributes map to build out type systems and permissions
             for col in &columns {
                 let rust_type = match col.r#type.as_str() {
                     "string" => {
@@ -1930,13 +1976,14 @@ pub async fn handle_create_table_dynamic(
                     _ => "String",
                 };
 
-                model_fields_boilerplate.push_str(&format!("    pub {}: {},\n", col.name, rust_type));
+                model_fields_boilerplate
+                    .push_str(&format!("    pub {}: {},\n", col.name, rust_type));
                 grid_columns_list.push(format!(r#""{}""#, col.name));
             }
 
-            // 4. Construct complete static code macro definition block
+            // Construct complete static code macro definition block
             let static_code_snippet = format!(
-r#"
+                r#"
 // Add this boilerplate code block to your entities module
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, serde::Serialize, serde::Deserialize)]
@@ -1977,8 +2024,8 @@ pub struct {}Repository;
                     <div class="bg-gray-950 border border-gray-800 rounded-xl overflow-hidden shadow-2xl">
                         <div class="bg-gray-900 px-4 py-2 border-b border-gray-800 flex justify-between items-center">
                             <span class="text-xxs font-mono uppercase tracking-wider text-gray-500">GritAdmin Macro Architecture</span>
-                            <button onclick="navigator.clipboard.writeText(document.getElementById('generated-code-block').innerText); alert('Boilerplate copied to clipboard!');" 
-                                    class="text-xxs font-mono bg-gray-850 hover:bg-gray-800 text-gray-300 px-2 py-1 rounded transition border border-gray-700">
+                            <button onclick="copyToClipboard(this, 'generated-code-block')"                        
+                                class="text-xxs font-mono bg-gray-850 hover:bg-gray-800 text-gray-300 px-2 py-1 rounded transition border border-gray-700">
                                 Copy
                             </button>
                         </div>
@@ -1992,6 +2039,97 @@ pub struct {}Repository;
             Ok(ui_response_markup)
         }
         Err(e) => Err(format!("Database schema execution failure: {}", e)),
+    }
+}
+
+/// Execute a custom action on selected records (type-erased)
+pub async fn handle_custom_action(ctx: RequestContext) -> Response {
+    // Get the full path from the request
+    let path = ctx.req.uri.clone();
+
+    // Parse table_slug from the path: /admin/{table_slug}/action/{action_name}
+    let path_parts: Vec<&str> = path.trim_start_matches("/admin/").split('/').collect();
+
+    // Expect: [table_slug, "action", action_name] or [table_slug, "bulk-action", action_name]
+    let table_slug = if path_parts.len() >= 3 {
+        path_parts[0].to_string()
+    } else {
+        return error_response("Invalid action URL format");
+    };
+
+    let action_name = match ctx.params.get("action_name").map(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => {
+            // Try parsing from path as fallback
+            if path_parts.len() >= 3 {
+                path_parts[2].to_string()
+            } else {
+                return error_response("Missing action name");
+            }
+        }
+    };
+
+    // Get the action from the registry
+    let action = {
+        let registry = ACTIONS_REGISTRY.lock().unwrap();
+        registry
+            .get(table_slug.as_str())
+            .and_then(|actions| actions.iter().find(|a| a.label == action_name))
+            .cloned()
+    };
+
+    match action {
+        Some(action) => {
+            let mut res = (action.action)(ctx).await;
+
+            // Extract the raw string response body
+            let dev_res = res.body.clone();
+            let raw_body_str = dev_res.as_str().unwrap_or("Action completed successfully");
+
+            // Strip HTML tags so the toast gets a clean text notification message
+            let mut clean_msg = String::new();
+            let mut in_tag = false;
+            for c in raw_body_str.chars() {
+                if c == '<' {
+                    in_tag = true;
+                    continue;
+                }
+                if c == '>' {
+                    in_tag = false;
+                    continue;
+                }
+                if !in_tag {
+                    clean_msg.push(c);
+                }
+            }
+
+            let final_msg = clean_msg.trim();
+
+            let trigger = format!(
+                r#"{{"showToast": {{"message": "{}", "type": "success"}}}}"#,
+                final_msg.replace('"', "\\\"")
+            );
+
+            println!("===== Triggering HTMX toast: {}", trigger);
+            res.headers.push(("hx-trigger".to_string(), trigger));
+
+            // Wipe the body layout so it doesn't try to render on top of your main dashboard structure
+            let (body, _) = "".to_string().convert();
+            res.body = body;
+            res
+        }
+        None => error_response(format!(
+            "Action '{}' not found for table '{}' (available: {:?})",
+            action_name,
+            table_slug,
+            {
+                let registry = ACTIONS_REGISTRY.lock().unwrap();
+                registry
+                    .get(table_slug.as_str())
+                    .map(|v| v.iter().map(|a| a.label).collect::<Vec<_>>())
+                    .unwrap_or_default()
+            }
+        )),
     }
 }
 

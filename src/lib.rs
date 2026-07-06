@@ -20,6 +20,7 @@ pub mod gritadmin;
 #[cfg(feature = "admin")]
 pub use gritadmin::shell::admin_shell;
 
+pub use gritshield_macros::action;
 pub use gritshield_macros::controller;
 pub use gritshield_macros::GritAdmin;
 pub use gritshield_macros::GritRelation;
@@ -68,6 +69,7 @@ pub mod prelude {
     pub use crate::core::server::run_server;
 
     // Re-export macros for the prelude
+    pub use crate::action;
     pub use crate::controller;
     pub use crate::GritAdmin;
     pub use crate::GritRelation;

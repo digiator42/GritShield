@@ -35,6 +35,11 @@ pub fn derive_grit_relation(input: TokenStream) -> TokenStream {
 // ATTRIBUTE MACROS (Controllers & Endpoints)
 // ==========================================
 #[proc_macro_attribute]
+pub fn action(attr: TokenStream, item: TokenStream) -> TokenStream {
+    admin::action::expand_action(attr, item)
+}
+
+#[proc_macro_attribute]
 pub fn controller(attr: TokenStream, item: TokenStream) -> TokenStream {
     routing::expand_controller(attr.into(), item.into())
         .unwrap_or_else(|e| e.to_compile_error())

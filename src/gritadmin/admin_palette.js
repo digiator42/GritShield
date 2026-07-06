@@ -67,42 +67,52 @@ document.addEventListener('showToast', function(e) {
 });
 
 function addSchemaColumnRow() {
-            const track = document.getElementById('dynamic-column-track');
-            const rowId = 'col-row-' + Date.now();
-            
-            const rowHtml = `
-                <div id="${rowId}" class="flex gap-3 items-center bg-gray-900/60 border border-gray-800 p-2 rounded-lg animate-slide-in group">
-                    <input type="text" placeholder="column_name" oninput="syncSchemaJson()" class="schema-col-name bg-gray-950 border border-gray-800 rounded px-3 py-1.5 flex-1 text-xs font-mono text-gray-200 focus:outline-none focus:border-blue-500 placeholder-gray-700" required />
-                    
-                    <select onchange="syncSchemaJson()" class="schema-col-type bg-gray-950 border border-gray-800 rounded px-2 py-1.5 w-36 text-xs font-mono text-gray-300 focus:outline-none focus:border-blue-500">
-                        <option value="string">String / Text</option>
-                        <option value="int">Integer</option>
-                        <option value="bool">Boolean</option>
-                        <option value="datetime">DateTime</option>
-                        <option value="float">Float / Real</option>
-                    </select>
-                    
-                    <button type="button" onclick="document.getElementById('${rowId}').remove(); syncSchemaJson();" class="w-8 h-8 text-rose-500 hover:text-rose-400 hover:bg-rose-950/20 rounded flex items-center justify-center transition font-mono text-xs">✕</button>
-                </div>
-            `;
-            track.insertAdjacentHTML('beforeend', rowHtml);
-            syncSchemaJson();
-        }
+  const track = document.getElementById('dynamic-column-track');
+  const rowId = 'col-row-' + Date.now();
+  
+  const rowHtml = `
+      <div id="${rowId}" class="flex gap-3 items-center bg-gray-900/60 border border-gray-800 p-2 rounded-lg animate-slide-in group">
+          <input type="text" placeholder="column_name" oninput="syncSchemaJson()" class="schema-col-name bg-gray-950 border border-gray-800 rounded px-3 py-1.5 flex-1 text-xs font-mono text-gray-200 focus:outline-none focus:border-blue-500 placeholder-gray-700" required />
+          
+          <select onchange="syncSchemaJson()" class="schema-col-type bg-gray-950 border border-gray-800 rounded px-2 py-1.5 w-36 text-xs font-mono text-gray-300 focus:outline-none focus:border-blue-500">
+              <option value="string">String / Text</option>
+              <option value="int">Integer</option>
+              <option value="bool">Boolean</option>
+              <option value="datetime">DateTime</option>
+              <option value="float">Float / Real</option>
+          </select>
+          
+          <button type="button" onclick="document.getElementById('${rowId}').remove(); syncSchemaJson();" class="w-8 h-8 text-rose-500 hover:text-rose-400 hover:bg-rose-950/20 rounded flex items-center justify-center transition font-mono text-xs">✕</button>
+      </div>
+  `;
+  track.insertAdjacentHTML('beforeend', rowHtml);
+  syncSchemaJson();
+}
 
-        function syncSchemaJson() {
-            const names = document.querySelectorAll('.schema-col-name');
-            const types = document.querySelectorAll('.schema-col-type');
-            const columns = [];
-            
-            for(let i = 0; i < names.length; i++) {
-                // FIXED: Changed 0-8 to 0-9 so names containing '9' do not get cleared out
-                const nameVal = names[i].value.trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
-                if(nameVal) {
-                    columns.push({ name: nameVal, type: types[i].value });
-                }
-            }
-            document.getElementById('columns_data_input').value = JSON.stringify(columns);
-        }
-        
-        // Setup initial row safely
-        addSchemaColumnRow();
+function syncSchemaJson() {
+  const names = document.querySelectorAll('.schema-col-name');
+  const types = document.querySelectorAll('.schema-col-type');
+  const columns = [];
+  
+  for(let i = 0; i < names.length; i++) {
+      // FIXED: Changed 0-8 to 0-9 so names containing '9' do not get cleared out
+      const nameVal = names[i].value.trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
+      if(nameVal) {
+          columns.push({ name: nameVal, type: types[i].value });
+      }
+  }
+  document.getElementById('columns_data_input').value = JSON.stringify(columns);
+}
+
+// Setup initial row safely
+addSchemaColumnRow();
+
+function copyToClipboard(button, blockId) {
+    const text = document.getElementById(blockId).innerText;
+    navigator.clipboard.writeText(text);
+    
+    // Trigger your existing event listener
+    document.dispatchEvent(new CustomEvent('showToast', {
+        detail: { message: 'Code copied to clipboard!', type: 'success' }
+    }));
+}

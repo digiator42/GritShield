@@ -23,6 +23,7 @@ pub enum HttpMethod {
 pub struct Request {
     pub method: HttpMethod,
     pub path: String,
+    pub uri: String,
     pub headers: HashMap<String, String>,
     pub body: Vec<u8>,
     pub query: HashMap<String, UntrustedString>,
@@ -33,6 +34,7 @@ impl Request {
         Request {
             method: HttpMethod::GET,
             path: String::new(),
+            uri: String::new(),
             headers: HashMap::new(),
             body: Vec::new(),
             query: HashMap::new(),
@@ -104,6 +106,8 @@ impl Request {
             full_path
         };
 
+        let uri = path.clone();
+
         // Parse headers
         let mut headers = HashMap::new();
 
@@ -119,6 +123,7 @@ impl Request {
         Ok(Request {
             method,
             path,
+            uri,
             headers,
             body,
             query: query_params,

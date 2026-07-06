@@ -201,6 +201,34 @@ impl CustomQuerySpec {
 pub type AdminHandlerFn =
     Arc<dyn Fn(RequestContext) -> Pin<Box<dyn Future<Output = Response> + Send>> + Send + Sync>;
 
+
+// ----------- action --------------
+
+/// A custom action that can be executed on one or more records.
+pub struct CustomAction {
+    pub label: &'static str,
+    pub icon: Option<&'static str>,
+    pub color: &'static str, // CSS color class (e.g., "text-emerald-400", "text-amber-400")
+    pub action: AdminHandlerFn,
+}
+
+/// Registry for custom actions (per table)
+pub type ActionRegistry = HashMap<&'static str, Vec<Arc<CustomAction>>>;
+
+// Global action registry
+pub static ACTIONS_REGISTRY: Lazy<Mutex<ActionRegistry>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+
+/// Register a custom action for a specific table
+pub fn register_action(table_slug: &'static str, action: CustomAction) {
+    if let Ok(mut registry) = ACTIONS_REGISTRY.lock() {
+        registry
+            .entry(table_slug)
+            .or_insert_with(Vec::new)
+            .push(Arc::new(action));
+    }
+}
+
 #[derive(Clone)]
 pub struct ModelMetadata {
     pub table_name: &'static str,

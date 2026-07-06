@@ -855,6 +855,17 @@ impl Router {
                 );
             }
 
+            // Custom action routes
+            for (table_slug, _) in registry.iter() {
+                let action_path = format!("/admin/{}/action/:action_name", table_slug);
+                router.add_route(
+                    HttpMethod::POST,
+                    Box::leak(action_path.into_boxed_str()),
+                    handle_custom_action, // Need to handle generics
+                    None,
+                );
+            }
+
             // Dashboard route
             let dashboard_handler: AdminHandlerFn = Arc::new(|ctx| Box::pin(handle_dashboard(ctx)));
 
@@ -883,6 +894,44 @@ impl Router {
                 palette_handler,
                 None,
             );
+
+            // Custom action routes
+            for (table_slug, _) in registry.iter() {
+                let action_path = format!("/admin/{}/action/:action_name", table_slug);
+                let path = Box::leak(action_path.into_boxed_str());
+
+                info!(
+                    "[DYN-ROUTER] Registering: {:<30} {} [{:<6}]",
+                    path,
+                    "->".green(),
+                    method_color("POST")
+                );
+
+                router.add_route(
+                    HttpMethod::POST,
+                    path,
+                    handle_custom_action, // Single-parameter function
+                    None,
+                );
+
+                // Bulk action route
+                let bulk_action_path = format!("/admin/{}/bulk-action/:action_name", table_slug);
+                let bulk_path = Box::leak(bulk_action_path.into_boxed_str());
+
+                info!(
+                    "[DYN-ROUTER] Registering: {:<30} {} [{:<6}]",
+                    bulk_path,
+                    "->".green(),
+                    method_color("POST")
+                );
+
+                router.add_route(
+                    HttpMethod::POST,
+                    bulk_path,
+                    handle_custom_action, // Same handler
+                    None,
+                );
+            }
 
             // Map route handler registration tracking inside your system framework block
             let create_table_handler: AdminHandlerFn = Arc::new(|ctx| {

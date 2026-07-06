@@ -5,6 +5,7 @@ use quote::ToTokens;
 use syn::{DeriveInput, LitStr, Path};
 
 mod ctor_registry;
+pub mod action;
 
 pub fn expand_admin(input: DeriveInput) -> syn::Result<TokenStream> {
     let name = &input.ident;
