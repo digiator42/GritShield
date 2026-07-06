@@ -4,6 +4,7 @@ use crate::{
     security::xss::{SafeHtml, Sanitizer},
     utils::fs,
 };
+use serde::Serialize;
 
 #[derive(Debug, Clone)]
 pub enum SameSite {
@@ -70,7 +71,7 @@ pub trait IntoResponseBody {
     fn convert(self) -> (ResponseBody, String); // Returns (Body variant, Default Content-Type)
 }
 
-// 1. Support Safe HTML (Maud markup/sanitizer objects)
+// Support Safe HTML (Maud markup/sanitizer objects)
 impl IntoResponseBody for SafeHtml {
     fn convert(self) -> (ResponseBody, String) {
         (
@@ -100,8 +101,12 @@ impl IntoResponseBody for &'static str {
     }
 }
 
-// 3. Create a wrapper struct specifically for explicit JSON data structures
+// Create a wrapper struct specifically for explicit JSON data structures
+#[derive(Serialize)] 
 pub struct JsonPayload<T>(pub T);
+
+#[derive(Serialize)] 
+pub struct HtmlPayload<T>(pub T);
 
 impl<T: serde::Serialize> IntoResponseBody for JsonPayload<T> {
     fn convert(self) -> (ResponseBody, String) {
@@ -114,7 +119,7 @@ impl<T: serde::Serialize> IntoResponseBody for JsonPayload<T> {
     }
 }
 
-// 1. Support owned HashMaps, e.g., HashMap<K, V>
+// Support owned HashMaps, e.g., HashMap<K, V>
 impl<K, V> IntoResponseBody for HashMap<K, V>
 where
     K: serde::Serialize + std::hash::Hash + Eq,
@@ -130,7 +135,7 @@ where
     }
 }
 
-// 2. Support borrowed HashMaps, e.g., &HashMap<K, V>
+// Support borrowed HashMaps, e.g., &HashMap<K, V>
 impl<K, V> IntoResponseBody for &HashMap<K, V>
 where
     K: serde::Serialize + std::hash::Hash + Eq,

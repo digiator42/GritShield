@@ -138,7 +138,7 @@ pub fn admin_shell(title: &str, content: Markup, is_htmx: bool) -> Response {
             }
             body class="bg-gray-900 text-gray-100 font-sans" {
                 div class="flex h-screen overflow-hidden" {
-                    aside class="w-64 bg-gray-950 border-r border-gray-800 p-4" {
+                    aside class="w-72 bg-gray-950 border-r border-gray-800 p-4" {
                         h2 class="text-xl font-bold text-emerald-400 mb-6" { "🛡️ GritAdmin" }
                         nav class="space-y-2" {
 
@@ -170,8 +170,8 @@ pub fn admin_shell(title: &str, content: Markup, is_htmx: bool) -> Response {
                             hx-push-url="true"
                             class="block p-2 hover:bg-gray-800 rounded transition text-gray-400" { "📊 Dashboard" }
 
-                            a href="/admin/settings"
-                               hx-get="/admin/settings"
+                            a href="/admin/api/metrics/html"
+                               hx-get="/admin/api/metrics/html"
                                hx-target="#main-content"
                                hx-push-url="true"
                                class="block p-2 hover:bg-gray-800 rounded transition text-gray-400" { "⚙️ System Metrics" }
@@ -286,8 +286,10 @@ pub fn admin_shell(title: &str, content: Markup, is_htmx: bool) -> Response {
                     }
 
                     div class="htmx-indicator-bar id-global-top-indicator" {}
-                    main id="main-content" class="flex-1 overflow-y-auto p-8" {
-                        (content)
+                    main class="flex-1 overflow-y-auto py-4 px-0" {
+                        div id="main-content" class="max-w-7xl mx-auto" {
+                            (content)
+                        }
                     }
                 }
                 div id="toast-container" class="fixed bottom-4 right-4 z-50 space-y-2" { }

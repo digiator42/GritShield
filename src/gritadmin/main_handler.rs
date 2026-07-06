@@ -9,8 +9,9 @@ use crate::deps::sea_orm::{
     ActiveModelTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityName, EntityTrait,
     PaginatorTrait, QueryOrder, Statement, TransactionTrait,
 };
+use crate::gritadmin::metrics::gather_all_metrics;
 use crate::gritadmin::models::audit_log;
-use crate::protocol::response::IntoResponseBody;
+use crate::protocol::response::{IntoResponseBody, JsonPayload};
 use crate::security::errors::ShieldError;
 use crate::security::xss::UntrustedString;
 use crate::{admin_shell, prelude::*};
@@ -213,7 +214,7 @@ where
     let mut op_map: HashMap<String, String> = HashMap::new();
     let mut val_map: HashMap<String, String> = HashMap::new();
     let mut search_q = None;
-    let mut infinite_scroll = false; // On by default
+    let mut infinite_scroll = true; // On by default
 
     for (key, value) in ctx.query.iter() {
         // Decode special characters immediately at the entry boundary
@@ -2374,6 +2375,16 @@ pub async fn alter_table_add_column_handler(ctx: RequestContext) -> Response {
         }
         Err(err_msg) => error_response(err_msg),
     }
+}
+
+// GET /admin/api/metrics
+pub async fn admin_metrics_api_handler(ctx: RequestContext) -> Response {
+
+    // Fetch real-time snapshot metrics safely
+    let metrics_payload = gather_all_metrics(&ctx.db.as_ref().unwrap()).await;
+
+    // Serialize back out into a structured standard JSON text layout
+    Response::json(200, &JsonPayload(serde_json::to_string_pretty(&metrics_payload).unwrap()))
 }
 
 /// Simple CSV writer (escapes commas and quotes).

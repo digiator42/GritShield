@@ -1,6 +1,7 @@
 use crate::core::logger::{self, log_request_summary, LogLevel};
 use crate::database::repository::{AdminHandlerFn, DynamicColumnSpec};
 use crate::gritadmin::main_handler::*;
+use crate::gritadmin::metrics::{admin_metrics_api_handler, admin_metrics_html_handler};
 use crate::protocol::form::FormData;
 use crate::protocol::request::{HttpMethod, Request};
 use crate::protocol::response::{Cookie, Response};
@@ -1005,13 +1006,33 @@ impl Router {
                 format!("->").green(),
                 method_color("POST")
             );
-
+            
             router.add_route(
                 HttpMethod::POST,
                 "/admin/api/create-table",
                 create_table_handler,
                 None,
             );
+
+            info!(
+                "[DYN-ROUTER] Registering: {:<30} {} [{:<6}]",
+                "/admin/api/metrics",
+                format!("->").green(),
+                method_color("GET")
+            );
+            
+            // Raw JSON Endpoint (For external system tracking, scripts, or backups)
+            router.add_route(HttpMethod::GET,"/admin/api/metrics", admin_metrics_api_handler, None);
+
+            info!(
+                "[DYN-ROUTER] Registering: {:<30} {} [{:<6}]",
+                "/admin/api/metrics/html",
+                format!("->").green(),
+                method_color("GET")
+            );
+
+            // Dynamic HTMX Component Endpoint (Triggers every 5 seconds to update your dashboard layout)
+            router.add_route(HttpMethod::GET,"/admin/api/metrics/html", admin_metrics_html_handler, None);
         }
 
         router
