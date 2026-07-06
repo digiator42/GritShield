@@ -720,7 +720,7 @@ impl Router {
         // Admin routes
         #[cfg(feature = "admin")]
         {
-            use crate::database::repository::ADMIN_REGISTRY;
+            use crate::database::repository::{ACTIONS_REGISTRY, ADMIN_REGISTRY};
             use crate::protocol::request::HttpMethod;
 
             let registry = ADMIN_REGISTRY.lock().unwrap();
@@ -855,17 +855,6 @@ impl Router {
                 );
             }
 
-            // Custom action routes
-            for (table_slug, _) in registry.iter() {
-                let action_path = format!("/admin/{}/action/:action_name", table_slug);
-                router.add_route(
-                    HttpMethod::POST,
-                    Box::leak(action_path.into_boxed_str()),
-                    handle_custom_action, // Need to handle generics
-                    None,
-                );
-            }
-
             // Dashboard route
             let dashboard_handler: AdminHandlerFn = Arc::new(|ctx| Box::pin(handle_dashboard(ctx)));
 
@@ -895,8 +884,8 @@ impl Router {
                 None,
             );
 
-            // Custom action routes
-            for (table_slug, _) in registry.iter() {
+            // =============== Custom developer action routes =======================
+            for (table_slug, _) in ACTIONS_REGISTRY.lock().unwrap().iter() {
                 let action_path = format!("/admin/{}/action/:action_name", table_slug);
                 let path = Box::leak(action_path.into_boxed_str());
 

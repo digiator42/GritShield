@@ -18,7 +18,6 @@ document.addEventListener('keydown', function(e) {
         document.getElementById('command-palette').classList.add('hidden');
     }
 });
-
 document.addEventListener('DOMContentLoaded', function() {
   // Initialise counter on page load
   updateSelectionCount();
@@ -30,27 +29,55 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   });
 
-  function updateSelectionCount() {
-    const checkboxes = document.querySelectorAll('[name="selected_ids"]:checked');
-    const countSpan = document.getElementById('selected-count');
-    const btn = document.getElementById('bulk-delete-btn');
-    if (countSpan) {
-      countSpan.textContent = checkboxes.length;
-    }
-    if (btn) {
-      if (checkboxes.length > 0) {
-        btn.disabled = false;
-        btn.removeAttribute('disabled');
-        // Build the comma‑separated list of IDs
-        const ids = Array.from(checkboxes).map(cb => cb.value).join(',');
-        btn.setAttribute('hx-vals', JSON.stringify({ ids: ids }));
-      } else {
-        btn.disabled = true;
-        btn.setAttribute('disabled', 'disabled');
-      }
+  // Also listen for HTMX swaps to re-initialize
+  document.addEventListener('htmx:afterSwap', function() {
+    updateSelectionCount();
+  });
+});
+
+function updateSelectionCount() {
+  const checkboxes = document.querySelectorAll('[name="selected_ids"]:checked');
+  const count = checkboxes.length;
+  const countSpan = document.getElementById('selected-count');
+  
+  // Update count display
+  if (countSpan) {
+    countSpan.textContent = count;
+  }
+  
+  // Build comma-separated list of IDs
+  const ids = Array.from(checkboxes).map(cb => cb.value).join(',');
+  const idsJson = JSON.stringify({ ids: ids });
+
+  // ---- Update Bulk Delete Button ----
+  const deleteBtn = document.getElementById('bulk-delete-btn');
+  if (deleteBtn) {
+    if (count > 0) {
+      deleteBtn.disabled = false;
+      deleteBtn.removeAttribute('disabled');
+      deleteBtn.setAttribute('hx-vals', idsJson);
+    } else {
+      deleteBtn.disabled = true;
+      deleteBtn.setAttribute('disabled', 'disabled');
     }
   }
-});
+
+  // ---- Update Bulk Action Button ----
+  const actionBtn = document.getElementById('bulk-action-btn');
+  if (actionBtn) {
+    if (count > 0) {
+      actionBtn.disabled = false;
+      actionBtn.removeAttribute('disabled');
+      // Update hx-vals for all bulk action buttons in the dropdown
+      document.querySelectorAll('[hx-post*="/bulk-action/"]').forEach(function(btn) {
+        btn.setAttribute('hx-vals', idsJson);
+      });
+    } else {
+      actionBtn.disabled = true;
+      actionBtn.setAttribute('disabled', 'disabled');
+    }
+  }
+}
 
 document.addEventListener('showToast', function(e) {
   console.log("Show Toast listenenr !!!!!");

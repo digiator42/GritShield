@@ -635,6 +635,37 @@ where
                     span class="text-xxs text-gray-500 font-mono" {
                         "Click headers to sort"
                     }
+                    // Bulk Custom Actions Dropdown
+                    @if let Some(actions) = ACTIONS_REGISTRY.lock().unwrap().get(table_slug) {
+                        @if !actions.is_empty() {
+                            div class="relative inline-block" {
+                                button
+                                    class="bg-blue-950/40 hover:bg-blue-900/40 text-blue-400 text-xs font-mono font-semibold px-4 py-2 rounded-lg transition duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    id="bulk-action-btn"
+                                    disabled
+                                    onclick="this.nextElementSibling.classList.toggle('hidden')" {
+                                        "⚡ Bulk Actions"
+                                    }
+                                div class="hidden absolute left-0 mt-1 w-48 bg-gray-950 border border-gray-800 rounded-lg shadow-xl z-10" {
+                                    @for action in actions {
+                                        button
+                                            hx-post=(format!("/admin/{}/bulk-action/{}", table_slug, action.label))
+                                            hx-vals="ids=[]"
+                                            hx-include="[name='selected_ids']"
+                                            hx-target="this"
+                                            hx-swap="none"
+                                            hx-confirm=(format!("Execute '{}' on all selected records?", action.label))
+                                            class=(format!("block w-full text-left px-3 py-2 text-xs font-mono hover:bg-gray-800/60 transition {}", action.color)) {
+                                                @if let Some(icon) = action.icon {
+                                                    (icon) " "
+                                                }
+                                                (action.label)
+                                            }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
                 @if total_pages > 1 {
                     div class="bg-gray-950 border-t border-gray-800 px-4 py-3 flex flex-wrap items-center justify-between gap-3" {
