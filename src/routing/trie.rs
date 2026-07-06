@@ -853,6 +853,20 @@ impl Router {
                     model.export_handler.clone(),
                     None,
                 );
+
+                info!(
+                    "[DYN-ROUTER] Registering: {:<30} {} [{:<6}]",
+                    "/admin/api/alter-table/:table_slug/add-column",
+                    format!("->").green(),
+                    method_color("POST")
+                );
+
+                router.add_route(
+                    HttpMethod::POST,
+                    "/admin/api/alter-table/:table_slug/add-column",
+                    alter_table_add_column_handler,
+                    None,
+                );
             }
 
             // Dashboard route
