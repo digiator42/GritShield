@@ -1,8 +1,7 @@
 use crate::core_parser::parse_repository_attributes;
-use proc_macro2::{Ident, Span, TokenStream};
+use proc_macro2::TokenStream;
 use quote::quote;
-use quote::ToTokens;
-use syn::{DeriveInput, LitStr, Path};
+use syn::{DeriveInput, LitStr};
 
 mod ctor_registry;
 pub mod action;
@@ -38,10 +37,8 @@ pub fn expand_admin(input: DeriveInput) -> syn::Result<TokenStream> {
 
     // Determine the crate root based on detection
     let crate_root = if is_internal {
-        println!("====>> DETECTED INTERNAL (framework model)");
         quote! { crate }
     } else {
-        println!("====>> DETECTED EXTERNAL (user model)");
         quote! { ::gritshield }
     };
 

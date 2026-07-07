@@ -1,14 +1,13 @@
 use crate::deps::once_cell::sync::Lazy;
-use crate::deps::sea_orm::sea_query::{Alias, Condition, Expr, JoinType, Query, SelectStatement};
+use crate::deps::sea_orm::sea_query::{Alias, Condition, Expr, JoinType, Query};
 use crate::deps::sea_orm::DbErr;
 use crate::protocol::response::Response;
 use crate::routing::trie::RequestContext;
 use crate::security::xss::Sanitizer;
 use sea_orm::{
     ActiveModelBehavior, ActiveModelTrait, ColumnTrait, DatabaseConnection, DbBackend, EntityTrait,
-    FromQueryResult, IntoActiveModel, LoaderTrait, ModelTrait, PaginatorTrait, PrimaryKeyTrait,
-    QueryFilter, QueryOrder, QueryOrder as QueryOrderTrait, QueryResult, QuerySelect, Select,
-    SelectTwoMany, Statement, TryIntoModel, Value,
+    FromQueryResult, IntoActiveModel, ModelTrait, PaginatorTrait, PrimaryKeyTrait,
+    QueryFilter, QueryOrder, QuerySelect, Select, Statement, TryIntoModel, Value,
 };
 use sea_orm_migration::async_trait::async_trait;
 use std::collections::HashMap;
@@ -54,7 +53,7 @@ impl JqlCompiler {
     pub fn compile(spec: &CustomQuerySpec, backend: DbBackend) -> Statement {
         let mut select = Query::select();
 
-        // 1. Process explicit select targets or fallback safely to wildcard definitions
+        // Process explicit select targets or fallback safely to wildcard definitions
         if spec.select_columns.is_empty() {
             select.column((Alias::new(&spec.base_table), Alias::new("*")));
         } else {
@@ -67,10 +66,10 @@ impl JqlCompiler {
             }
         }
 
-        // 2. Define root origin table target matrix
+        // Define root origin table target matrix
         select.from(Alias::new(&spec.base_table));
 
-        // 3. Append relational joins dynamically
+        // Append relational joins dynamically
         for join in &spec.joins {
             let left_expr = Expr::col((Alias::new(&join.left_on.0), Alias::new(&join.left_on.1)));
             let right_expr =
@@ -84,7 +83,7 @@ impl JqlCompiler {
             );
         }
 
-        // 4. Inject runtime query condition filters safely
+        // Inject runtime query condition filters safely
         let mut conditions = Condition::all();
         for cond in &spec.r#where {
             let col_ref = if let Some(tbl) = &cond.table {
@@ -106,7 +105,7 @@ impl JqlCompiler {
 
         select.cond_where(conditions);
 
-        // 5. Generate target-compiled SQL variant safely
+        // Generate target-compiled SQL variant safely
         backend.build(&select)
     }
 }
@@ -117,9 +116,7 @@ impl CustomQuerySpec {
         let normalized = input.replace(",", " ").to_lowercase();
         let tokens: Vec<&str> = normalized.split_whitespace().collect();
 
-        println!("====>> {:?}\n{:?}", input, tokens);
-
-        // 1. Detect core indexing components
+        // Detect core indexing components
         let select_idx = tokens.iter().position(|&t| t == "select");
         let from_idx = tokens.iter().position(|&t| t == "from");
         let join_idx = tokens.iter().position(|&t| t == "join");
@@ -135,7 +132,7 @@ impl CustomQuerySpec {
         let from_table = tokens[from_idx.unwrap() + 1].to_string();
         let mut select_columns = Vec::new();
 
-        // 2. Parse target columns
+        // Parse target columns
         for i in (select_idx.unwrap() + 1)..from_idx.unwrap() {
             let part = tokens[i];
             if part.contains('.') {
@@ -146,7 +143,7 @@ impl CustomQuerySpec {
             }
         }
 
-        // 3. Extract dynamic joins if present
+        // Extract dynamic joins if present
         let mut joins = Vec::new();
         if let Some(j_idx) = join_idx {
             let on_idx = tokens.iter().position(|&t| t == "on");
@@ -163,7 +160,7 @@ impl CustomQuerySpec {
             }
         }
 
-        // 4. Extract where condition targets
+        // Extract where condition targets
         let mut conditions = Vec::new();
         if let Some(w_idx) = where_idx {
             let col_part = tokens[w_idx + 1];
@@ -792,15 +789,15 @@ pub trait GritRepository {
         String::new()
     }
 
-    /// Insert an audit log entry. Default implementation does nothing.
+    /// Insert an audit log entrDefault implementation does nothing.
     async fn audit_log(
         &self,
-        table_name: &str,
-        record_id: &str,
-        action: &str,
-        old_values: Option<serde_json::Value>,
-        new_values: Option<serde_json::Value>,
-        user_id: Option<&str>,
+        _table_name: &str,
+        _record_id: &str,
+        _action: &str,
+        _old_values: Option<serde_json::Value>,
+        _new_values: Option<serde_json::Value>,
+        _user_id: Option<&str>,
     ) -> Result<(), sea_orm::DbErr> {
         // default no-op – override in macro
         Ok(())
@@ -812,7 +809,7 @@ pub trait GritRepository {
         _id: Self::Id,
         _column_name: &str,
         _value: String,
-        user_id: Option<&str>,
+        _user_id: Option<&str>,
     ) -> Result<Self::Model, sea_orm::DbErr> {
         Err(sea_orm::DbErr::Custom(
             "Dynamic update not implemented for this repository".to_string(),

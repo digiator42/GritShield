@@ -239,7 +239,7 @@ impl RequestContext {
 
     /// Handles the Mutex lock internally and yields an immediate Option<String>.
     pub fn get_signed_cookie(&self, name: &str) -> Option<String> {
-        // Lock the internal mutex safely. If it fails, return None.
+        // Lock the internal mutex safelIf it fails, return None.
         let jar = self.cookies.lock().ok()?;
         // Call the inner CookieJar method
         jar.get_signed(name)
@@ -283,7 +283,7 @@ impl RequestContext {
             },
             None => {
                 error!(
-                    "[SESSION ERROR] Cannot set session data: session is None. \
+                    "[SESSION ERROR] Cannot set session data: session is None\
                      This usually means the middleware didn't initialize it properly."
                 );
             }
@@ -701,12 +701,25 @@ impl Router {
             role_inheritance: HashMap::new(),
         };
 
-        // Standard application routes
+        let mut max_len = 0;
+        let mut all_auto_routes = Vec::new();
 
+        // ---- COLLECT ALL AUTO ROUTES ----
         for route in inventory::iter::<AutoRoute> {
+            all_auto_routes.push(route);
+            let len = route.path.len();
+            if len > max_len {
+                max_len = len;
+            }
+        }
+        max_len += 4; // Add padding for better readability
+
+        // ---- REGISTER ROUTES WITH CONSISTENT FORMATTING ----
+        for route in all_auto_routes {
             info!(
-                "[DYN-ROUTER] Registering: {:<30} {} [{:<6}]",
+                "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
                 route.path,
+                max_len,
                 format!("->").green(),
                 method_color(&format!("{:?}", route.method))
             );
@@ -723,20 +736,63 @@ impl Router {
         {
             use crate::database::repository::{ACTIONS_REGISTRY, ADMIN_REGISTRY};
             use crate::gritadmin::metrics::admin_security_matrix_view_handler;
-use crate::protocol::request::HttpMethod;
+            use crate::protocol::request::HttpMethod;
 
             let registry = ADMIN_REGISTRY.lock().unwrap();
 
-            for (table_name, model) in registry.iter() {
-                println!("=======>> {:?} => {:?}", table_name, model.route_path);
+            // ---- COLLECT ALL PATHS ----
+            let mut all_paths = Vec::new();
+
+            // Table routes
+            for (_table_name, model) in registry.iter() {
+                all_paths.push(model.route_path.to_string());
+                all_paths.push(format!("{}/search", model.route_path));
+                all_paths.push(format!("{}/delete", model.route_path));
+                all_paths.push(format!("{}/update-cell", model.route_path));
+                all_paths.push(format!("{}/query-explorer", model.route_path));
+                all_paths.push(format!("{}/:id", model.route_path));
+                all_paths.push(format!("{}/bulk-delete", model.route_path));
+                all_paths.push(format!("{}/export", model.route_path));
+            }
+
+            // Admin API routes
+            let static_routes = vec![
+                "/admin/api/alter-table/:table_slug/add-column",
+                "/admin/dashboard",
+                "/admin/api/search-palette",
+                "/admin/api/create-table",
+                "/admin/api/metrics",
+                "/admin/metrics",
+                "/admin/settings/security",
+            ];
+            all_paths.extend(static_routes.iter().map(|s| s.to_string()));
+
+            // Custom action routes
+            for (table_slug, _) in ACTIONS_REGISTRY.lock().unwrap().iter() {
+                all_paths.push(format!("/admin/{}/action/:action_name", table_slug));
+                all_paths.push(format!("/admin/{}/bulk-action/:action_name", table_slug));
+            }
+
+            // ---- CALCULATE MAX LEN ----
+            let mut max_len = 0;
+            for path in &all_paths {
+                let len = path.len();
+                if len > max_len {
+                    max_len = len;
+                }
+            }
+            max_len += 4; // Add padding for better readability
+
+            // ---- REGISTER ROUTES WITH CONSISTENT FORMATTING ----
+            for (_table_name, model) in registry.iter() {
                 // 1. Core Workspace Table Views / Global Dynamic Routes (GET)
                 info!(
-                    "[DYN-ROUTER] >>: {:<30} {} [{:<6}]",
+                    "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
                     model.route_path,
+                    max_len,
                     format!("->").green(),
                     method_color("GET")
                 );
-
                 router.add_route(
                     HttpMethod::GET,
                     model.route_path,
@@ -746,14 +802,13 @@ use crate::protocol::request::HttpMethod;
 
                 // 2. Real-time Grid Search Pipeline (GET)
                 let search = format!("{}/search", model.route_path);
-
                 info!(
-                    "[DYN-ROUTER] >>: {:<30} {} [{:<6}]",
+                    "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
                     search,
+                    max_len,
                     format!("->").green(),
                     method_color("GET")
                 );
-
                 router.add_route(
                     HttpMethod::GET,
                     Box::leak(search.into_boxed_str()),
@@ -761,15 +816,15 @@ use crate::protocol::request::HttpMethod;
                     None,
                 );
 
+                // 3. Delete Route (DELETE)
                 let delete_path = format!("{}/delete", model.route_path);
-
                 info!(
-                    "[DYN-ROUTER] >>: {:<30} {} [{:<6}]",
+                    "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
                     delete_path,
+                    max_len,
                     format!("->").green(),
                     method_color("DELETE")
                 );
-
                 router.add_route(
                     HttpMethod::DELETE,
                     Box::leak(delete_path.into_boxed_str()),
@@ -777,16 +832,15 @@ use crate::protocol::request::HttpMethod;
                     None,
                 );
 
-                // 3. Inline Cell Updates (PATCH)
+                // 4. Inline Cell Updates (PATCH)
                 let patch_path = format!("{}/update-cell", model.route_path);
-
                 info!(
-                    "[DYN-ROUTER] >>: {:<30} {} [{:<6}]",
+                    "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
                     patch_path,
+                    max_len,
                     format!("->").green(),
                     method_color("PATCH")
                 );
-
                 router.add_route(
                     HttpMethod::PATCH,
                     Box::leak(patch_path.into_boxed_str()),
@@ -794,16 +848,15 @@ use crate::protocol::request::HttpMethod;
                     None,
                 );
 
-                // 4. Advanced Matrix Query Explorer Pipeline (GET)
+                // 5. Advanced Matrix Query Explorer Pipeline (GET)
                 let advanced_search_path = format!("{}/query-explorer", model.route_path);
-
                 info!(
-                    "[DYN-ROUTER] >>: {:<30} {} [{:<6}]",
+                    "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
                     advanced_search_path,
+                    max_len,
                     format!("->").green(),
                     method_color("GET")
                 );
-
                 router.add_route(
                     HttpMethod::GET,
                     Box::leak(advanced_search_path.into_boxed_str()),
@@ -811,12 +864,13 @@ use crate::protocol::request::HttpMethod;
                     None,
                 );
 
-                // Detail view
+                // 6. Detail view (GET)
                 let detail_path = format!("{}/:id", model.route_path);
                 info!(
-                    "[DYN-ROUTER] >>: {:<30} {} [{:<6}]",
+                    "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
                     detail_path,
-                    "->".green(),
+                    max_len,
+                    format!("->").green(),
                     method_color("GET")
                 );
                 router.add_route(
@@ -826,12 +880,13 @@ use crate::protocol::request::HttpMethod;
                     None,
                 );
 
-                // Bulk delete
+                // 7. Bulk delete (POST)
                 let bulk_path = format!("{}/bulk-delete", model.route_path);
                 info!(
-                    "[DYN-ROUTER] >>: {:<30} {} [{:<6}]",
+                    "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
                     bulk_path,
-                    "->".green(),
+                    max_len,
+                    format!("->").green(),
                     method_color("POST")
                 );
                 router.add_route(
@@ -841,12 +896,13 @@ use crate::protocol::request::HttpMethod;
                     None,
                 );
 
-                // Export routes
+                // 8. Export routes (GET)
                 let export_path = format!("{}/export", model.route_path);
                 info!(
-                    "[DYN-ROUTER] >>: {:<30} {} [{:<6}]",
+                    "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
                     export_path,
-                    "->".green(),
+                    max_len,
+                    format!("->").green(),
                     method_color("GET")
                 );
                 router.add_route(
@@ -855,44 +911,56 @@ use crate::protocol::request::HttpMethod;
                     model.export_handler.clone(),
                     None,
                 );
+            }
+
+            // ---- CUSTOM ACTION ROUTES ----
+            for (table_slug, _) in ACTIONS_REGISTRY.lock().unwrap().iter() {
+                let action_path = format!("/admin/{}/action/:action_name", table_slug);
+                let path = Box::leak(action_path.into_boxed_str());
 
                 info!(
-                    "[DYN-ROUTER] >>: {:<30} {} [{:<6}]",
-                    "/admin/api/alter-table/:table_slug/add-column",
+                    "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
+                    path,
+                    max_len,
                     format!("->").green(),
                     method_color("POST")
                 );
+                router.add_route(HttpMethod::POST, path, handle_custom_action, None);
 
-                router.add_route(
-                    HttpMethod::POST,
-                    "/admin/api/alter-table/:table_slug/add-column",
-                    alter_table_add_column_handler,
-                    None,
+                let bulk_action_path = format!("/admin/{}/bulk-action/:action_name", table_slug);
+                let bulk_path = Box::leak(bulk_action_path.into_boxed_str());
+
+                info!(
+                    "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
+                    bulk_path,
+                    max_len,
+                    format!("->").green(),
+                    method_color("POST")
                 );
+                router.add_route(HttpMethod::POST, bulk_path, handle_custom_action, None);
             }
 
-            // Dashboard route
+            // ---- DASHBOARD ROUTE ----
             let dashboard_handler: AdminHandlerFn = Arc::new(|ctx| Box::pin(handle_dashboard(ctx)));
-
             info!(
-                "[DYN-ROUTER] >>: {:<30} {} [{:<6}]",
+                "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
                 "/admin/dashboard",
+                max_len,
                 format!("->").green(),
                 method_color("GET")
             );
             router.add_route(HttpMethod::GET, "/admin/dashboard", dashboard_handler, None);
 
-            // Search Palette route
+            // ---- SEARCH PALETTE ROUTE ----
             let palette_handler: AdminHandlerFn =
                 Arc::new(|ctx| Box::pin(handle_search_palette(ctx)));
-
             info!(
-                "[DYN-ROUTER] >>: {:<30} {} [{:<6}]",
+                "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
                 "/admin/api/search-palette",
+                max_len,
                 format!("->").green(),
                 method_color("GET")
             );
-
             router.add_route(
                 HttpMethod::GET,
                 "/admin/api/search-palette",
@@ -900,45 +968,28 @@ use crate::protocol::request::HttpMethod;
                 None,
             );
 
-            // =============== Custom developer action routes =======================
-            for (table_slug, _) in ACTIONS_REGISTRY.lock().unwrap().iter() {
-                let action_path = format!("/admin/{}/action/:action_name", table_slug);
-                let path = Box::leak(action_path.into_boxed_str());
+            // ---- ALTER TABLE ROUTE ----
+            let alter_table_add_column_handler: AdminHandlerFn = Arc::new(|ctx| {
+                Box::pin(async move {
+                    // Handler implementation...
+                    Response::ok("Alter table route".to_string())
+                })
+            });
+            info!(
+                "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
+                "/admin/api/alter-table/:table_slug/add-column",
+                max_len,
+                format!("->").green(),
+                method_color("POST")
+            );
+            router.add_route(
+                HttpMethod::POST,
+                "/admin/api/alter-table/:table_slug/add-column",
+                alter_table_add_column_handler,
+                None,
+            );
 
-                info!(
-                    "[DYN-ROUTER] >>: {:<30} {} [{:<6}]",
-                    path,
-                    "->".green(),
-                    method_color("POST")
-                );
-
-                router.add_route(
-                    HttpMethod::POST,
-                    path,
-                    handle_custom_action, // Single-parameter function
-                    None,
-                );
-
-                // Bulk action route
-                let bulk_action_path = format!("/admin/{}/bulk-action/:action_name", table_slug);
-                let bulk_path = Box::leak(bulk_action_path.into_boxed_str());
-
-                info!(
-                    "[DYN-ROUTER] >>: {:<30} {} [{:<6}]",
-                    bulk_path,
-                    "->".green(),
-                    method_color("POST")
-                );
-
-                router.add_route(
-                    HttpMethod::POST,
-                    bulk_path,
-                    handle_custom_action, // Same handler
-                    None,
-                );
-            }
-
-            // Map route handler registration tracking inside your system framework block
+            // ---- CREATE TABLE ROUTE ----
             let create_table_handler: AdminHandlerFn = Arc::new(|ctx| {
                 Box::pin(async move {
                     let db = &ctx
@@ -946,7 +997,6 @@ use crate::protocol::request::HttpMethod;
                         .as_deref()
                         .expect("Database connection is not mounted in the context");
 
-                    // 1. Parse the explicit dynamic Table Title identity
                     let table_name = ctx
                         .form
                         .fields
@@ -954,7 +1004,6 @@ use crate::protocol::request::HttpMethod;
                         .cloned()
                         .unwrap_or_default();
 
-                    // 2. Extract the hidden structured serialized properties configuration string
                     let columns_json = ctx
                         .form
                         .fields
@@ -970,7 +1019,6 @@ use crate::protocol::request::HttpMethod;
                         );
                     }
 
-                    // Defensive Guard: If the framework extraction left form percent encoding tokens intact, clean them up
                     let sanitized_json = if columns_json_trimmed.contains('%') {
                         urlencoding::decode(columns_json_trimmed)
                             .map(|s| s.into_owned())
@@ -979,7 +1027,6 @@ use crate::protocol::request::HttpMethod;
                         columns_json_trimmed.to_string()
                     };
 
-                    // Deserialize configuration map array smoothly using serde json extensions
                     let parsed_columns: Vec<DynamicColumnSpec> =
                         match serde_json::from_str(&sanitized_json) {
                             Ok(cols) => cols,
@@ -991,7 +1038,6 @@ use crate::protocol::request::HttpMethod;
                             }
                         };
 
-                    // 3. Execute query against updated polymorphic migration handler
                     match handle_create_table_dynamic(db, table_name.to_string(), parsed_columns)
                         .await
                     {
@@ -1000,14 +1046,13 @@ use crate::protocol::request::HttpMethod;
                     }
                 })
             });
-
             info!(
-                "[DYN-ROUTER] >>: {:<30} {} [{:<6}]",
+                "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
                 "/admin/api/create-table",
+                max_len,
                 format!("->").green(),
                 method_color("POST")
             );
-            
             router.add_route(
                 HttpMethod::POST,
                 "/admin/api/create-table",
@@ -1016,36 +1061,48 @@ use crate::protocol::request::HttpMethod;
             );
 
             info!(
-                "[DYN-ROUTER] >>: {:<30} {} [{:<6}]",
+                "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
                 "/admin/api/metrics",
+                max_len,
                 format!("->").green(),
                 method_color("GET")
             );
-            
-            // Raw JSON Endpoint (For external system tracking, scripts, or backups)
-            router.add_route(HttpMethod::GET,"/admin/api/metrics", admin_metrics_api_handler, None);
+            router.add_route(
+                HttpMethod::GET,
+                "/admin/api/metrics",
+                admin_metrics_api_handler,
+                None,
+            );
 
             info!(
-                "[DYN-ROUTER] >>: {:<30} {} [{:<6}]",
+                "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
                 "/admin/metrics",
+                max_len,
                 format!("->").green(),
                 method_color("GET")
             );
+            router.add_route(
+                HttpMethod::GET,
+                "/admin/metrics",
+                admin_metrics_html_handler,
+                None,
+            );
 
-            // Dynamic HTMX Component Endpoint (Triggers every 5 seconds to update your dashboard layout)
-            router.add_route(HttpMethod::GET,"/admin/metrics", admin_metrics_html_handler, None);
-
+            // ---- SECURITY SETTINGS ROUTE ----
             info!(
-                "[DYN-ROUTER] >>: {:<30} {} [{:<6}]",
+                "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
                 "/admin/settings/security",
+                max_len,
                 format!("->").green(),
                 method_color("GET")
             );
-
-            // Dynamic HTMX Component Endpoint (Triggers every 5 seconds to update your dashboard layout)
-            router.add_route(HttpMethod::GET,"/admin/settings/security", admin_security_matrix_view_handler, None);
+            router.add_route(
+                HttpMethod::GET,
+                "/admin/settings/security",
+                admin_security_matrix_view_handler,
+                None,
+            );
         }
-
         router
     }
 
@@ -1293,7 +1350,7 @@ use crate::protocol::request::HttpMethod;
         if let Ok(registry) = FILE_ROUTING_REGISTRY.lock() {
             if let Some(registered) = registry.get(&file_key) {
                 info!(
-                    "[FBS-ROUTER] Registering: {:<30} {} [{:<6}] {}",
+                    "[FBS-ROUTER] >>: {:<30} {} [{:<6}] {}",
                     file_key,
                     format!("->").green(),
                     method_color(&format!("{:?}", registered.method)),

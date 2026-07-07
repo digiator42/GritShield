@@ -3,11 +3,11 @@ use std::collections::HashMap;
 use crate::database::repository::{
     AdminHandlerFn, DynamicColumnSpec, GridColumn, ACTIONS_REGISTRY,
 };
-use crate::database::repository::{CustomQuerySpec, JoinSpec, JqlCompiler, WhereSpec};
+use crate::database::repository::{CustomQuerySpec, JqlCompiler};
 use crate::database::repository::{GritRepository, ADMIN_REGISTRY};
 use crate::deps::sea_orm::{
-    ActiveModelTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityName, EntityTrait,
-    PaginatorTrait, QueryOrder, Statement, TransactionTrait,
+    ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait, PaginatorTrait, QueryOrder,
+    Statement, TransactionTrait,
 };
 use crate::gritadmin::metrics::gather_all_metrics;
 use crate::gritadmin::models::audit_log;
@@ -36,16 +36,11 @@ fn get_target_table_slug(col_name: &str) -> Option<String> {
     // Remove "_id" suffix
     let base = col_name.trim_end_matches("_id");
 
-    // Try both singular and plural forms
-    let candidates = vec![base.to_string(), format!("{}s", base)];
-
-    println!("======>> {:?}", candidates);
+    let candidate = base.to_string();
 
     let registry = ADMIN_REGISTRY.lock().unwrap();
-    for candidate in candidates {
-        if registry.contains_key(&candidate.as_str()) {
-            return Some(candidate);
-        }
+    if registry.contains_key(&candidate.as_str()) {
+        return Some(candidate);
     }
     None
 }
@@ -351,10 +346,10 @@ where
 
     // ---- Build URLs with filters preserved ----
     let route_path_str = format!("/admin/{}", table_slug);
-    let route_patch_str = format!("/admin/{}/update-cell", table_slug);
-    let route_delete_str = format!("/admin/{}/delete", table_slug);
+    let _route_patch_str = format!("/admin/{}/update-cell", table_slug);
+    let _route_delete_str = format!("/admin/{}/delete", table_slug);
     let route_advanced_str = format!("/admin/{}/query-explorer", table_slug);
-    let route_detail_str = format!("/admin/{}/", table_slug);
+    let _route_detail_str = format!("/admin/{}/", table_slug);
     let route_bulk_delete_str = format!("/admin/{}/bulk-delete", table_slug);
 
     // Helper to build query string with current filters, sort, and page
@@ -590,16 +585,16 @@ where
         // --- LUXURY SCHEMA EVOLUTION MODAL OVERLAY ---
         div id="evolve-schema-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in" {
             div class="bg-gray-950 border border-gray-800 rounded-2xl max-w-md w-full flex flex-col shadow-2xl overflow-hidden" {
-                
+
                 // Modal Header
                 div class="p-5 border-b border-gray-800 flex justify-between items-center bg-gray-900/40" {
                     div {
                         h3 class="text-sm font-bold font-mono text-blue-400" { "Schema Evolution Engine" }
-                        p class="text-xxs font-mono text-gray-400 mt-0.5" { 
-                            (format!("Append columns dynamically to table: '{}'", table_slug)) 
+                        p class="text-xxs font-mono text-gray-400 mt-0.5" {
+                            (format!("Append columns dynamically to table: '{}'", table_slug))
                         }
                     }
-                    button 
+                    button
                         type="button"
                         onclick="document.getElementById('evolve-schema-modal').classList.add('hidden')"
                         class="text-gray-500 hover:text-white transition text-sm font-mono p-1" { "✕" }
@@ -610,7 +605,7 @@ where
                     hx-target="this"
                     hx-swap="none"
                     class="p-6 space-y-5" {
-                    
+
                     // New Column Identifier input block
                     div class="space-y-1.5" {
                         label class="block text-xxs font-mono font-semibold uppercase tracking-wider text-gray-400" { "Column Identifier" }
@@ -632,20 +627,20 @@ where
                                 option value="datetime" { "DateTime" }
                                 option value="float" { "Float / Real" }
                         }
-                        p class="text-[4px] font-mono text-gray-500 mt-1 leading-normal" { 
-                            "Live table appends are injected as Nullable." 
+                        p class="text-[4px] font-mono text-gray-500 mt-1 leading-normal" {
+                            "Live table appends are injected as Nullable."
                         }
                     }
 
                     // Footer Actions Container
                     div class="pt-4 border-t border-gray-800 flex justify-end space-x-3 bg-gray-950" {
-                        button 
+                        button
                             type="button"
                             onclick="document.getElementById('evolve-schema-modal').classList.add('hidden')"
                             class="bg-gray-900 hover:bg-gray-800 border border-gray-800 text-gray-400 text-xs font-mono px-4 py-2 rounded-lg transition" {
                                 "Cancel"
                         }
-                        button 
+                        button
                             type="submit"
                             class="bg-blue-900/50 border border-blue-700/60 hover:bg-blue-800/50 text-blue-300 text-xs font-mono font-bold px-5 py-2 rounded-lg transition shadow-md" {
                                 "＋ Append Column"
@@ -654,7 +649,7 @@ where
                 }
             }
         }
-        button 
+        button
             onclick="document.getElementById('evolve-schema-modal').classList.remove('hidden')"
             class="bg-emerald-950/40 w-1/2 border border-emerald-800/60 hover:bg-emerald-900/40 text-emerald-400 text-xxs font-mono font-semibold px-3 py-1.5 rounded-lg transition duration-150 shadow-md" {
             "+ Add Column"
@@ -1054,8 +1049,6 @@ pub async fn handle_search_palette(ctx: RequestContext) -> Response {
             .map(|(path, label)| (path.to_string(), label.to_string()))
             .collect();
 
-        println!("======>> {:?}", settings);
-
         // 3. Clone the handler pointers for fallback routing
         let targets: Vec<(String, String, AdminHandlerFn)> = registry
             .iter()
@@ -1183,8 +1176,6 @@ where
     let query_input = ctx.query.get("jql").map(|v| v.as_str()).unwrap_or("");
     let db = ctx.db.clone().expect("DB connection missing");
 
-    println!("====>>query_input {:?}", query_input);
-
     if query_input.is_empty() {
         return Response::ok(render_empty_matrix_interface().into_string());
     }
@@ -1193,7 +1184,6 @@ where
     let parsed_spec = match CustomQuerySpec::parse_from_str(query_input) {
         Ok(spec) => spec,
         Err(err) => {
-            println!("====>>Parsed {:?}", err);
             return Response::ok(html! {
                 div id="matrix-wrapper" class="bg-red-950/20 border border-red-900/50 rounded-xl p-4 font-mono text-xs text-red-400" {
                     span class="font-bold uppercase block mb-1" { "⚠️ Syntax Mapping Error:" }
@@ -1203,13 +1193,9 @@ where
         }
     };
 
-    println!("====>>Parsed {:?}", parsed_spec);
-
     // Automatically resolve whether the active runtime target is Postgres, MySQL, or SQLite
     let db_backend = db.get_database_backend();
     let native_stmt = JqlCompiler::compile(&parsed_spec, db_backend);
-
-    println!("=====> {:?}", native_stmt);
 
     match db.query_all(native_stmt).await {
         Ok(query_results) => {
@@ -1220,7 +1206,6 @@ where
                     }
                 }.into_string());
             }
-            println!("=====> {:?}", query_results);
 
             // Dynamically discover what columns came back inside the generic payload matrix
             let column_headers: Vec<String> = parsed_spec
@@ -1943,7 +1928,7 @@ pub async fn handle_dashboard(ctx: RequestContext) -> Response {
 
     // ---- Overall Summary ----
     let mut total_records: i64 = 0;
-    for (table_name, table_slug, _) in &table_infos {
+    for (table_name, _table_slug, _) in &table_infos {
         let count_sql = format!("SELECT COUNT(*) as count FROM {}", table_name);
         let stmt = Statement::from_string(DbBackend::Sqlite, count_sql);
         let count = db
@@ -2376,12 +2361,14 @@ pub async fn alter_table_add_column_handler(ctx: RequestContext) -> Response {
 
 // GET /admin/api/metrics
 pub async fn admin_metrics_api_handler(ctx: RequestContext) -> Response {
-
     // Fetch real-time snapshot metrics safely
     let metrics_payload = gather_all_metrics(&ctx).await;
 
     // Serialize back out into a structured standard JSON text layout
-    Response::json(200, &JsonPayload(serde_json::to_string_pretty(&metrics_payload).unwrap()))
+    Response::json(
+        200,
+        &metrics_payload,
+    )
 }
 
 /// Simple CSV writer (escapes commas and quotes).

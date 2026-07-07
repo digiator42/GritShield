@@ -1,5 +1,4 @@
 use crate::prelude::*;
-use crate::protocol::response::{IntoResponseBody, JsonPayload};
 use chrono::{DateTime, Utc};
 use maud::html;
 use maud::Markup;
@@ -67,11 +66,10 @@ pub struct ProcessMetrics {
     pub pid: u32,
 }
 
-use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
-use std::collections::HashMap;
+use sea_orm::{ConnectionTrait, Statement};
 use std::sync::atomic::Ordering;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
-use sysinfo::{Pid, Process, System};
+use std::time::Instant;
+use sysinfo::System;
 
 // Keep track of application startup time globally
 lazy_static::lazy_static! {
@@ -460,13 +458,11 @@ pub async fn admin_security_matrix_view_handler(ctx: RequestContext) -> Response
     let current_user_authenticated = ctx.claims.is_some();
 
     // Extract GritShield Atomic Performance Metrics
-    let active_connections = ctx.telemetry.active_connections.load(Ordering::Relaxed);
     let total_blocked_ips = ctx.telemetry.total_blocked_ips.load(Ordering::Relaxed);
     let total_rate_limited_reqs = ctx
         .telemetry
         .total_rate_limited_reqs
         .load(Ordering::Relaxed);
-    let total_allowed_reqs = ctx.telemetry.total_allowed_reqs.load(Ordering::Relaxed);
 
     let is_production =
         std::env::var("APP_ENV").unwrap_or_else(|_| "Development".to_string()) == "production";

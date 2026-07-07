@@ -1,5 +1,5 @@
 use syn::punctuated::Punctuated;
-use syn::{Expr, ExprArray, ExprLit, ExprPath, Lit, Meta, Result, Token};
+use syn::{Expr, ExprArray, ExprLit, Lit, Meta, Result, Token};
 
 #[derive(Default)]
 pub struct RepositoryAttributes {
