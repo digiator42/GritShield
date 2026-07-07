@@ -170,16 +170,24 @@ pub fn admin_shell(title: &str, content: Markup, is_htmx: bool) -> Response {
                             hx-push-url="true"
                             class="block p-2 hover:bg-gray-800 rounded transition text-gray-400" { "📊 Dashboard" }
 
-                            a href="/admin/api/metrics/html"
-                               hx-get="/admin/api/metrics/html"
+                            a href="/admin/metrics"
+                               hx-get="/admin/metrics"
                                hx-target="#main-content"
+                               hx-indicator="body"
                                hx-push-url="true"
                                class="block p-2 hover:bg-gray-800 rounded transition text-gray-400" { "⚙️ System Metrics" }
+
+                            a href="/admin/settings/security"
+                               hx-get="/admin/settings/security"
+                               hx-target="#main-content"
+                               hx-indicator="body"
+                               hx-push-url="true"
+                               class="block p-2 hover:bg-gray-800 rounded transition text-gray-400" { "🔒 Security Settings" }
                         }
                         hr class="border-gray-800 my-4";
                         div class="flex items-center justify-between" {
                             // Button to open the luxury dynamic builder modal
-                            button 
+                            button
                                 onclick="document.getElementById('schema-modal').classList.remove('hidden')"
                                 class="bg-emerald-950/40 w-full border border-emerald-800/60 hover:bg-emerald-900/40 text-emerald-400 text-xxs font-mono font-semibold px-3 py-1.5 rounded-lg transition duration-150 shadow-md" {
                                 "Create Table"
@@ -189,14 +197,14 @@ pub fn admin_shell(title: &str, content: Markup, is_htmx: bool) -> Response {
                         // --- LUXURY SCHEMA BUILDER MODAL OVERLAY ---
                         div id="schema-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in" {
                             div class="bg-gray-950 border border-gray-800 rounded-2xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden" {
-                                
+
                                 // Modal Header
                                 div class="p-5 border-b border-gray-800 flex justify-between items-center bg-gray-900/40" {
                                     div {
                                         h3 class="text-sm font-bold font-mono text-emerald-400" { "Matrix Entity Creator" }
                                         p class="text-xxs font-mono text-gray-400 mt-0.5" { "Configure column types safely across PostgreSQL, MySQL & SQLite" }
                                     }
-                                    button 
+                                    button
                                         onclick="document.getElementById('schema-modal').classList.add('hidden')"
                                         class="text-gray-500 hover:text-white transition text-sm font-mono p-1" { "✕" }
                                 }
@@ -207,7 +215,7 @@ pub fn admin_shell(title: &str, content: Markup, is_htmx: bool) -> Response {
                                     hx-indicator="body"
                                     onsubmit="document.getElementById('schema-modal').classList.add('hidden');"
                                     class="flex-1 overflow-y-auto p-6 space-y-5" {
-                                    
+
                                     // Table Name Configuration
                                     div class="space-y-1.5" {
                                         label class="block text-xxs font-mono font-semibold uppercase tracking-wider text-gray-400" { "Table Identity" }
@@ -222,7 +230,7 @@ pub fn admin_shell(title: &str, content: Markup, is_htmx: bool) -> Response {
                                     div class="space-y-3" {
                                         div class="flex items-center justify-between" {
                                             label class="text-xxs font-mono font-semibold uppercase tracking-wider text-gray-400" { "Attributes Matrix" }
-                                            button 
+                                            button
                                                 type="button"
                                                 onclick="addSchemaColumnRow()"
                                                 class="text-blue-400 hover:text-blue-300 font-mono text-xxs flex items-center space-x-1 transition" {
@@ -238,7 +246,7 @@ pub fn admin_shell(title: &str, content: Markup, is_htmx: bool) -> Response {
                                                 div class="w-36 text-xs font-mono text-gray-400 px-2" { "BigInteger (PK / Auto)" }
                                                 div class="w-8" {}
                                             }
-                                            
+
                                             // Target track for interactive dynamic rows
                                             div id="dynamic-column-track" class="space-y-2" {}
                                         }
@@ -249,13 +257,13 @@ pub fn admin_shell(title: &str, content: Markup, is_htmx: bool) -> Response {
 
                                     // Footer Actions Container
                                     div class="pt-4 border-t border-gray-800 flex justify-end space-x-3 bg-gray-950" {
-                                        button 
+                                        button
                                             type="button"
                                             onclick="document.getElementById('schema-modal').classList.add('hidden')"
                                             class="bg-gray-900 hover:bg-gray-800 border border-gray-800 text-gray-400 text-xs font-mono px-4 py-2 rounded-lg transition" {
                                             "Cancel"
                                         }
-                                        button 
+                                        button
                                             type="submit"
                                             class="bg-blue-900/50 border border-blue-700/60 hover:bg-blue-800/50 text-blue-300 text-xs font-mono font-bold px-5 py-2 rounded-lg transition shadow-md" {
                                             "Build & Execute Schema"
@@ -276,6 +284,7 @@ pub fn admin_shell(title: &str, content: Markup, is_htmx: bool) -> Response {
                                     hx-get="/admin/api/search-palette"
                                     hx-trigger="keyup changed delay:150ms"
                                     hx-target="#palette-results"
+                                    hx-indicator="body"
                                     class="bg-transparent text-lg text-white w-full focus:outline-none";
                                 kbd class="text-xs bg-gray-800 text-gray-400 px-2 py-1 rounded shadow" { "ESC" }
                             }

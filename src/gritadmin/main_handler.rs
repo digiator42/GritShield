@@ -1027,9 +1027,8 @@ pub async fn handle_search_palette(ctx: RequestContext) -> Response {
         .unwrap_or_default();
 
     let static_settings = vec![
-        ("/admin/settings", "⚙️ System Metrics"),
+        ("/admin/metrics", "⚙️ System Metrics"),
         ("/admin/settings/security", "🛡️ Hardening Matrix"),
-        ("/admin/settings/logs", "📜 Audit Log"),
     ];
 
     let (filtered_tables, filtered_settings, search_targets) = {
@@ -1103,7 +1102,6 @@ pub async fn handle_search_palette(ctx: RequestContext) -> Response {
             }
         } @else {
             @if !filtered_tables.is_empty() {
-                // div class="text-xxs uppercase tracking-wider text-emerald-500 font-bold px-3 py-2 font-mono" { "📂 Table Workspaces" }
                 @for (table_name, route_path) in filtered_tables {
                     @let display_name = format!(
                         "{} Grid",
@@ -1127,7 +1125,6 @@ pub async fn handle_search_palette(ctx: RequestContext) -> Response {
             }
 
             @if !filtered_settings.is_empty() {
-                // div class="text-xxs uppercase tracking-wider text-blue-400 text-[0.5rem] px-3 py-2 font-mono" { "System Control" }
                 hr {}
                 @for (path, label) in filtered_settings {
                     a href=(path)
@@ -1145,7 +1142,7 @@ pub async fn handle_search_palette(ctx: RequestContext) -> Response {
             @if !record_results.is_empty() {
                 div class="text-xxs uppercase tracking-wider text-amber-500 font-bold px-3 py-2 font-mono" { "🔍 Deep Record Matches" }
                 div class="max-h-72 overflow-y-auto space-y-4 px-2 py-1" {
-                    @for (table_slug, route_path, rows_snippet) in record_results {
+                    @for (table_slug, route_path, rows_snippet) in &mut record_results[..10] {
                         div class="border border-gray-900 bg-gray-950/40 rounded-lg overflow-hidden" {
                             div class="bg-gray-900/60 px-3 py-1.5 flex justify-between items-center border-b border-gray-900" {
                                 span class="text-xs font-bold text-gray-400 uppercase tracking-tight" { (table_slug) }
@@ -2381,7 +2378,7 @@ pub async fn alter_table_add_column_handler(ctx: RequestContext) -> Response {
 pub async fn admin_metrics_api_handler(ctx: RequestContext) -> Response {
 
     // Fetch real-time snapshot metrics safely
-    let metrics_payload = gather_all_metrics(&ctx.db.as_ref().unwrap()).await;
+    let metrics_payload = gather_all_metrics(&ctx).await;
 
     // Serialize back out into a structured standard JSON text layout
     Response::json(200, &JsonPayload(serde_json::to_string_pretty(&metrics_payload).unwrap()))

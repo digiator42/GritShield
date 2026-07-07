@@ -722,7 +722,8 @@ impl Router {
         #[cfg(feature = "admin")]
         {
             use crate::database::repository::{ACTIONS_REGISTRY, ADMIN_REGISTRY};
-            use crate::protocol::request::HttpMethod;
+            use crate::gritadmin::metrics::admin_security_matrix_view_handler;
+use crate::protocol::request::HttpMethod;
 
             let registry = ADMIN_REGISTRY.lock().unwrap();
 
@@ -730,7 +731,7 @@ impl Router {
                 println!("=======>> {:?} => {:?}", table_name, model.route_path);
                 // 1. Core Workspace Table Views / Global Dynamic Routes (GET)
                 info!(
-                    "[DYN-ROUTER] Registering: {:<30} {} [{:<6}]",
+                    "[DYN-ROUTER] >>: {:<30} {} [{:<6}]",
                     model.route_path,
                     format!("->").green(),
                     method_color("GET")
@@ -747,7 +748,7 @@ impl Router {
                 let search = format!("{}/search", model.route_path);
 
                 info!(
-                    "[DYN-ROUTER] Registering: {:<30} {} [{:<6}]",
+                    "[DYN-ROUTER] >>: {:<30} {} [{:<6}]",
                     search,
                     format!("->").green(),
                     method_color("GET")
@@ -763,7 +764,7 @@ impl Router {
                 let delete_path = format!("{}/delete", model.route_path);
 
                 info!(
-                    "[DYN-ROUTER] Registering: {:<30} {} [{:<6}]",
+                    "[DYN-ROUTER] >>: {:<30} {} [{:<6}]",
                     delete_path,
                     format!("->").green(),
                     method_color("DELETE")
@@ -780,7 +781,7 @@ impl Router {
                 let patch_path = format!("{}/update-cell", model.route_path);
 
                 info!(
-                    "[DYN-ROUTER] Registering: {:<30} {} [{:<6}]",
+                    "[DYN-ROUTER] >>: {:<30} {} [{:<6}]",
                     patch_path,
                     format!("->").green(),
                     method_color("PATCH")
@@ -797,7 +798,7 @@ impl Router {
                 let advanced_search_path = format!("{}/query-explorer", model.route_path);
 
                 info!(
-                    "[DYN-ROUTER] Registering: {:<30} {} [{:<6}]",
+                    "[DYN-ROUTER] >>: {:<30} {} [{:<6}]",
                     advanced_search_path,
                     format!("->").green(),
                     method_color("GET")
@@ -813,7 +814,7 @@ impl Router {
                 // Detail view
                 let detail_path = format!("{}/:id", model.route_path);
                 info!(
-                    "[DYN-ROUTER] Registering: {:<30} {} [{:<6}]",
+                    "[DYN-ROUTER] >>: {:<30} {} [{:<6}]",
                     detail_path,
                     "->".green(),
                     method_color("GET")
@@ -828,7 +829,7 @@ impl Router {
                 // Bulk delete
                 let bulk_path = format!("{}/bulk-delete", model.route_path);
                 info!(
-                    "[DYN-ROUTER] Registering: {:<30} {} [{:<6}]",
+                    "[DYN-ROUTER] >>: {:<30} {} [{:<6}]",
                     bulk_path,
                     "->".green(),
                     method_color("POST")
@@ -843,7 +844,7 @@ impl Router {
                 // Export routes
                 let export_path = format!("{}/export", model.route_path);
                 info!(
-                    "[DYN-ROUTER] Registering: {:<30} {} [{:<6}]",
+                    "[DYN-ROUTER] >>: {:<30} {} [{:<6}]",
                     export_path,
                     "->".green(),
                     method_color("GET")
@@ -856,7 +857,7 @@ impl Router {
                 );
 
                 info!(
-                    "[DYN-ROUTER] Registering: {:<30} {} [{:<6}]",
+                    "[DYN-ROUTER] >>: {:<30} {} [{:<6}]",
                     "/admin/api/alter-table/:table_slug/add-column",
                     format!("->").green(),
                     method_color("POST")
@@ -874,7 +875,7 @@ impl Router {
             let dashboard_handler: AdminHandlerFn = Arc::new(|ctx| Box::pin(handle_dashboard(ctx)));
 
             info!(
-                "[DYN-ROUTER] Registering: {:<30} {} [{:<6}]",
+                "[DYN-ROUTER] >>: {:<30} {} [{:<6}]",
                 "/admin/dashboard",
                 format!("->").green(),
                 method_color("GET")
@@ -886,7 +887,7 @@ impl Router {
                 Arc::new(|ctx| Box::pin(handle_search_palette(ctx)));
 
             info!(
-                "[DYN-ROUTER] Registering: {:<30} {} [{:<6}]",
+                "[DYN-ROUTER] >>: {:<30} {} [{:<6}]",
                 "/admin/api/search-palette",
                 format!("->").green(),
                 method_color("GET")
@@ -905,7 +906,7 @@ impl Router {
                 let path = Box::leak(action_path.into_boxed_str());
 
                 info!(
-                    "[DYN-ROUTER] Registering: {:<30} {} [{:<6}]",
+                    "[DYN-ROUTER] >>: {:<30} {} [{:<6}]",
                     path,
                     "->".green(),
                     method_color("POST")
@@ -923,7 +924,7 @@ impl Router {
                 let bulk_path = Box::leak(bulk_action_path.into_boxed_str());
 
                 info!(
-                    "[DYN-ROUTER] Registering: {:<30} {} [{:<6}]",
+                    "[DYN-ROUTER] >>: {:<30} {} [{:<6}]",
                     bulk_path,
                     "->".green(),
                     method_color("POST")
@@ -1001,7 +1002,7 @@ impl Router {
             });
 
             info!(
-                "[DYN-ROUTER] Registering: {:<30} {} [{:<6}]",
+                "[DYN-ROUTER] >>: {:<30} {} [{:<6}]",
                 "/admin/api/create-table",
                 format!("->").green(),
                 method_color("POST")
@@ -1015,7 +1016,7 @@ impl Router {
             );
 
             info!(
-                "[DYN-ROUTER] Registering: {:<30} {} [{:<6}]",
+                "[DYN-ROUTER] >>: {:<30} {} [{:<6}]",
                 "/admin/api/metrics",
                 format!("->").green(),
                 method_color("GET")
@@ -1025,14 +1026,24 @@ impl Router {
             router.add_route(HttpMethod::GET,"/admin/api/metrics", admin_metrics_api_handler, None);
 
             info!(
-                "[DYN-ROUTER] Registering: {:<30} {} [{:<6}]",
-                "/admin/api/metrics/html",
+                "[DYN-ROUTER] >>: {:<30} {} [{:<6}]",
+                "/admin/metrics",
                 format!("->").green(),
                 method_color("GET")
             );
 
             // Dynamic HTMX Component Endpoint (Triggers every 5 seconds to update your dashboard layout)
-            router.add_route(HttpMethod::GET,"/admin/api/metrics/html", admin_metrics_html_handler, None);
+            router.add_route(HttpMethod::GET,"/admin/metrics", admin_metrics_html_handler, None);
+
+            info!(
+                "[DYN-ROUTER] >>: {:<30} {} [{:<6}]",
+                "/admin/settings/security",
+                format!("->").green(),
+                method_color("GET")
+            );
+
+            // Dynamic HTMX Component Endpoint (Triggers every 5 seconds to update your dashboard layout)
+            router.add_route(HttpMethod::GET,"/admin/settings/security", admin_security_matrix_view_handler, None);
         }
 
         router

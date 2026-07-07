@@ -10,8 +10,8 @@ type HmacSha256 = Hmac<Sha256>;
 
 #[derive(Debug, Clone)]
 pub struct CookieJar {
-    incoming: HashMap<String, String>,
-    outgoing: HashMap<String, Cookie>,
+    pub incoming: HashMap<String, String>,
+    pub outgoing: HashMap<String, Cookie>,
     signing_key: String,
 }
 
