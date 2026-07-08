@@ -1,10 +1,10 @@
 use crate::core_parser::parse_repository_attributes;
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{DeriveInput, LitStr};
+use syn::{DeriveInput, Ident, LitStr};
 
-mod ctor_registry;
 pub mod action;
+mod ctor_registry;
 
 pub fn expand_admin(input: DeriveInput) -> syn::Result<TokenStream> {
     let name = &input.ident;
@@ -112,6 +112,54 @@ pub fn expand_admin(input: DeriveInput) -> syn::Result<TokenStream> {
         &searchable_literals,
         is_internal,
     );
+
+    // ---- Repository schema building ----
+    // Get the actual table name from the entity (we need to extract it)
+    // Since we don't have the entity's table name at compile time, we'll use the route_slug
+    // as the table name, and the actual table name will be set at runtime in ctor_registry.
+    let table_name = route_slug.clone();
+    let table_name_lit = LitStr::new(&table_name, proc_macro2::Span::call_site());
+
+    // Create string literals for the schema registration
+    let grid_columns_lit: Vec<LitStr> = grid_columns
+        .iter()
+        .map(|s| LitStr::new(s, proc_macro2::Span::call_site()))
+        .collect();
+
+    let searchable_columns_lit: Vec<LitStr> = searchable_columns
+        .iter()
+        .map(|s| LitStr::new(s, proc_macro2::Span::call_site()))
+        .collect();
+
+    let read_only_columns_lit: Vec<LitStr> = read_only_columns
+        .iter()
+        .map(|s| LitStr::new(s, proc_macro2::Span::call_site()))
+        .collect();
+
+    let route_path_lit = LitStr::new(
+        &format!("/admin/{}", route_slug),
+        proc_macro2::Span::call_site(),
+    );
+
+    let register_fn_name = Ident::new(
+        &format!("register_repository_{}", route_slug),
+        proc_macro2::Span::call_site(),
+    );
+
+    // Also generate registration for the schema if the feature is enabled
+    let repository_registration = quote! {
+        #[#crate_root::startup::ctor(unsafe)]
+        fn #register_fn_name() {
+            let repo = #crate_root::core::schema::RepositorySchema {
+                table_name: #table_name_lit.to_string(),
+                grid_columns: vec![ #(#grid_columns_lit.to_string()),* ],
+                searchable_columns: vec![ #(#searchable_columns_lit.to_string()),* ],
+                read_only_columns: vec![ #(#read_only_columns_lit.to_string()),* ],
+                route_path: #route_path_lit.to_string(),
+            };
+            #crate_root::core::schema::register_repository(#table_name_lit, repo);
+        }
+    };
 
     Ok(quote! {
         const _: () = {
@@ -372,6 +420,7 @@ pub fn expand_admin(input: DeriveInput) -> syn::Result<TokenStream> {
             }
 
             #ctor_registration_block
+            #repository_registration
         };
     })
 }

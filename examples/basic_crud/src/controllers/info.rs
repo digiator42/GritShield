@@ -43,12 +43,12 @@ impl ApiController {
         //     .unwrap();
 
         // =================== GritModel ====================
-        // let test_grit_model = user_repo
-        //     .find_by_id_between(5, 6)
-        //     .with_posts()
-        //     .with_comments()
-        //     .await
-        //     .unwrap();
+        let test_grit_model = user_repo
+            .find_by_id_between(5, 6)
+            .with_posts()
+            .with_comments()
+            .await
+            .unwrap();
 
         let post_repo = PostRepository { db: db.clone() };
 

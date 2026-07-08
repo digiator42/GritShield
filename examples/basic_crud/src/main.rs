@@ -1,7 +1,5 @@
 use gritshield::{
-    database::repository::CustomQuerySpec,
-    prelude::*,
-    security::db::{DbConfig, DbManager},
+    core::schema::export_openapi, prelude::*, security::db::{DbConfig, DbManager},
 };
 
 mod controllers;
@@ -15,6 +13,8 @@ async fn main() {
     let shared_db = DbManager::connect(db_config).await.unwrap();
 
     let router = Router::new().mount_db(shared_db.clone());
+
+    export_openapi("target/schema.json").unwrap();
 
     seed_social_media_if_empty(shared_db.as_ref()).await;
 

@@ -12,6 +12,7 @@ use crate::security::jwt::Claims;
 use crate::security::middleware::{
     AfterRequestHook, Middleware, MiddlewareResult, MiddlewareState,
 };
+use crate::core::swagger::{generate_openapi_spec, render_swagger_ui};
 use crate::security::session::{Session, SessionStore};
 use crate::security::telemetry::SystemTelemetry;
 use crate::security::xss::{Sanitizer, UntrustedString};
@@ -1100,6 +1101,47 @@ impl Router {
                 HttpMethod::GET,
                 "/admin/settings/security",
                 admin_security_matrix_view_handler,
+                None,
+            );
+
+            // ---- SWAGGER UI ROUTE ----
+            let swagger_handler: AdminHandlerFn = Arc::new(|_ctx| {
+                Box::pin(async move {
+                    let html = render_swagger_ui().into_string();
+                    Response::ok(Sanitizer::trust(&html))
+                })
+            });
+
+            info!(
+                "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
+                "/admin/docs",
+                max_len,
+                format!("->").green(),
+                method_color("GET")
+            );
+
+            router.add_route(HttpMethod::GET, "/admin/docs", swagger_handler, None);
+
+            // ---- OPTIONAL: RAW OPENAPI JSON ENDPOINT ----
+            let openapi_handler: AdminHandlerFn = Arc::new(|_ctx| {
+                Box::pin(async move {
+                    let spec = generate_openapi_spec();
+                    Response::json(200, &spec)
+                })
+            });
+
+            info!(
+                "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
+                "/admin/docs/openapi.json",
+                max_len,
+                format!("->").green(),
+                method_color("GET")
+            );
+
+            router.add_route(
+                HttpMethod::GET,
+                "/admin/docs/openapi.json",
+                openapi_handler,
                 None,
             );
         }

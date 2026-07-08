@@ -1,7 +1,7 @@
 // src/repository/query_dsl.rs
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
-use syn::Ident;
+use syn::{Ident, Type};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ModelColumnType {
@@ -12,22 +12,50 @@ pub enum ModelColumnType {
     Unknown,
 }
 
-pub fn type_to_column_type(ty: &syn::Type) -> ModelColumnType {
-    if let syn::Type::Path(type_path) = ty {
+
+/// type detection that handles Option<T> and returns nullable flag
+pub fn type_to_column_type(ty: &syn::Type) -> (ModelColumnType, bool) {
+    // Check if it's Option<T>
+    if let Type::Path(type_path) = ty {
+        if let Some(segment) = type_path.path.segments.last() {
+            let type_str = segment.ident.to_string();
+
+            // Check for Option
+            if type_str == "Option" {
+                // Extract the inner type from Option<T>
+                if let syn::PathArguments::AngleBracketed(angle_bracketed) = &segment.arguments {
+                    if let Some(arg) = angle_bracketed.args.first() {
+                        if let syn::GenericArgument::Type(inner_type) = arg {
+                            let (inner_col_type, _) = type_to_column_type(inner_type);
+                            return (inner_col_type, true); // nullable = true
+                        }
+                    }
+                }
+                return (ModelColumnType::Unknown, true);
+            }
+        }
+    }
+
+    // Regular type detection (non-Option)
+    if let Type::Path(type_path) = ty {
         if let Some(segment) = type_path.path.segments.last() {
             let type_str = segment.ident.to_string();
             match type_str.as_str() {
-                "String" | "str" => return ModelColumnType::String,
-                "bool" => return ModelColumnType::Bool,
-                "i8" | "i16" | "i32" | "i64" | "i128" | "isize" |
-                "u8" | "u16" | "u32" | "u64" | "u128" | "usize" |
-                "f32" | "f64" | "Decimal" => return ModelColumnType::Numeric,
-                "NaiveDateTime" | "DateTime" | "NaiveDate" | "NaiveTime" => return ModelColumnType::DateTime,
+                "String" | "str" => return (ModelColumnType::String, false),
+                "bool" => return (ModelColumnType::Bool, false),
+                "i8" | "i16" | "i32" | "i64" | "i128" | "isize"
+                | "u8" | "u16" | "u32" | "u64" | "u128" | "usize"
+                | "f32" | "f64" | "Decimal" => return (ModelColumnType::Numeric, false),
+                "NaiveDateTime" | "DateTime" | "NaiveDate" | "NaiveTime" => {
+                    return (ModelColumnType::DateTime, false)
+                }
+                "Json" | "Value" => return (ModelColumnType::Unknown, true),
                 _ => {}
             }
         }
     }
-    ModelColumnType::Unknown
+
+    (ModelColumnType::Unknown, false)
 }
 
 fn to_pascal_case(s: &str) -> String {

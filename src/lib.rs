@@ -14,7 +14,7 @@ pub use ctor;
 pub use futures;
 pub use inventory;
 
-#[cfg(feature = "admin")] // Changed from "grit_admin" to "admin"
+#[cfg(feature = "admin")]
 pub mod gritadmin;
 
 #[cfg(feature = "admin")]

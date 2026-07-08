@@ -16,6 +16,7 @@ pub struct Model {
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation, GritRelation)]
+#[grit(table = "users")]
 pub enum Relation {
     #[sea_orm(has_many = "super::post::Entity")]
     Post,

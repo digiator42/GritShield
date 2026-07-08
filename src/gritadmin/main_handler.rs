@@ -1135,7 +1135,7 @@ pub async fn handle_search_palette(ctx: RequestContext) -> Response {
             @if !record_results.is_empty() {
                 div class="text-xxs uppercase tracking-wider text-amber-500 font-bold px-3 py-2 font-mono" { "🔍 Deep Record Matches" }
                 div class="max-h-72 overflow-y-auto space-y-4 px-2 py-1" {
-                    @for (table_slug, route_path, rows_snippet) in &mut record_results[..10] {
+                    @for (table_slug, route_path, rows_snippet) in &mut record_results {
                         div class="border border-gray-900 bg-gray-950/40 rounded-lg overflow-hidden" {
                             div class="bg-gray-900/60 px-3 py-1.5 flex justify-between items-center border-b border-gray-900" {
                                 span class="text-xs font-bold text-gray-400 uppercase tracking-tight" { (table_slug) }
@@ -1147,8 +1147,9 @@ pub async fn handle_search_palette(ctx: RequestContext) -> Response {
                                    class="text-xxs text-emerald-500 hover:underline font-mono" { "Go →" }
                             }
                             table class="w-full text-left border-collapse pointer-events-none select-none opacity-85 table-scroll" {
+                                @let max_len = rows_snippet.len().min(10);
                                 tbody class="divide-y divide-gray-900/60 bg-gray-950/20" {
-                                    (maud::PreEscaped(rows_snippet))
+                                    (maud::PreEscaped(&rows_snippet[..max_len]))
                                 }
                             }
                         }
