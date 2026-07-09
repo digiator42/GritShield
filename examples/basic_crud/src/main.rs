@@ -1,5 +1,7 @@
 use gritshield::{
-    core::schema::export_openapi, prelude::*, security::db::{DbConfig, DbManager},
+    core::schema::export_openapi,
+    prelude::*,
+    security::db::{DbConfig, DbManager},
 };
 
 mod controllers;

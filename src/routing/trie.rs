@@ -1,4 +1,5 @@
 use crate::core::logger::{self, log_request_summary, LogLevel};
+use crate::core::swagger::{generate_openapi_spec, render_swagger_ui};
 use crate::database::repository::{AdminHandlerFn, DynamicColumnSpec};
 use crate::gritadmin::main_handler::*;
 use crate::gritadmin::metrics::{admin_metrics_api_handler, admin_metrics_html_handler};
@@ -12,7 +13,6 @@ use crate::security::jwt::Claims;
 use crate::security::middleware::{
     AfterRequestHook, Middleware, MiddlewareResult, MiddlewareState,
 };
-use crate::core::swagger::{generate_openapi_spec, render_swagger_ui};
 use crate::security::session::{Session, SessionStore};
 use crate::security::telemetry::SystemTelemetry;
 use crate::security::xss::{Sanitizer, UntrustedString};
@@ -786,7 +786,7 @@ impl Router {
 
             // ---- REGISTER ROUTES WITH CONSISTENT FORMATTING ----
             for (_table_name, model) in registry.iter() {
-                // 1. Core Workspace Table Views / Global Dynamic Routes (GET)
+                // Core Workspace Table Views / Global Dynamic Routes (GET)
                 info!(
                     "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
                     model.route_path,
@@ -801,7 +801,7 @@ impl Router {
                     None,
                 );
 
-                // 2. Real-time Grid Search Pipeline (GET)
+                // Real-time Grid Search Pipeline (GET)
                 let search = format!("{}/search", model.route_path);
                 info!(
                     "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
@@ -817,7 +817,7 @@ impl Router {
                     None,
                 );
 
-                // 3. Delete Route (DELETE)
+                // Delete Route (DELETE)
                 let delete_path = format!("{}/delete", model.route_path);
                 info!(
                     "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
@@ -833,7 +833,7 @@ impl Router {
                     None,
                 );
 
-                // 4. Inline Cell Updates (PATCH)
+                // Inline Cell Updates (PATCH)
                 let patch_path = format!("{}/update-cell", model.route_path);
                 info!(
                     "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
@@ -849,7 +849,7 @@ impl Router {
                     None,
                 );
 
-                // 5. Advanced Matrix Query Explorer Pipeline (GET)
+                // Advanced Matrix Query Explorer Pipeline (GET)
                 let advanced_search_path = format!("{}/query-explorer", model.route_path);
                 info!(
                     "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
@@ -865,7 +865,7 @@ impl Router {
                     None,
                 );
 
-                // 6. Detail view (GET)
+                // Detail view (GET)
                 let detail_path = format!("{}/:id", model.route_path);
                 info!(
                     "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
@@ -881,7 +881,7 @@ impl Router {
                     None,
                 );
 
-                // 7. Bulk delete (POST)
+                // Bulk delete (POST)
                 let bulk_path = format!("{}/bulk-delete", model.route_path);
                 info!(
                     "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
@@ -897,7 +897,7 @@ impl Router {
                     None,
                 );
 
-                // 8. Export routes (GET)
+                // Export routes (GET)
                 let export_path = format!("{}/export", model.route_path);
                 info!(
                     "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
@@ -970,7 +970,7 @@ impl Router {
             );
 
             // ---- ALTER TABLE ROUTE ----
-            let alter_table_add_column_handler: AdminHandlerFn = Arc::new(|ctx| {
+            let alter_table_add_column_handler: AdminHandlerFn = Arc::new(|_ctx| {
                 Box::pin(async move {
                     // Handler implementation...
                     Response::ok("Alter table route".to_string())

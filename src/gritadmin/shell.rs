@@ -183,6 +183,17 @@ pub fn admin_shell(title: &str, content: Markup, is_htmx: bool) -> Response {
                                hx-indicator="body"
                                hx-push-url="true"
                                class="block p-2 hover:bg-gray-800 rounded transition text-gray-400" { "🔒 Security Settings" }
+
+                            // swagger-ui route, open in new tab
+                            a href="/admin/docs"
+                               target="_blank" rel="noopener noreferrer"
+                               class="block p-2 hover:bg-gray-800 rounded transition text-gray-400" { "📚 API Documentation" }
+
+                            // swagger-ui json api
+                            a href="/admin/docs/openapi.json"
+                               target="_blank" rel="noopener noreferrer"
+                               class="block p-2 hover:bg-gray-800 rounded transition text-gray-400" { "📄 API JSON" }
+
                         }
                         hr class="border-gray-800 my-4";
                         div class="flex items-center justify-between" {

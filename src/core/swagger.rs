@@ -3,7 +3,6 @@ use crate::database::repository::{ACTIONS_REGISTRY, ADMIN_REGISTRY};
 use crate::prelude::*;
 use crate::protocol::request::HttpMethod;
 use crate::routing::trie::AutoRoute;
-use serde_json::json;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -24,21 +23,29 @@ pub struct Info {
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct PathItem {
+    // skip_serializing_if prevents "get": null from breaking OpenAPI parsing compliance
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub get: Option<Operation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub post: Option<Operation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub put: Option<Operation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub delete: Option<Operation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub patch: Option<Operation>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct Operation {
     pub summary: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     pub operation_id: String,
     pub tags: Vec<String>,
     pub parameters: Vec<Parameter>,
     pub responses: HashMap<String, Response>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub request_body: Option<RequestBody>,
 }
 
@@ -48,6 +55,7 @@ pub struct Parameter {
     pub in_: String,
     pub required: bool,
     pub schema: Schema,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
 }
 
@@ -65,6 +73,7 @@ pub struct MediaType {
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct Response {
     pub description: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<HashMap<String, MediaType>>,
 }
 
@@ -72,10 +81,16 @@ pub struct Response {
 pub struct Schema {
     #[serde(rename = "type")]
     pub type_: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub format: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub properties: Option<HashMap<String, Schema>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub required: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub items: Option<Box<Schema>>,
+    // OpenAPI specification keyword must be exactly "enum"
+    #[serde(rename = "enum", skip_serializing_if = "Option::is_none")]
     pub enum_values: Option<Vec<String>>,
 }
 
@@ -111,7 +126,6 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
         let method = route.method;
         let method_str = format!("{:?}", method).to_lowercase();
 
-        // Build parameters from path (extract :param placeholders)
         let mut parameters = Vec::new();
         for segment in path.split('/') {
             if segment.starts_with(':') {
@@ -133,9 +147,7 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
             }
         }
 
-        // Add query parameters if present (we can detect from path)
-        let has_page = path.contains("page");
-        if has_page {
+        if path.contains("page") {
             parameters.push(Parameter {
                 name: "page".to_string(),
                 in_: "query".to_string(),
@@ -199,7 +211,7 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
             request_body: None,
         };
 
-        // Insert the operation into the paths map
+        // Inline usage of standard entry API to avoid any parameter mismatches
         let path_item = paths.entry(path.to_string()).or_insert(PathItem {
             get: None,
             post: None,
@@ -222,13 +234,11 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
     // ADMIN ROUTES (from ADMIN_REGISTRY)
     // ============================================================
     for (table_slug, meta) in registry.iter() {
-        // Add tags for each table
         tags.push(Tag {
             name: table_slug.to_string(),
             description: format!("{} management endpoints", table_slug),
         });
 
-        // Build schemas for each table
         let mut properties = HashMap::new();
         let mut required = Vec::new();
 
@@ -368,302 +378,279 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
             });
         }
 
-        paths.insert(
-            meta.route_path.to_string(),
-            PathItem {
-                get: Some(Operation {
-                    summary: format!("List {} records", table_slug),
-                    description: Some(format!(
-                        "Get a paginated list of {} records with filtering, sorting, and search.",
-                        table_slug
-                    )),
-                    operation_id: format!("list_{}", table_slug),
-                    tags: vec![table_slug.to_string()],
-                    parameters: list_params,
-                    responses: {
-                        let mut res = HashMap::new();
-                        res.insert(
-                            "200".to_string(),
-                            Response {
-                                description: "Success".to_string(),
-                                content: Some({
-                                    let mut content = HashMap::new();
-                                    content.insert(
-                                        "text/html".to_string(),
-                                        MediaType {
-                                            schema: Schema {
-                                                type_: "string".to_string(),
-                                                format: None,
-                                                properties: None,
-                                                required: None,
-                                                items: None,
-                                                enum_values: None,
-                                            },
-                                        },
-                                    );
-                                    content
-                                }),
-                            },
-                        );
-                        res
+        // Clean inline entry insertion avoids overwriting other HTTP methods on the same base route path
+        let list_item = paths.entry(meta.route_path.to_string()).or_insert(PathItem {
+            get: None, post: None, put: None, delete: None, patch: None
+        });
+        list_item.get = Some(Operation {
+            summary: format!("List {} records", table_slug),
+            description: Some(format!(
+                "Get a paginated list of {} records with filtering, sorting, and search.",
+                table_slug
+            )),
+            operation_id: format!("list_{}", table_slug),
+            tags: vec![table_slug.to_string()],
+            parameters: list_params,
+            responses: {
+                let mut res = HashMap::new();
+                res.insert(
+                    "200".to_string(),
+                    Response {
+                        description: "Success".to_string(),
+                        content: Some({
+                            let mut content = HashMap::new();
+                            content.insert(
+                                "text/html".to_string(),
+                                MediaType {
+                                    schema: Schema {
+                                        type_: "string".to_string(),
+                                        format: None,
+                                        properties: None,
+                                        required: None,
+                                        items: None,
+                                        enum_values: None,
+                                    },
+                                },
+                            );
+                            content
+                        }),
                     },
-                    request_body: None,
-                }),
-                post: None,
-                put: None,
-                delete: None,
-                patch: None,
+                );
+                res
             },
-        );
+            request_body: None,
+        });
 
         // ---- DETAIL ENDPOINT ----
         let detail_path = format!("{}/:id", meta.route_path);
-        paths.insert(
-            detail_path,
-            PathItem {
-                get: Some(Operation {
-                    summary: format!("Get {} record details", table_slug),
-                    description: Some(format!(
-                        "Get a single {} record with all fields and audit history.",
-                        table_slug
-                    )),
-                    operation_id: format!("get_{}", table_slug),
-                    tags: vec![table_slug.to_string()],
-                    parameters: vec![Parameter {
-                        name: "id".to_string(),
-                        in_: "path".to_string(),
-                        required: true,
-                        schema: Schema {
-                            type_: "string".to_string(),
-                            format: None,
-                            properties: None,
-                            required: None,
-                            items: None,
-                            enum_values: None,
-                        },
-                        description: Some("Record ID".to_string()),
-                    }],
-                    responses: {
-                        let mut res = HashMap::new();
-                        res.insert(
-                            "200".to_string(),
-                            Response {
-                                description: "Success".to_string(),
-                                content: Some({
-                                    let mut content = HashMap::new();
-                                    content.insert(
-                                        "text/html".to_string(),
-                                        MediaType {
-                                            schema: Schema {
-                                                type_: "string".to_string(),
-                                                format: None,
-                                                properties: None,
-                                                required: None,
-                                                items: None,
-                                                enum_values: None,
-                                            },
-                                        },
-                                    );
-                                    content
-                                }),
-                            },
-                        );
-                        res.insert(
-                            "404".to_string(),
-                            Response {
-                                description: "Not Found".to_string(),
-                                content: None,
-                            },
-                        );
-                        res
+        let detail_item = paths.entry(detail_path).or_insert(PathItem {
+            get: None, post: None, put: None, delete: None, patch: None
+        });
+        detail_item.get = Some(Operation {
+            summary: format!("Get {} record details", table_slug),
+            description: Some(format!(
+                "Get a single {} record with all fields and audit history.",
+                table_slug
+            )),
+            operation_id: format!("get_{}", table_slug),
+            tags: vec![table_slug.to_string()],
+            parameters: vec![Parameter {
+                name: "id".to_string(),
+                in_: "path".to_string(),
+                required: true,
+                schema: Schema {
+                    type_: "string".to_string(),
+                    format: None,
+                    properties: None,
+                    required: None,
+                    items: None,
+                    enum_values: None,
+                },
+                description: Some("Record ID".to_string()),
+            }],
+            responses: {
+                let mut res = HashMap::new();
+                res.insert(
+                    "200".to_string(),
+                    Response {
+                        description: "Success".to_string(),
+                        content: Some({
+                            let mut content = HashMap::new();
+                            content.insert(
+                                "text/html".to_string(),
+                                MediaType {
+                                    schema: Schema {
+                                        type_: "string".to_string(),
+                                        format: None,
+                                        properties: None,
+                                        required: None,
+                                        items: None,
+                                        enum_values: None,
+                                    },
+                                },
+                            );
+                            content
+                        }),
                     },
-                    request_body: None,
-                }),
-                post: None,
-                put: None,
-                delete: None,
-                patch: None,
+                );
+                res.insert(
+                    "404".to_string(),
+                    Response {
+                        description: "Not Found".to_string(),
+                        content: None,
+                    },
+                );
+                res
             },
-        );
+            request_body: None,
+        });
 
         // ---- BULK DELETE ----
         let bulk_path = format!("{}/bulk-delete", meta.route_path);
-        paths.insert(
-            bulk_path,
-            PathItem {
-                get: None,
-                post: Some(Operation {
-                    summary: format!("Bulk delete {} records", table_slug),
-                    description: Some(format!("Delete multiple {} records by ID.", table_slug)),
-                    operation_id: format!("bulk_delete_{}", table_slug),
-                    tags: vec![table_slug.to_string()],
-                    parameters: vec![],
-                    responses: {
-                        let mut res = HashMap::new();
-                        res.insert(
-                            "200".to_string(),
-                            Response {
-                                description: "Success".to_string(),
-                                content: None,
-                            },
-                        );
-                        res
+        let bulk_item = paths.entry(bulk_path).or_insert(PathItem {
+            get: None, post: None, put: None, delete: None, patch: None
+        });
+        bulk_item.post = Some(Operation {
+            summary: format!("Bulk delete {} records", table_slug),
+            description: Some(format!("Delete multiple {} records by ID.", table_slug)),
+            operation_id: format!("bulk_delete_{}", table_slug),
+            tags: vec![table_slug.to_string()],
+            parameters: vec![],
+            responses: {
+                let mut res = HashMap::new();
+                res.insert(
+                    "200".to_string(),
+                    Response {
+                        description: "Success".to_string(),
+                        content: None,
                     },
-                    request_body: Some(RequestBody {
-                        required: true,
-                        content: {
-                            let mut content = HashMap::new();
-                            content.insert(
-                                "application/x-www-form-urlencoded".to_string(),
-                                MediaType {
-                                    schema: Schema {
-                                        type_: "object".to_string(),
-                                        format: None,
-                                        properties: Some({
-                                            let mut props = HashMap::new();
-                                            props.insert(
-                                                "ids".to_string(),
-                                                Schema {
-                                                    type_: "string".to_string(),
-                                                    format: None,
-                                                    properties: None,
-                                                    required: None,
-                                                    items: None,
-                                                    enum_values: None,
-                                                },
-                                            );
-                                            props
-                                        }),
-                                        required: Some(vec!["ids".to_string()]),
-                                        items: None,
-                                        enum_values: None,
-                                    },
-                                },
-                            );
-                            content
-                        },
-                    }),
-                }),
-                put: None,
-                delete: None,
-                patch: None,
+                );
+                res
             },
-        );
+            request_body: Some(RequestBody {
+                required: true,
+                content: {
+                    let mut content = HashMap::new();
+                    content.insert(
+                        "application/x-www-form-urlencoded".to_string(),
+                        MediaType {
+                            schema: Schema {
+                                type_: "object".to_string(),
+                                format: None,
+                                properties: Some({
+                                    let mut props = HashMap::new();
+                                    props.insert(
+                                        "ids".to_string(),
+                                        Schema {
+                                            type_: "string".to_string(),
+                                            format: None,
+                                            properties: None,
+                                            required: None,
+                                            items: None,
+                                            enum_values: None,
+                                        },
+                                    );
+                                    props
+                                }),
+                                required: Some(vec!["ids".to_string()]),
+                                items: None,
+                                enum_values: None,
+                            },
+                        },
+                    );
+                    content
+                },
+            }),
+        });
 
         // ---- PATCH CELL ----
         let patch_path = format!("{}/update-cell", meta.route_path);
-        paths.insert(
-            patch_path,
-            PathItem {
-                get: None,
-                post: None,
-                put: None,
-                delete: None,
-                patch: Some(Operation {
-                    summary: format!("Update a single cell in {} table", table_slug),
-                    description: Some(format!(
-                        "Update a single field/column of a {} record.",
-                        table_slug
-                    )),
-                    operation_id: format!("patch_cell_{}", table_slug),
-                    tags: vec![table_slug.to_string()],
-                    parameters: vec![],
-                    responses: {
-                        let mut res = HashMap::new();
-                        res.insert(
-                            "200".to_string(),
-                            Response {
-                                description: "Success".to_string(),
-                                content: Some({
-                                    let mut content = HashMap::new();
-                                    content.insert(
-                                        "text/html".to_string(),
-                                        MediaType {
-                                            schema: Schema {
-                                                type_: "string".to_string(),
-                                                format: None,
-                                                properties: None,
-                                                required: None,
-                                                items: None,
-                                                enum_values: None,
-                                            },
-                                        },
-                                    );
-                                    content
-                                }),
-                            },
-                        );
-                        res.insert(
-                            "400".to_string(),
-                            Response {
-                                description: "Bad Request".to_string(),
-                                content: None,
-                            },
-                        );
-                        res
-                    },
-                    request_body: Some(RequestBody {
-                        required: true,
-                        content: {
+        let patch_item = paths.entry(patch_path).or_insert(PathItem {
+            get: None, post: None, put: None, delete: None, patch: None
+        });
+        patch_item.patch = Some(Operation {
+            summary: format!("Update a single cell in {} table", table_slug),
+            description: Some(format!(
+                "Update a single field/column of a {} record.",
+                table_slug
+            )),
+            operation_id: format!("patch_cell_{}", table_slug),
+            tags: vec![table_slug.to_string()],
+            parameters: vec![],
+            responses: {
+                let mut res = HashMap::new();
+                res.insert(
+                    "200".to_string(),
+                    Response {
+                        description: "Success".to_string(),
+                        content: Some({
                             let mut content = HashMap::new();
                             content.insert(
-                                "application/x-www-form-urlencoded".to_string(),
+                                "text/html".to_string(),
                                 MediaType {
                                     schema: Schema {
-                                        type_: "object".to_string(),
+                                        type_: "string".to_string(),
                                         format: None,
-                                        properties: Some({
-                                            let mut props = HashMap::new();
-                                            props.insert(
-                                                "id".to_string(),
-                                                Schema {
-                                                    type_: "string".to_string(),
-                                                    format: None,
-                                                    properties: None,
-                                                    required: None,
-                                                    items: None,
-                                                    enum_values: None,
-                                                },
-                                            );
-                                            props.insert(
-                                                "column".to_string(),
-                                                Schema {
-                                                    type_: "string".to_string(),
-                                                    format: None,
-                                                    properties: None,
-                                                    required: None,
-                                                    items: None,
-                                                    enum_values: None,
-                                                },
-                                            );
-                                            props.insert(
-                                                "table_to_modify".to_string(),
-                                                Schema {
-                                                    type_: "string".to_string(),
-                                                    format: None,
-                                                    properties: None,
-                                                    required: None,
-                                                    items: None,
-                                                    enum_values: None,
-                                                },
-                                            );
-                                            props
-                                        }),
-                                        required: Some(vec![
-                                            "id".to_string(),
-                                            "column".to_string(),
-                                        ]),
+                                        properties: None,
+                                        required: None,
                                         items: None,
                                         enum_values: None,
                                     },
                                 },
                             );
                             content
-                        },
-                    }),
-                }),
+                        }),
+                    },
+                );
+                res.insert(
+                    "400".to_string(),
+                    Response {
+                        description: "Bad Request".to_string(),
+                        content: None,
+                    },
+                );
+                res
             },
-        );
+            request_body: Some(RequestBody {
+                required: true,
+                content: {
+                    let mut content = HashMap::new();
+                    content.insert(
+                        "application/x-www-form-urlencoded".to_string(),
+                        MediaType {
+                            schema: Schema {
+                                type_: "object".to_string(),
+                                format: None,
+                                properties: Some({
+                                    let mut props = HashMap::new();
+                                    props.insert(
+                                        "id".to_string(),
+                                        Schema {
+                                            type_: "string".to_string(),
+                                            format: None,
+                                            properties: None,
+                                            required: None,
+                                            items: None,
+                                            enum_values: None,
+                                        },
+                                    );
+                                    props.insert(
+                                        "column".to_string(),
+                                        Schema {
+                                            type_: "string".to_string(),
+                                            format: None,
+                                            properties: None,
+                                            required: None,
+                                            items: None,
+                                            enum_values: None,
+                                        },
+                                    );
+                                    props.insert(
+                                        "table_to_modify".to_string(),
+                                        Schema {
+                                            type_: "string".to_string(),
+                                            format: None,
+                                            properties: None,
+                                            required: None,
+                                            items: None,
+                                            enum_values: None,
+                                        },
+                                    );
+                                    props
+                                }),
+                                required: Some(vec![
+                                    "id".to_string(),
+                                    "column".to_string(),
+                                ]),
+                                items: None,
+                                enum_values: None,
+                            },
+                        },
+                    );
+                    content
+                },
+            }),
+        });
     }
 
     // ============================================================
@@ -677,114 +664,107 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
     let actions_registry = ACTIONS_REGISTRY.lock().unwrap();
     for (table_slug, actions) in actions_registry.iter() {
         for action in actions {
-            let action_path = format!("/admin/{}/action/{{action_name}}", table_slug);
-            paths.insert(
-                action_path,
-                PathItem {
-                    get: None,
-                    post: Some(Operation {
-                        summary: format!(
-                            "Execute custom action '{}' on {} table",
-                            action.label, table_slug
-                        ),
-                        description: Some(format!(
-                            "Execute the '{}' custom action for {} records.",
-                            action.label, table_slug
-                        )),
-                        operation_id: format!("action_{}_{}", table_slug, action.label),
-                        tags: vec![table_slug.to_string(), "custom_actions".to_string()],
-                        parameters: vec![Parameter {
-                            name: "action_name".to_string(),
-                            in_: "path".to_string(),
-                            required: true,
-                            schema: Schema {
-                                type_: "string".to_string(),
-                                format: None,
-                                properties: None,
-                                required: None,
-                                items: None,
-                                enum_values: Some(vec![action.label.to_string().clone()]),
-                            },
-                            description: Some("Action name".to_string()),
-                        }],
-                        responses: {
-                            let mut res = HashMap::new();
-                            res.insert(
-                                "200".to_string(),
-                                Response {
-                                    description: "Success".to_string(),
-                                    content: Some({
-                                        let mut content = HashMap::new();
-                                        content.insert(
-                                            "text/html".to_string(),
-                                            MediaType {
-                                                schema: Schema {
-                                                    type_: "string".to_string(),
-                                                    format: None,
-                                                    properties: None,
-                                                    required: None,
-                                                    items: None,
-                                                    enum_values: None,
-                                                },
-                                            },
-                                        );
-                                        content
-                                    }),
-                                },
-                            );
-                            res
-                        },
-                        request_body: Some(RequestBody {
-                            required: true,
-                            content: {
+            let action_path = format!("/admin/{}/action/:action_name", table_slug);
+            let action_item = paths.entry(action_path).or_insert(PathItem {
+                get: None, post: None, put: None, delete: None, patch: None
+            });
+            action_item.post = Some(Operation {
+                summary: format!(
+                    "Execute custom action '{}' on {} table",
+                    action.label, table_slug
+                ),
+                description: Some(format!(
+                    "Execute the '{}' custom action for {} records.",
+                    action.label, table_slug
+                )),
+                operation_id: format!("action_{}_{}", table_slug, action.label.replace(" ", "_")),
+                tags: vec![table_slug.to_string(), "custom_actions".to_string()],
+                parameters: vec![Parameter {
+                    name: "action_name".to_string(),
+                    in_: "path".to_string(),
+                    required: true,
+                    schema: Schema {
+                        type_: "string".to_string(),
+                        format: None,
+                        properties: None,
+                        required: None,
+                        items: None,
+                        enum_values: Some(vec![action.label.to_string()]),
+                    },
+                    description: Some("Action name".to_string()),
+                }],
+                responses: {
+                    let mut res = HashMap::new();
+                    res.insert(
+                        "200".to_string(),
+                        Response {
+                            description: "Success".to_string(),
+                            content: Some({
                                 let mut content = HashMap::new();
                                 content.insert(
-                                    "application/x-www-form-urlencoded".to_string(),
+                                    "text/html".to_string(),
                                     MediaType {
                                         schema: Schema {
-                                            type_: "object".to_string(),
+                                            type_: "string".to_string(),
                                             format: None,
-                                            properties: Some({
-                                                let mut props = HashMap::new();
-                                                props.insert(
-                                                    "ids".to_string(),
-                                                    Schema {
-                                                        type_: "array".to_string(),
-                                                        format: None,
-                                                        properties: None,
-                                                        required: None,
-                                                        items: Some(Box::new(Schema {
-                                                            type_: "string".to_string(),
-                                                            format: None,
-                                                            properties: None,
-                                                            required: None,
-                                                            items: None,
-                                                            enum_values: None,
-                                                        })),
-                                                        enum_values: None,
-                                                    },
-                                                );
-                                                props
-                                            }),
-                                            required: Some(vec!["ids".to_string()]),
+                                            properties: None,
+                                            required: None,
                                             items: None,
                                             enum_values: None,
                                         },
                                     },
                                 );
                                 content
-                            },
-                        }),
-                    }),
-                    put: None,
-                    delete: None,
-                    patch: None,
+                            }),
+                        },
+                    );
+                    res
                 },
-            );
+                request_body: Some(RequestBody {
+                    required: true,
+                    content: {
+                        let mut content = HashMap::new();
+                        content.insert(
+                            "application/x-www-form-urlencoded".to_string(),
+                            MediaType {
+                                schema: Schema {
+                                    type_: "object".to_string(),
+                                    format: None,
+                                    properties: Some({
+                                        let mut props = HashMap::new();
+                                        props.insert(
+                                            "ids".to_string(),
+                                            Schema {
+                                                type_: "array".to_string(),
+                                                format: None,
+                                                properties: None,
+                                                required: None,
+                                                items: Some(Box::new(Schema {
+                                                    type_: "string".to_string(),
+                                                    format: None,
+                                                    properties: None,
+                                                    required: None,
+                                                    items: None,
+                                                    enum_values: None,
+                                                })),
+                                                enum_values: None,
+                                            },
+                                        );
+                                        props
+                                    }),
+                                    required: Some(vec!["ids".to_string()]),
+                                    items: None,
+                                    enum_values: None,
+                                },
+                            },
+                        );
+                        content
+                    },
+                }),
+            });
         }
     }
 
-    // Build final spec
     OpenApiSpec {
         openapi: "3.0.0".to_string(),
         info: Info {
@@ -799,10 +779,10 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
 }
 
 /// Generate the HTML page with Swagger UI
-pub fn render_swagger_ui() -> Markup {
+pub fn render_swagger_ui() -> maud::Markup {
     let spec_json = serde_json::to_string_pretty(&generate_openapi_spec()).unwrap();
 
-    html! {
+    maud::html! {
         (maud::DOCTYPE)
         html lang="en" {
             head {
@@ -833,42 +813,17 @@ pub fn render_swagger_ui() -> Markup {
                         max-width: 80%;
                         margin: auto;
                     }
-                    .swagger-ui .info .title p {
-                        color: #ffffff;
-                    }
-                    .swagger-ui .info .title small {
-                        color: #64ffda;
-                    }
-                    .swagger-ui .info .description {
-                        color: #ebeaea;
-                    }
-                    .swagger-ui .scheme-container {
-                        background: #16213e;
-                    }
-                    .swagger-ui .opblock .opblock-summary-method {
-                        min-width: 80px;
-                    }
-                    .swagger-ui .btn {
-                        border-color: #64ffda;
-                        color: #64ffda;
-                    }
-                    .swagger-ui .btn:hover {
-                        background: rgba(100, 255, 218, 0.1);
-                    }
-
-                    /* Fix dimmed inline method text */
-                    .swagger-ui .opblock .opblock-summary-path {
-                        color: #ffffff !important;
-                    }
-                    .swagger-ui .opblock .opblock-summary-path a {
-                        color: #ffffff !important;
-                    }
-                    .swagger-ui .opblock .opblock-summary-path span {
-                        color: #ffffff !important;
-                    }
-                    .swagger-ui .opblock .opblock-summary-description {
-                        color: #cccccc !important;
-                    }
+                    .swagger-ui .info .title p { color: #ffffff; }
+                    .swagger-ui .info .title small { color: #64ffda; }
+                    .swagger-ui .info .description { color: #ebeaea; }
+                    .swagger-ui .scheme-container { background: #16213e; }
+                    .swagger-ui .opblock .opblock-summary-method { min-width: 80px; }
+                    .swagger-ui .btn { border-color: #64ffda; color: #64ffda; }
+                    .swagger-ui .btn:hover { background: rgba(100, 255, 218, 0.1); }
+                    .swagger-ui .opblock .opblock-summary-path { color: #ffffff !important; }
+                    .swagger-ui .opblock .opblock-summary-path a { color: #ffffff !important; }
+                    .swagger-ui .opblock .opblock-summary-path span { color: #ffffff !important; }
+                    .swagger-ui .opblock .opblock-summary-description { color: #cccccc !important; }
                     "
                 }
             }

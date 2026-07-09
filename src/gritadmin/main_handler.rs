@@ -11,7 +11,7 @@ use crate::deps::sea_orm::{
 };
 use crate::gritadmin::metrics::gather_all_metrics;
 use crate::gritadmin::models::audit_log;
-use crate::protocol::response::{IntoResponseBody, JsonPayload};
+use crate::protocol::response::IntoResponseBody;
 use crate::security::errors::ShieldError;
 use crate::security::xss::UntrustedString;
 use crate::{admin_shell, prelude::*};
@@ -36,11 +36,14 @@ fn get_target_table_slug(col_name: &str) -> Option<String> {
     // Remove "_id" suffix
     let base = col_name.trim_end_matches("_id");
 
-    let candidate = base.to_string();
+    // Try both singular and plural forms
+    let candidates = vec![base.to_string(), format!("{}s", base)];
 
     let registry = ADMIN_REGISTRY.lock().unwrap();
-    if registry.contains_key(&candidate.as_str()) {
-        return Some(candidate);
+    for candidate in candidates {
+        if registry.contains_key(&candidate.as_str()) {
+            return Some(candidate);
+        }
     }
     None
 }
@@ -60,11 +63,6 @@ where
     let route_patch_str = format!("/admin/{}/update-cell", table_slug);
     let route_delete_str = format!("/admin/{}/delete", table_slug);
     let route_detail_str = format!("/admin/{}/", table_slug);
-
-    println!("===== ACTIONS_REGISTRY for table '{}': {:?}", table_slug, {
-        let registry = ACTIONS_REGISTRY.lock().unwrap();
-        registry.get(table_slug).map(|v| v.len()).unwrap_or(0)
-    });
 
     html! {
         @for item in items.iter() {
@@ -251,10 +249,6 @@ where
             filters.insert(col.clone(), (op.clone(), val));
         }
     }
-
-    // ---- Debug output ----
-    println!("===== Filters parsed: {:?}", filters);
-    println!("===== Search q: {:?}", search_q);
 
     // ---- Sorting ----
     let sort_col = ctx.query.get("sort").map(|v| v.as_str()).unwrap_or("");
@@ -1477,11 +1471,6 @@ where
     let route_patch_str = format!("/admin/{}/update-cell", table_slug);
     let route_list_str = format!("/admin/{}", table_slug);
 
-    println!(
-        "===== Querying audit logs: table_slug={}, id_str={}",
-        table_slug, id_str
-    );
-
     // Fetch audit logs for this record
     let logs = audit_log::Entity::find()
         .filter(audit_log::Column::TableName.eq(repo.table_name()))
@@ -1490,8 +1479,6 @@ where
         .all(repo.get_db())
         .await
         .unwrap_or_default();
-
-    println!("===== Found {} audit logs", logs.len());
 
     let detail_html = html! {
         div class="space-y-6" {
@@ -2262,7 +2249,6 @@ pub async fn handle_custom_action(ctx: RequestContext) -> Response {
                 final_msg.replace('"', "\\\"")
             );
 
-            println!("===== Triggering HTMX toast: {}", trigger);
             res.headers.push(("hx-trigger".to_string(), trigger));
 
             // Wipe the body layout so it doesn't try to render on top of your main dashboard structure
@@ -2366,10 +2352,7 @@ pub async fn admin_metrics_api_handler(ctx: RequestContext) -> Response {
     let metrics_payload = gather_all_metrics(&ctx).await;
 
     // Serialize back out into a structured standard JSON text layout
-    Response::json(
-        200,
-        &metrics_payload,
-    )
+    Response::json(200, &metrics_payload)
 }
 
 /// Simple CSV writer (escapes commas and quotes).

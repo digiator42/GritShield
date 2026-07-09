@@ -1,7 +1,7 @@
 use crate::repository::query_dsl::{generate_query_methods, type_to_column_type, ModelColumnType};
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
-use syn::{Data, DeriveInput, Ident, Meta, Path, Result, Type};
+use syn::{Data, DeriveInput, Ident, Meta, Path, Result};
 
 pub fn expand_model(input: DeriveInput) -> Result<TokenStream> {
     let fields = match &input.data {

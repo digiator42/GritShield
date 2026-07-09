@@ -1,6 +1,6 @@
+use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use lazy_static::lazy_static;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum RelationKind {
@@ -12,7 +12,7 @@ pub enum RelationKind {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct FieldSchema {
     pub name: String,
-    pub type_: String,        // e.g., "String", "i32", "NaiveDateTime"
+    pub type_: String, // e.g., "String", "i32", "NaiveDateTime"
     pub nullable: bool,
     pub primary_key: bool,
 }
@@ -47,15 +47,31 @@ lazy_static! {
         Arc::new(Mutex::new(HashMap::new()));
 }
 
-pub fn register_model_schema(table_name: &str, fields: Vec<FieldSchema>, relations: Vec<RelationSchema>) {
+/// Register model schema
+pub fn register_model_schema(
+    table_name: &str,
+    fields: Vec<FieldSchema>,
+    relations: Vec<RelationSchema>,
+) {
     let mut registry = SCHEMA_REGISTRY.lock().unwrap();
-    let entry = registry.entry(table_name.to_string()).or_insert_with(|| ModelSchema {
-        table_name: table_name.to_string(),
-        fields: Vec::new(),
-        relations: Vec::new(),
-    });
-    entry.fields = fields;
-    entry.relations = relations;
+
+    if let Some(existing) = registry.get_mut(table_name) {
+        // Preserve existing relations, only update fields
+        existing.fields = fields;
+        // If new relations were passed, extend them
+        if !relations.is_empty() {
+            existing.relations.extend(relations);
+        }
+        // Also keep existing relations if new ones are empty
+    } else {
+        // Create new entry
+        let entry = ModelSchema {
+            table_name: table_name.to_string(),
+            fields,
+            relations,
+        };
+        registry.insert(table_name.to_string(), entry);
+    }
 }
 
 pub fn add_relations(table_name: &str, relations: Vec<RelationSchema>) {
@@ -69,7 +85,7 @@ pub fn add_relations(table_name: &str, relations: Vec<RelationSchema>) {
             relations: Vec::new(),
         };
         schema.relations = relations;
-        registry.insert(table_name.to_string(), schema);
+    registry.insert(table_name.to_string(), schema.clone());
     }
 }
 
@@ -88,9 +104,16 @@ pub fn export_openapi(output_path: &str) -> Result<(), std::io::Error> {
     // Merge: combine model and repository info
     let mut combined = serde_json::Map::new();
     for (table, model) in model_registry.iter() {
-        let mut obj = serde_json::to_value(model).unwrap().as_object().unwrap().clone();
+        let mut obj = serde_json::to_value(model)
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .clone();
         if let Some(repo) = repo_registry.get(table) {
-            obj.insert("repository".to_string(), serde_json::to_value(repo).unwrap());
+            obj.insert(
+                "repository".to_string(),
+                serde_json::to_value(repo).unwrap(),
+            );
         }
         combined.insert(table.clone(), serde_json::Value::Object(obj));
     }
@@ -99,7 +122,10 @@ pub fn export_openapi(output_path: &str) -> Result<(), std::io::Error> {
     for (table, repo) in repo_registry.iter() {
         if !combined.contains_key(table) {
             let mut obj = serde_json::Map::new();
-            obj.insert("repository".to_string(), serde_json::to_value(repo).unwrap());
+            obj.insert(
+                "repository".to_string(),
+                serde_json::to_value(repo).unwrap(),
+            );
             combined.insert(table.clone(), serde_json::Value::Object(obj));
         }
     }

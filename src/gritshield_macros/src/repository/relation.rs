@@ -133,6 +133,31 @@ pub fn expand_relation(input: DeriveInput) -> Result<TokenStream> {
         }
     }
 
+    // ---- Helper function to extract table name from path ----
+    let extract_table_name = |path: &Path| -> String {
+        // Try to get the module name (second-to-last segment)
+        // e.g., "super::post::Entity" → "post"
+        if let Some(module_segment) = path.segments.iter().nth_back(1) {
+            return module_segment.ident.to_string();
+        }
+        
+        // Fallback: if only one segment, use the last one and convert to snake_case
+        if let Some(last) = path.segments.last() {
+            let name = last.ident.to_string();
+            // Convert PascalCase to snake_case
+            let mut snake = String::new();
+            for (i, c) in name.chars().enumerate() {
+                if i > 0 && c.is_uppercase() {
+                    snake.push('_');
+                }
+                snake.push(c.to_ascii_lowercase());
+            }
+            return snake;
+        }
+        
+        "unknown".to_string()
+    };
+
     // ---- Build RelationSchema for each parsed relation ----
     let table_name_lit = LitStr::new(&table_name_str, proc_macro2::Span::call_site());
     
@@ -140,13 +165,9 @@ pub fn expand_relation(input: DeriveInput) -> Result<TokenStream> {
 
     // HasMany relations
     for (field, target_path) in &parsed_has_many {
-        let target_table = if let Some(last) = target_path.segments.last() {
-            last.ident.to_string()
-        } else {
-            "unknown".to_string()
-        };
+        let target_table = extract_table_name(target_path);
         let target_table_lit = LitStr::new(&target_table, proc_macro2::Span::call_site());
-        let field_lit = LitStr::new(field, proc_macro2::Span::call_site());
+        let _field_lit = LitStr::new(field, proc_macro2::Span::call_site());
         relations.push(quote! {
             ::gritshield::core::schema::RelationSchema {
                 kind: ::gritshield::core::schema::RelationKind::HasMany,
@@ -157,12 +178,8 @@ pub fn expand_relation(input: DeriveInput) -> Result<TokenStream> {
     }
 
     // HasOne relations
-    for (field, target_path) in &parsed_has_one {
-        let target_table = if let Some(last) = target_path.segments.last() {
-            last.ident.to_string()
-        } else {
-            "unknown".to_string()
-        };
+    for (_field, target_path) in &parsed_has_one {
+        let target_table = extract_table_name(target_path);
         let target_table_lit = LitStr::new(&target_table, proc_macro2::Span::call_site());
         relations.push(quote! {
             ::gritshield::core::schema::RelationSchema {
@@ -174,12 +191,8 @@ pub fn expand_relation(input: DeriveInput) -> Result<TokenStream> {
     }
 
     // BelongsTo relations (with foreign key)
-    for (field, target_path, foreign_key) in &parsed_belongs_to {
-        let target_table = if let Some(last) = target_path.segments.last() {
-            last.ident.to_string()
-        } else {
-            "unknown".to_string()
-        };
+    for (_field, target_path, foreign_key) in &parsed_belongs_to {
+        let target_table = extract_table_name(target_path);
         let target_table_lit = LitStr::new(&target_table, proc_macro2::Span::call_site());
         let fk_lit = foreign_key.as_ref().map(|s| LitStr::new(s, proc_macro2::Span::call_site()));
         relations.push(quote! {
@@ -196,7 +209,6 @@ pub fn expand_relation(input: DeriveInput) -> Result<TokenStream> {
         #[::gritshield::startup::ctor(unsafe)]
         fn #register_fn_name() {
             let relations = vec![ #(#relations),* ];
-            println!("===== GritRelation: Registering {} relations for table '{}'", relations.len(), #table_name_lit);
             ::gritshield::core::schema::add_relations(#table_name_lit, relations);
         }
     };

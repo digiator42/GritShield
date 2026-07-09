@@ -28,7 +28,7 @@ pub fn generate_registration(
             use #crate_root::deps::sea_orm::EntityName;
 
             let table_name_str = <#entity_module::Entity as EntityName>::table_name(&#entity_module::Entity);
-            let table_name: &'static str = Box::leak(table_name_str.to_string().into_boxed_str());
+            let table_name: &'static str = Box::leak(table_name_str.to_string().replace("_", "-").into_boxed_str());  // kebab route
 
             let table_slug: &'static str = #route_slug;
 
