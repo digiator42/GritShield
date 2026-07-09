@@ -525,6 +525,43 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
             request_body: None,
         });
 
+        // Single-record DELETE operation
+        detail_item.delete = Some(Operation {
+            summary: format!("Delete {} record", table_slug),
+            description: Some(format!("Delete a single {} record by its ID.", table_slug)),
+            operation_id: format!("delete_{}", table_slug),
+            tags: vec![table_slug.to_string()],
+            parameters: vec![Parameter {
+                name: "id".to_string(),
+                in_: "path".to_string(),
+                required: true,
+                schema: Schema {
+                    type_: "string".to_string(),
+                    format: None, properties: None, required: None, items: None, enum_values: None,
+                },
+                description: Some("Record ID to delete".to_string()),
+            }],
+            responses: {
+                let mut res = HashMap::new();
+                res.insert(
+                    "200".to_string(),
+                    Response { 
+                        description: "Record successfully deleted".to_string(), 
+                        content: None 
+                    }
+                );
+                res.insert(
+                    "404".to_string(), 
+                    Response { 
+                        description: "Record not found".to_string(), 
+                        content: None 
+                    }
+                );
+                res
+            },
+            request_body: None,
+        });
+
         // ---- BULK DELETE ----
         let bulk_path = format!("{}/bulk-delete", base_route.trim_end_matches('/'));
         let bulk_item = paths.entry(bulk_path).or_insert(PathItem {

@@ -109,4 +109,9 @@ impl ApiController {
 
         Response::json(200, &sea_user_with_posts)
     }
+
+    #[delete("/")]
+    async fn hello(_: RequestContext) -> &'static str {
+        "Hello, GritShield!"
+    }
 }

@@ -21,6 +21,7 @@ use colored::*;
 use futures::future::{BoxFuture, FutureExt};
 use lazy_static::lazy_static;
 use sea_orm::DatabaseConnection;
+use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
 use std::future::Future;
@@ -29,7 +30,6 @@ use std::path::Path;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use serde_json::Value;
 
 fn method_color(method: &str) -> ColoredString {
     match method {
@@ -221,7 +221,7 @@ impl RequestContext {
         had_cookie && self.session.is_none()
     }
 
-/// Safely and asynchronously parses the raw byte request body as JSON
+    /// Safely and asynchronously parses the raw byte request body as JSON
     pub async fn json_body(&self) -> Option<Value> {
         // Convert the raw byte Vec safely to a UTF-8 string slice
         let body_str = match str::from_utf8(&self.raw_body) {
@@ -1286,8 +1286,29 @@ impl Router {
     pub fn match_route<'a>(&'a self, method: &HttpMethod, path: &str) -> RoutingResult<'a> {
         let mut current = &self.root;
         let mut params = HashMap::new();
-        let segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
 
+        // normalize the string boundaries without altering mid-path structures
+        let mut trimmed_path = path;
+        if trimmed_path.starts_with('/') {
+            trimmed_path = &trimmed_path[1..];
+        }
+        if trimmed_path.ends_with('/') && !trimmed_path.is_empty() {
+            trimmed_path = &trimmed_path[..trimmed_path.len() - 1];
+        }
+
+        // Parse segments strictly, reject path if intermediate empty elements exist
+        let segments: Vec<&str> = if trimmed_path.is_empty() {
+            Vec::new() // Handles the base root "/" path cleanly
+        } else {
+            let parts: Vec<&str> = trimmed_path.split('/').collect();
+            if parts.iter().any(|s| s.is_empty()) {
+                // Catches invalid sequences "/admin/////users" or "///"
+                return RoutingResult::NotFound;
+            }
+            parts
+        };
+
+        // Process the cleanly generated routing segments
         for (i, segment) in segments.iter().enumerate() {
             if let Some(next_node) = current.children.get(*segment) {
                 current = next_node;
