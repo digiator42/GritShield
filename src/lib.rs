@@ -21,8 +21,10 @@ pub mod gritadmin;
 pub use gritadmin::shell::admin_shell;
 
 pub use gritshield_macros::action;
+#[cfg(feature = "swagger")]
 pub use gritshield_macros::GritSchema;
 pub use gritshield_macros::controller;
+#[cfg(feature = "admin")]
 pub use gritshield_macros::GritAdmin;
 pub use gritshield_macros::GritRelation;
 pub use gritshield_macros::GritModel;
@@ -53,7 +55,7 @@ pub mod deps {
     pub use uuid;
 }
 
-/// The Prelude module contains everything a developer needs to build an app.
+/// The Prelude module contains everything you need to build an app.
 /// Instead of importing 10 different things, just use:
 /// use gritshield::prelude::*;
 pub mod prelude {
@@ -72,7 +74,9 @@ pub mod prelude {
     // Re-export macros for the prelude
     pub use crate::action;
     pub use crate::controller;
+    #[cfg(feature = "swagger")]
     pub use crate::GritSchema;
+    #[cfg(feature = "admin")]
     pub use crate::GritAdmin;
     pub use crate::GritRelation;
     pub use crate::GritModel;

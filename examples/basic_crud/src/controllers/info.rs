@@ -37,12 +37,12 @@ impl ApiController {
             .await
             .unwrap();
 
-        // let repo_user_with_posts = user_repo
-        //     .find_by_email("user_1@example.com")
-        //     .with_posts()
-        //     .with_comments()
-        //     .await
-        //     .unwrap();
+        let repo_user_with_posts = user_repo
+            .find_by_email("user_1@example.com")
+            .with_posts()
+            .with_comments()
+            .await
+            .unwrap();
 
         // let repo_user_query = user_repo
         //     .query()
@@ -61,22 +61,20 @@ impl ApiController {
 
         let post_repo = PostRepository { db: db.clone() };
 
-        // post_repo
-
-        // let posts_with_comments = post_repo
-        //     .find_by_id(2)
-        //     .with_comments()
-        //     .with_users()
-        //     .await
-        //     .unwrap();
+        let posts_with_comments = post_repo
+            .find_by_id(2)
+            .with_comments()
+            // .with_users()
+            .await
+            .unwrap();
 
         // let posts_by_query = post_repo.search_admin_fields("03:15:07").await.unwrap();
 
-        // let user_tree = user_repo
-        //     .find_by_email("user_1@example.com")
-        //     .with_comments_nested(|query| query.with_users())
-        //     .await
-        //     .unwrap();
+        let user_tree = user_repo
+            .find_by_email("user_1@example.com")
+            // .with_comments_nested(|query| query.with_users())
+            .await
+            .unwrap();
 
         Response::json(200, &sea_user_with_posts)
     }
@@ -90,7 +88,7 @@ impl ApiController {
             None => Value::Null,
         };
 
-        Response::ok(format!("Hello, {:?}!", data))
+        Response::ok(format!("Hello, {}!", data.get("name").unwrap()))
     }
 
     #[post("/swagger")]

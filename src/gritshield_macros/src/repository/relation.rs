@@ -1,7 +1,7 @@
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
-use syn::{Data, DeriveInput, Ident, LitStr, Meta, Path, Result};
 use quote::ToTokens;
+use syn::{Data, DeriveInput, Ident, LitStr, Meta, Path, Result};
 
 pub fn expand_relation(input: DeriveInput) -> Result<TokenStream> {
     let variants = match &input.data {
@@ -16,7 +16,7 @@ pub fn expand_relation(input: DeriveInput) -> Result<TokenStream> {
 
     // ---- Extract table name from the enum's attributes ----
     let mut table_name: Option<String> = None;
-    
+
     for attr in &input.attrs {
         if attr.path().is_ident("grit") {
             if let Meta::List(meta_list) = &attr.meta {
@@ -92,7 +92,7 @@ pub fn expand_relation(input: DeriveInput) -> Result<TokenStream> {
                             // Parse the full belongs_to with from/to
                             let mut target_path: Option<Path> = None;
                             let mut foreign_key: Option<String> = None;
-                            
+
                             // Parse the nested meta inside belongs_to
                             let _ = meta.parse_nested_meta(|nested_meta| {
                                 if nested_meta.path.is_ident("from") {
@@ -107,7 +107,9 @@ pub fn expand_relation(input: DeriveInput) -> Result<TokenStream> {
                                 } else {
                                     // If no path specified, it might be the direct path
                                     // Try to parse it as a path
-                                    if let Ok(path) = syn::parse_str::<Path>(&nested_meta.path.clone().into_token_stream().to_string()) {
+                                    if let Ok(path) = syn::parse_str::<Path>(
+                                        &nested_meta.path.clone().into_token_stream().to_string(),
+                                    ) {
                                         target_path = Some(path);
                                     }
                                 }
@@ -123,7 +125,11 @@ pub fn expand_relation(input: DeriveInput) -> Result<TokenStream> {
                             }
 
                             if let Some(path) = target_path {
-                                parsed_belongs_to.push((variant_field_name.clone(), path, foreign_key));
+                                parsed_belongs_to.push((
+                                    variant_field_name.clone(),
+                                    path,
+                                    foreign_key,
+                                ));
                             }
                         }
                         Ok(())
@@ -140,7 +146,7 @@ pub fn expand_relation(input: DeriveInput) -> Result<TokenStream> {
         if let Some(module_segment) = path.segments.iter().nth_back(1) {
             return module_segment.ident.to_string();
         }
-        
+
         // Fallback: if only one segment, use the last one and convert to snake_case
         if let Some(last) = path.segments.last() {
             let name = last.ident.to_string();
@@ -154,13 +160,13 @@ pub fn expand_relation(input: DeriveInput) -> Result<TokenStream> {
             }
             return snake;
         }
-        
+
         "unknown".to_string()
     };
 
     // ---- Build RelationSchema for each parsed relation ----
     let table_name_lit = LitStr::new(&table_name_str, proc_macro2::Span::call_site());
-    
+
     let mut relations = Vec::new();
 
     // HasMany relations
@@ -194,7 +200,9 @@ pub fn expand_relation(input: DeriveInput) -> Result<TokenStream> {
     for (_field, target_path, foreign_key) in &parsed_belongs_to {
         let target_table = extract_table_name(target_path);
         let target_table_lit = LitStr::new(&target_table, proc_macro2::Span::call_site());
-        let fk_lit = foreign_key.as_ref().map(|s| LitStr::new(s, proc_macro2::Span::call_site()));
+        let fk_lit = foreign_key
+            .as_ref()
+            .map(|s| LitStr::new(s, proc_macro2::Span::call_site()));
         relations.push(quote! {
             ::gritshield::core::schema::RelationSchema {
                 kind: ::gritshield::core::schema::RelationKind::BelongsTo,
@@ -204,14 +212,20 @@ pub fn expand_relation(input: DeriveInput) -> Result<TokenStream> {
         });
     }
 
-    // ---- Registration function that adds relations to the schema registry ----
-    let registration = quote! {
-        #[::gritshield::startup::ctor(unsafe)]
-        fn #register_fn_name() {
-            let relations = vec![ #(#relations),* ];
-            ::gritshield::core::schema::add_relations(#table_name_lit, relations);
-        }
-    };
+    let mut registration = quote! {};
+
+    // Conditionally populate it if the feature is enabled
+    #[cfg(feature = "swagger")]
+    {
+        // ---- Registration function that adds relations to the schema registry ----
+        registration = quote! {
+            #[::gritshield::startup::ctor(unsafe)]
+            fn #register_fn_name() {
+                let relations = vec![ #(#relations),* ];
+                ::gritshield::core::schema::add_relations(#table_name_lit, relations);
+            }
+        };
+    }
 
     // ---- Build the query builders ----
     let builders_block = crate::repository::query_builders::generate_builders(

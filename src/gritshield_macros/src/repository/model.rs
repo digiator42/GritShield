@@ -124,21 +124,26 @@ pub fn expand_model(input: DeriveInput) -> Result<TokenStream> {
         });
     }
 
-    // ---- Create the registration function ----
-    let table_name_str = table_name.clone().unwrap();
-    let register_fn_name = Ident::new(
-        &format!("register_model_schema_{}", module_name),
-        proc_macro2::Span::call_site(),
-    );
+    let mut registration = quote! {};
 
-    let registration = quote! {
-        #[::gritshield::startup::ctor(unsafe)]
-        fn #register_fn_name() {
-            let fields = vec![ #(#field_schemas),* ];
-            let relations = vec![]; // relations will be added by GritRelation
-            ::gritshield::core::schema::register_model_schema(#table_name_str, fields, relations);
-        }
-    };
+    #[cfg(feature = "swagger")]
+    {
+        // ---- Create the registration function ----
+        let table_name_str = table_name.clone().unwrap();
+        let register_fn_name = Ident::new(
+            &format!("register_model_schema_{}", module_name),
+            proc_macro2::Span::call_site(),
+        );
+
+        registration = quote! {
+            #[::gritshield::startup::ctor(unsafe)]
+            fn #register_fn_name() {
+                let fields = vec![ #(#field_schemas),* ];
+                let relations = vec![]; // relations will be added by GritRelation
+                ::gritshield::core::schema::register_model_schema(#table_name_str, fields, relations);
+            }
+        };
+    }
 
     // ---- Build query DSL ----
     let module_ident = Ident::new(module_name, Span::call_site());

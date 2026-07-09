@@ -1,8 +1,4 @@
 use crate::core::logger::{self, log_request_summary, LogLevel};
-use crate::core::swagger::{generate_openapi_spec, render_swagger_ui};
-use crate::database::repository::{AdminHandlerFn, DynamicColumnSpec};
-use crate::gritadmin::main_handler::*;
-use crate::gritadmin::metrics::{admin_metrics_api_handler, admin_metrics_html_handler};
 use crate::protocol::form::FormData;
 use crate::protocol::request::{HttpMethod, Request};
 use crate::protocol::response::{Cookie, Response};
@@ -30,6 +26,21 @@ use std::path::Path;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+// shared dependency if EITHER feature is enabled
+#[cfg(any(feature = "swagger", feature = "admin"))]
+use crate::database::repository::AdminHandlerFn;
+
+// Swagger-specific items
+#[cfg(feature = "swagger")]
+use crate::core::swagger::{generate_openapi_spec, render_swagger_ui};
+
+// Admin-specific items
+#[cfg(feature = "admin")]
+use {
+    crate::database::repository::DynamicColumnSpec,
+    crate::gritadmin::main_handler::*,
+    crate::gritadmin::metrics::{admin_metrics_api_handler, admin_metrics_html_handler},
+};
 
 fn method_color(method: &str) -> ColoredString {
     match method {
@@ -1117,7 +1128,9 @@ impl Router {
                 admin_security_matrix_view_handler,
                 None,
             );
-
+        }
+        #[cfg(feature = "swagger")]
+        {
             // ---- SWAGGER UI ROUTE ----
             let swagger_handler: AdminHandlerFn = Arc::new(|_ctx| {
                 Box::pin(async move {
