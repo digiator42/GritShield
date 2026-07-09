@@ -2,14 +2,23 @@ use gritshield::deps::sea_orm::{
     ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QuerySelect,
 };
 use gritshield::{database::repository::GritRepository, prelude::*};
+use serde_json::Value;
 
 use crate::models::comment;
 use crate::repositories::post::PostRepository;
-// use crate::repositories::post::PostRepository;
 use crate::{
     models::{post, user},
     repositories::user::UserRepository,
 };
+
+use serde::{Deserialize, Serialize};
+
+#[derive(GritSchema, Serialize, Deserialize)]
+pub struct SwaggerTestData {
+    pub email: String,
+    pub name: String,
+    pub age: Option<i32>,
+}
 
 pub struct ApiController;
 
@@ -68,6 +77,35 @@ impl ApiController {
         //     .with_comments_nested(|query| query.with_users())
         //     .await
         //     .unwrap();
+
+        Response::json(200, &sea_user_with_posts)
+    }
+
+    // Use the body parameter in the route macro
+    #[post("/swagger-body", body = SwaggerTestData)]
+    pub async fn test_swagger_body(ctx: RequestContext) -> Response {
+        // Parse the JSON body
+        let data: Value = match ctx.json_body().await {
+            Some(d) => d,
+            None => Value::Null,
+        };
+
+        Response::ok(format!("Hello, {:?}!", data))
+    }
+
+    #[post("/swagger")]
+    pub async fn test_swagger(ctx: RequestContext) -> Response {
+        let db = ctx.db.as_deref().unwrap().clone();
+
+        let data = ctx.form.fields;
+
+        let user_repo = UserRepository { db: db.clone() };
+
+        let sea_user_with_posts = user_repo
+            .find_by_email(data["email"].as_str())
+            .with_posts()
+            .await
+            .unwrap();
 
         Response::json(200, &sea_user_with_posts)
     }

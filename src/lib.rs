@@ -21,6 +21,7 @@ pub mod gritadmin;
 pub use gritadmin::shell::admin_shell;
 
 pub use gritshield_macros::action;
+pub use gritshield_macros::GritSchema;
 pub use gritshield_macros::controller;
 pub use gritshield_macros::GritAdmin;
 pub use gritshield_macros::GritRelation;
@@ -71,6 +72,7 @@ pub mod prelude {
     // Re-export macros for the prelude
     pub use crate::action;
     pub use crate::controller;
+    pub use crate::GritSchema;
     pub use crate::GritAdmin;
     pub use crate::GritRelation;
     pub use crate::GritModel;

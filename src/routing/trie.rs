@@ -29,6 +29,7 @@ use std::path::Path;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use serde_json::Value;
 
 fn method_color(method: &str) -> ColoredString {
     match method {
@@ -220,8 +221,20 @@ impl RequestContext {
         had_cookie && self.session.is_none()
     }
 
+/// Safely and asynchronously parses the raw byte request body as JSON
+    pub async fn json_body(&self) -> Option<Value> {
+        // Convert the raw byte Vec safely to a UTF-8 string slice
+        let body_str = match str::from_utf8(&self.raw_body) {
+            Ok(s) => s,
+            Err(_) => return None,
+        };
+
+        // Parse the string slice directly using serde_json
+        serde_json::from_str(body_str).ok()
+    }
+
     /// A helper method allowing handlers to cleanly extract JSON data structures
-    pub fn json<T: serde::de::DeserializeOwned>(&self) -> Result<T, ShieldError> {
+    pub async fn json<T: serde::de::DeserializeOwned>(&self) -> Result<T, ShieldError> {
         let content_type = self.content_type.as_deref().unwrap_or("");
         if !content_type.starts_with("application/json") {
             return Err(ShieldError::BadRequest(
@@ -612,6 +625,7 @@ pub struct AutoRoute {
     pub method: HttpMethod,
     pub handler: Handler,
     pub required_role: Option<&'static str>,
+    pub request_body_schema: Option<&'static str>,
 }
 
 // Tell the compiler to create a tracking registry for AutoRoute elements

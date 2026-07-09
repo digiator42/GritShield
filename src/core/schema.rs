@@ -41,9 +41,9 @@ pub struct RepositorySchema {
 }
 
 lazy_static! {
-    static ref SCHEMA_REGISTRY: Arc<Mutex<HashMap<String, ModelSchema>>> =
+    pub static ref SCHEMA_REGISTRY: Arc<Mutex<HashMap<String, ModelSchema>>> =
         Arc::new(Mutex::new(HashMap::new()));
-    static ref REPOSITORY_REGISTRY: Arc<Mutex<HashMap<String, RepositorySchema>>> =
+    pub static ref REPOSITORY_REGISTRY: Arc<Mutex<HashMap<String, RepositorySchema>>> =
         Arc::new(Mutex::new(HashMap::new()));
 }
 
@@ -56,15 +56,11 @@ pub fn register_model_schema(
     let mut registry = SCHEMA_REGISTRY.lock().unwrap();
 
     if let Some(existing) = registry.get_mut(table_name) {
-        // Preserve existing relations, only update fields
-        existing.fields = fields;
-        // If new relations were passed, extend them
+        existing.fields = fields; // Takes ownership
         if !relations.is_empty() {
             existing.relations.extend(relations);
         }
-        // Also keep existing relations if new ones are empty
     } else {
-        // Create new entry
         let entry = ModelSchema {
             table_name: table_name.to_string(),
             fields,
@@ -85,7 +81,7 @@ pub fn add_relations(table_name: &str, relations: Vec<RelationSchema>) {
             relations: Vec::new(),
         };
         schema.relations = relations;
-    registry.insert(table_name.to_string(), schema.clone());
+        registry.insert(table_name.to_string(), schema.clone());
     }
 }
 

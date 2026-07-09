@@ -1,39 +1,66 @@
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::parse::{Parse, ParseStream};
-use syn::{Result, LitStr, Token, Ident, ItemFn, ItemImpl, ImplItem};
+use syn::{Ident, ImplItem, ItemFn, ItemImpl, LitStr, Result, Token};
 
 pub struct RouteArgs {
     pub path: LitStr,
     pub required_role: Option<LitStr>,
+    pub body: Option<syn::Path>,
 }
 
 impl Parse for RouteArgs {
     fn parse(input: ParseStream) -> Result<Self> {
         let path: LitStr = input.parse()?;
         let mut required_role = None;
+        let mut body = None;
 
-        if input.peek(Token![,]) {
+        while input.peek(Token![,]) {
             input.parse::<Token![,]>()?;
 
             let key: Ident = input.parse()?;
+
             if key == "role" || key == "required_role" {
                 input.parse::<Token![=]>()?;
                 required_role = Some(input.parse::<LitStr>()?);
+            } else if key == "body" {
+                input.parse::<Token![=]>()?;
+                body = Some(input.parse::<syn::Path>()?);
             }
         }
 
-        Ok(RouteArgs { path, required_role })
+        Ok(RouteArgs {
+            path,
+            required_role,
+            body,
+        })
     }
 }
-
-pub fn expand_http_method(method_name: &str, attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
+pub fn expand_http_method(
+    method_name: &str,
+    attr: TokenStream,
+    item: TokenStream,
+) -> Result<TokenStream> {
     let args: RouteArgs = syn::parse2(attr)?;
     let input_fn: ItemFn = syn::parse2(item)?;
 
     let path = args.path;
     let required_role_opt = match args.required_role {
         Some(lit) => quote! { Some(#lit) },
+        None => quote! { None },
+    };
+
+    // Build the body schema reference
+    let body_schema = match args.body {
+        Some(schema_path) => {
+            // schema name from the path (e.g., "SwaggerTestData")
+            let schema_name = schema_path
+                .segments
+                .last()
+                .map(|s| s.ident.to_string())
+                .unwrap_or_default();
+            quote! { Some(#schema_name) }
+        }
         None => quote! { None },
     };
 
@@ -57,7 +84,8 @@ pub fn expand_http_method(method_name: &str, attr: TokenStream, item: TokenStrea
                 path: #path,
                 method: gritshield::protocol::request::HttpMethod::#http_method_ident,
                 handler: #wrapper_name,
-                required_role: #required_role_opt
+                required_role: #required_role_opt,
+                request_body_schema: #body_schema,
             }
         }
     })
@@ -106,6 +134,14 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
                     None => quote! { None },
                 };
 
+                let body_schema = match args.body {
+                    Some(schema_path) => {
+                        let schema_name = schema_path.segments.last().map(|s| s.ident.to_string()).unwrap_or_default();
+                        quote! { Some(#schema_name) }
+                    }
+                    None => quote! { None },
+                };
+
                 let http_method_ident = Ident::new(&http_method, fn_name.span());
                 let wrapper_name = Ident::new(&format!("{}_wrapper", fn_name), fn_name.span());
 
@@ -122,7 +158,8 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
                             path: #combined_path,
                             method: gritshield::protocol::request::HttpMethod::#http_method_ident,
                             handler: #wrapper_name,
-                            required_role: #required_role_opt
+                            required_role: #required_role_opt,
+                            request_body_schema: #body_schema,
                         }
                     }
                 });

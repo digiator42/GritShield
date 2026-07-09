@@ -31,6 +31,14 @@ pub fn derive_grit_relation(input: TokenStream) -> TokenStream {
         .into()
 }
 
+#[proc_macro_derive(GritSchema)]
+pub fn derive_grit_schema(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    repository::schema::expand_schema(input)
+        .unwrap_or_else(|e| e.to_compile_error())
+        .into()
+}
+
 // ==========================================
 // ATTRIBUTE MACROS (Controllers & Endpoints)
 // ==========================================
