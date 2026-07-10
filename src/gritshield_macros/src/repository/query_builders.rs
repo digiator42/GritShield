@@ -92,25 +92,80 @@ pub fn generate_builders(
         .collect();
 
     quote! {
-        #[derive(::std::clone::Clone, ::std::fmt::Debug, ::serde::Serialize, ::serde::Deserialize)]
+        #[derive(::std::clone::Clone, ::std::fmt::Debug, ::serde::Deserialize)]
         pub struct #extended_ident {
             #[serde(flatten)]
             pub core: #entity_module::Model,
             #(
-                #[serde(skip_serializing_if = "::std::option::Option::is_none")]
                 pub #has_many_fields: ::std::option::Option<::std::vec::Vec<<#relation_many_variants as ::gritshield::deps::sea_orm::EntityTrait>::Model>>,
             )*
             #(
-                #[serde(skip_serializing_if = "::std::option::Option::is_none")]
                 pub #has_one_fields: ::std::option::Option<<#relation_one_variants as ::gritshield::deps::sea_orm::EntityTrait>::Model>,
             )*
             #(
-                #[serde(skip_serializing_if = "::std::option::Option::is_none")]
                 pub #belongs_to_fields: ::std::option::Option<<#relation_belongs_variants as ::gritshield::deps::sea_orm::EntityTrait>::Model>,
             )*
 
-            #[serde(skip_serializing_if = "::std::collections::HashMap::is_empty", default)]
+            // Keep this purely as an internal processing bucket during query building execution stages
             pub nested_relations: ::std::collections::HashMap<::std::string::String, ::gritshield::deps::serde_json::Value>,
+        }
+
+        // Custom Serialization Engine that flattens relations back into predictable root paths
+        impl ::serde::Serialize for #extended_ident {
+            fn serialize<S>(&self, serializer: S) -> ::std::result::Result<S::Ok, S::Error>
+            where
+                S: ::serde::Serializer,
+            {
+                // Serialize the inner core Model structure into a flexible json value object map
+                let mut core_value = ::gritshield::deps::serde_json::to_value(&self.core)
+                    .map_err(::serde::ser::Error::custom)?;
+
+                if let ::gritshield::deps::serde_json::Value::Object(mut map) = core_value {
+                    
+                    // Process HasMany fields: serialize flat data only if a nested version hasn't overridden it
+                    #(
+                        if !self.nested_relations.contains_key(stringify!(#has_many_fields)) {
+                            if let ::std::option::Option::Some(ref val) = self.#has_many_fields {
+                                if let ::std::result::Result::Ok(json_val) = ::gritshield::deps::serde_json::to_value(val) {
+                                    map.insert(::std::string::String::from(stringify!(#has_many_fields)), json_val);
+                                }
+                            }
+                        }
+                    )*
+
+                    // Process HasOne fields
+                    #(
+                        if !self.nested_relations.contains_key(stringify!(#has_one_fields)) {
+                            if let ::std::option::Option::Some(ref val) = self.#has_one_fields {
+                                if let ::std::result::Result::Ok(json_val) = ::gritshield::deps::serde_json::to_value(val) {
+                                    map.insert(::std::string::String::from(stringify!(#has_one_fields)), json_val);
+                                }
+                            }
+                        }
+                    )*
+
+                    // Process BelongsTo fields
+                    #(
+                        if !self.nested_relations.contains_key(stringify!(#belongs_to_fields)) {
+                            if let ::std::option::Option::Some(ref val) = self.#belongs_to_fields {
+                                if let ::std::result::Result::Ok(json_val) = ::gritshield::deps::serde_json::to_value(val) {
+                                    map.insert(::std::string::String::from(stringify!(#belongs_to_fields)), json_val);
+                                }
+                            }
+                        }
+                    )*
+
+                    // Overwrite/Inject all fully hydrated nested structures cleanly directly into the root map.
+                    // This naturally avoids double comments lists and masks the internal 'nested_relations' key name.
+                    for (key, value) in &self.nested_relations {
+                        map.insert(key.clone(), value.clone());
+                    }
+
+                    map.serialize(serializer)
+                } else {
+                    core_value.serialize(serializer)
+                }
+            }
         }
 
         impl ::std::ops::Deref for #extended_ident {

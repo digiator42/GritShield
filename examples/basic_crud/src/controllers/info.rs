@@ -328,10 +328,7 @@ impl ApiController {
             Err(e) => return Response::bad_request(format!("Deep nested query failed: {}", e)),
         };
 
-        Response::json(
-            200,
-            &deep_nested
-        )
+        Response::json(200, &deep_nested)
     }
 
     // ============================================================
