@@ -68,8 +68,13 @@ pub fn expand_relation(input: DeriveInput) -> Result<TokenStream> {
     let mut parsed_has_one: Vec<(String, Path)> = Vec::new();
     let mut parsed_belongs_to: Vec<(String, Path, Option<String>)> = Vec::new(); // (field, target_path, foreign_key)
 
+    // Fix: Proper parsing loop for flat sibling key-value pairs per variant
     for variant in variants {
         let variant_field_name = variant.ident.to_string().to_lowercase();
+
+        let mut belongs_to_path: Option<Path> = None;
+        let mut foreign_key: Option<String> = None;
+        let mut is_belongs_to = false;
 
         for attr in &variant.attrs {
             if attr.path().is_ident("sea_orm") {
@@ -77,80 +82,65 @@ pub fn expand_relation(input: DeriveInput) -> Result<TokenStream> {
                     let _ = meta_list.parse_nested_meta(|meta| {
                         if meta.path.is_ident("has_many") {
                             let value = meta.value()?;
-                            let path_str: LitStr = value.parse()?;
-                            if let Ok(target_path) = path_str.parse::<Path>() {
+                            let lit_str: LitStr = value.parse()?;
+                            if let Ok(target_path) = lit_str.parse::<Path>() {
                                 let field = format!("{}s", variant_field_name);
                                 parsed_has_many.push((field, target_path));
                             }
                         } else if meta.path.is_ident("has_one") {
                             let value = meta.value()?;
-                            let path_str: LitStr = value.parse()?;
-                            if let Ok(target_path) = path_str.parse::<Path>() {
+                            let lit_str: LitStr = value.parse()?;
+                            if let Ok(target_path) = lit_str.parse::<Path>() {
                                 parsed_has_one.push((variant_field_name.clone(), target_path));
                             }
                         } else if meta.path.is_ident("belongs_to") {
-                            // Parse the full belongs_to with from/to
-                            let mut target_path: Option<Path> = None;
-                            let mut foreign_key: Option<String> = None;
-
-                            // Parse the nested meta inside belongs_to
-                            let _ = meta.parse_nested_meta(|nested_meta| {
-                                if nested_meta.path.is_ident("from") {
-                                    let value = nested_meta.value()?;
-                                    let path: syn::Path = value.parse()?;
-                                    if let Some(segment) = path.segments.last() {
-                                        foreign_key = Some(segment.ident.to_string());
-                                    }
-                                } else if nested_meta.path.is_ident("to") {
-                                    // The 'to' field is just the target column, ignore for now
-                                    let _ = nested_meta.value()?;
-                                } else {
-                                    // If no path specified, it might be the direct path
-                                    // Try to parse it as a path
-                                    if let Ok(path) = syn::parse_str::<Path>(
-                                        &nested_meta.path.clone().into_token_stream().to_string(),
-                                    ) {
-                                        target_path = Some(path);
-                                    }
-                                }
-                                Ok(())
-                            });
-
-                            // If no target_path was found via nested parsing, try parsing the direct value
-                            if target_path.is_none() {
-                                let value = meta.value()?;
-                                if let Ok(path) = value.parse::<Path>() {
-                                    target_path = Some(path);
-                                }
+                            is_belongs_to = true;
+                            let value = meta.value()?;
+                            let lit_str: LitStr = value.parse()?;
+                            if let Ok(target_path) = lit_str.parse::<Path>() {
+                                belongs_to_path = Some(target_path);
                             }
-
-                            if let Some(path) = target_path {
-                                parsed_belongs_to.push((
-                                    variant_field_name.clone(),
-                                    path,
-                                    foreign_key,
-                                ));
+                        } else if meta.path.is_ident("from") {
+                            let value = meta.value()?;
+                            let lit_str: LitStr = value.parse()?;
+                            if let Ok(path) = lit_str.parse::<Path>() {
+                                if let Some(segment) = path.segments.last() {
+                                    foreign_key = Some(segment.ident.to_string());
+                                }
+                            } else {
+                                let val_str = lit_str.value();
+                                let clean_fk = val_str.split("::").last().unwrap_or(&val_str).to_string();
+                                foreign_key = Some(clean_fk);
                             }
+                        } else if meta.path.is_ident("to") {
+                            let value = meta.value()?;
+                            let _: LitStr = value.parse()?;
                         }
                         Ok(())
                     });
                 }
             }
         }
+
+        if is_belongs_to {
+            if let Some(path) = belongs_to_path {
+                parsed_belongs_to.push((
+                    variant_field_name.clone(),
+                    path,
+                    foreign_key,
+                ));
+            }
+        }
     }
 
     // ---- Helper function to extract table name from path ----
     let extract_table_name = |path: &Path| -> String {
-        // Try to get the module name (second-to-last segment)
-        // e.g., "super::post::Entity" → "post"
         if let Some(module_segment) = path.segments.iter().nth_back(1) {
             return module_segment.ident.to_string();
         }
 
-        // Fallback: if only one segment, use the last one and convert to snake_case
         if let Some(last) = path.segments.last() {
             let name = last.ident.to_string();
-            // Convert PascalCase to snake_case
             let mut snake = String::new();
             for (i, c) in name.chars().enumerate() {
                 if i > 0 && c.is_uppercase() {
@@ -166,14 +156,12 @@ pub fn expand_relation(input: DeriveInput) -> Result<TokenStream> {
 
     // ---- Build RelationSchema for each parsed relation ----
     let table_name_lit = LitStr::new(&table_name_str, proc_macro2::Span::call_site());
-
     let mut relations = Vec::new();
 
     // HasMany relations
     for (field, target_path) in &parsed_has_many {
         let target_table = extract_table_name(target_path);
         let target_table_lit = LitStr::new(&target_table, proc_macro2::Span::call_site());
-        let _field_lit = LitStr::new(field, proc_macro2::Span::call_site());
         relations.push(quote! {
             ::gritshield::core::schema::RelationSchema {
                 kind: ::gritshield::core::schema::RelationKind::HasMany,
@@ -196,36 +184,37 @@ pub fn expand_relation(input: DeriveInput) -> Result<TokenStream> {
         });
     }
 
-    // BelongsTo relations (with foreign key)
+    // BelongsTo relations
     for (_field, target_path, foreign_key) in &parsed_belongs_to {
         let target_table = extract_table_name(target_path);
         let target_table_lit = LitStr::new(&target_table, proc_macro2::Span::call_site());
-        let fk_lit = foreign_key
-            .as_ref()
-            .map(|s| LitStr::new(s, proc_macro2::Span::call_site()));
+        
+        // Fix: Evaluate Option mapping at macro compile-time instead of output code runtime
+        let fk_value = match foreign_key {
+            Some(fk) => {
+                let fk_lit = LitStr::new(fk, proc_macro2::Span::call_site());
+                quote! { ::std::option::Option::Some(#fk_lit.to_string()) }
+            }
+            None => quote! { ::std::option::Option::None },
+        };
+
         relations.push(quote! {
             ::gritshield::core::schema::RelationSchema {
                 kind: ::gritshield::core::schema::RelationKind::BelongsTo,
                 target_table: #target_table_lit.to_string(),
-                foreign_key: #fk_lit.map(|s| s.to_string()),
+                foreign_key: #fk_value,
             }
         });
     }
 
-    let mut registration = quote! {};
-
-    // Conditionally populate it if the feature is enabled
-    #[cfg(feature = "swagger")]
-    {
-        // ---- Registration function that adds relations to the schema registry ----
-        registration = quote! {
-            #[::gritshield::startup::ctor(unsafe)]
-            fn #register_fn_name() {
-                let relations = vec![ #(#relations),* ];
-                ::gritshield::core::schema::add_relations(#table_name_lit, relations);
-            }
-        };
-    }
+    // ---- Registration function that adds relations to the schema registry ----
+    let registration = quote! {
+        #[::gritshield::startup::ctor(unsafe)]
+        fn #register_fn_name() {
+            let relations = vec![ #(#relations),* ];
+            ::gritshield::core::schema::add_relations(#table_name_lit, relations);
+        }
+    };
 
     // ---- Build the query builders ----
     let builders_block = crate::repository::query_builders::generate_builders(
@@ -235,9 +224,9 @@ pub fn expand_relation(input: DeriveInput) -> Result<TokenStream> {
         &one_builder_name,
         &parsed_has_many,
         &parsed_has_one,
+        &parsed_belongs_to,
     );
 
-    // ---- Return both the builders and the registration ----
     Ok(quote! {
         #builders_block
         #registration

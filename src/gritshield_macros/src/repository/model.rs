@@ -126,8 +126,8 @@ pub fn expand_model(input: DeriveInput) -> Result<TokenStream> {
 
     let mut registration = quote! {};
 
-    #[cfg(feature = "swagger")]
-    {
+    // #[cfg(feature = "swagger")]
+    // {
         // ---- Create the registration function ----
         let table_name_str = table_name.clone().unwrap();
         let register_fn_name = Ident::new(
@@ -143,7 +143,7 @@ pub fn expand_model(input: DeriveInput) -> Result<TokenStream> {
                 ::gritshield::core::schema::register_model_schema(#table_name_str, fields, relations);
             }
         };
-    }
+    // }
 
     // ---- Build query DSL ----
     let module_ident = Ident::new(module_name, Span::call_site());

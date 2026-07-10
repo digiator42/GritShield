@@ -9,6 +9,7 @@ pub fn generate_builders(
     one_builder_name: &Ident,
     parsed_has_many: &[(String, Path)],
     parsed_has_one: &[(String, Path)],
+    parsed_belongs_to: &[(String, Path, Option<String>)],
 ) -> TokenStream {
     let has_many_idents: Vec<Ident> = parsed_has_many
         .iter()
@@ -37,11 +38,29 @@ pub fn generate_builders(
         .iter()
         .map(|(f, _)| Ident::new(f, proc_macro2::Span::call_site()))
         .collect();
+    let belongs_to_idents: Vec<Ident> = parsed_belongs_to
+        .iter()
+        .map(|(f, _, _)| Ident::new(&format!("load_{}", f), proc_macro2::Span::call_site()))
+        .collect();
+    let with_belongs_idents: Vec<Ident> = parsed_belongs_to
+        .iter()
+        .map(|(f, _, _)| Ident::new(&format!("with_{}", f), proc_macro2::Span::call_site()))
+        .collect();
+    let belongs_to_fields: Vec<Ident> = parsed_belongs_to
+        .iter()
+        .map(|(f, _, _)| Ident::new(f, proc_macro2::Span::call_site()))
+        .collect();
+    let relation_belongs_variants: Vec<Path> = parsed_belongs_to
+        .iter()
+        .map(|(_, t, _)| t.clone())
+        .collect();
+
     let relation_one_variants: Vec<Path> = parsed_has_one.iter().map(|(_, t)| t.clone()).collect();
 
     let none_initializers = quote! {
         #( #has_many_fields: ::std::option::Option::None, )*
         #( #has_one_fields: ::std::option::Option::None, )*
+        #( #belongs_to_fields: ::std::option::Option::None, )*
     };
 
     // Luxury Navigation Properties Vectors
@@ -85,6 +104,10 @@ pub fn generate_builders(
                 #[serde(skip_serializing_if = "::std::option::Option::is_none")]
                 pub #has_one_fields: ::std::option::Option<<#relation_one_variants as ::gritshield::deps::sea_orm::EntityTrait>::Model>,
             )*
+            #(
+                #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+                pub #belongs_to_fields: ::std::option::Option<<#relation_belongs_variants as ::gritshield::deps::sea_orm::EntityTrait>::Model>,
+            )*
 
             #[serde(skip_serializing_if = "::std::collections::HashMap::is_empty", default)]
             pub nested_relations: ::std::collections::HashMap<::std::string::String, ::gritshield::deps::serde_json::Value>,
@@ -105,6 +128,7 @@ pub fn generate_builders(
             query: ::gritshield::deps::sea_orm::Select<#entity_module::Entity>,
             #( #has_many_idents: bool, )*
             #( #has_one_idents: bool, )*
+            #( #belongs_to_idents: bool, )*
 
             // Allocation storage for luxury chaining functions
             #( #nested_many_closure_fields: ::std::option::Option<::std::boxed::Box<dyn Fn(#target_builders<'a>) -> #target_builders<'a> + ::std::marker::Send + ::std::marker::Sync + 'a>>, )*
@@ -117,12 +141,14 @@ pub fn generate_builders(
                     query,
                     #( #has_many_idents: false, )*
                     #( #has_one_idents: false, )*
+                    #( #belongs_to_idents: false, )*
                     #( #nested_many_closure_fields: ::std::option::Option::None, )*
                 }
             }
 
             #( pub fn #with_many_idents(mut self) -> Self { self.#has_many_idents = true; self } )*
             #( pub fn #with_one_idents(mut self) -> Self { self.#has_one_idents = true; self } )*
+            #( pub fn #with_belongs_idents(mut self) -> Self { self.#belongs_to_idents = true; self } )*
 
             // Zero-boilerplate nesting injection function
             #(
@@ -162,6 +188,14 @@ pub fn generate_builders(
                         let pairs = self.query.clone().find_also_related(<#relation_one_variants>::default()).all(self.db).await?;
                         for (core_model, opt_related) in pairs {
                             if let Some(rec) = records_map.get_mut(&core_model.id) { rec.#has_one_fields = opt_related; }
+                        }
+                    }
+                )*
+                #(
+                    if self.#belongs_to_idents {
+                        let pairs = self.query.clone().find_also_related(<#relation_belongs_variants>::default()).all(self.db).await?;
+                        for (core_model, opt_related) in pairs {
+                            if let Some(rec) = records_map.get_mut(&core_model.id) { rec.#belongs_to_fields = opt_related; }
                         }
                     }
                 )*
@@ -228,6 +262,7 @@ pub fn generate_builders(
             query: ::gritshield::deps::sea_orm::Select<#entity_module::Entity>,
             #( #has_many_idents: bool, )*
             #( #has_one_idents: bool, )*
+            #( #belongs_to_idents: bool, )*
             #( #nested_many_closure_fields: ::std::option::Option<::std::boxed::Box<dyn Fn(#target_builders<'a>) -> #target_builders<'a> + ::std::marker::Send + ::std::marker::Sync + 'a>>, )*
         }
 
@@ -238,12 +273,14 @@ pub fn generate_builders(
                     query,
                     #( #has_many_idents: false, )*
                     #( #has_one_idents: false, )*
+                    #( #belongs_to_idents: false, )*
                     #( #nested_many_closure_fields: ::std::option::Option::None, )*
                 }
             }
 
             #( pub fn #with_many_idents(mut self) -> Self { self.#has_many_idents = true; self } )*
             #( pub fn #with_one_idents(mut self) -> Self { self.#has_one_idents = true; self } )*
+            #( pub fn #with_belongs_idents(mut self) -> Self { self.#belongs_to_idents = true; self } )*
 
             #(
                 pub fn #with_nested_many_idents<F>(mut self, loader_logic: F) -> Self
