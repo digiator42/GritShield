@@ -1,4 +1,7 @@
-use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbErr, Statement};
+use sea_orm::{
+    ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, DbErr, Schema,
+    Statement,
+};
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
@@ -79,6 +82,18 @@ impl DbManager {
 
         let connection = Database::connect(opt).await?;
         info!("[GRITSHIELD] Database connection pool online and verified.");
+
+        // --- BOOTSTRAP INTERNAL REPOSITORIES ---
+        #[cfg(feature = "admin")]
+        {
+            if let Err(err_msg) = ensure_internal_audit_log_table(&connection).await {
+                crate::error!(
+                    "[GRITSHIELD-FATAL] Failed to register core admin constraints: {}",
+                    err_msg
+                );
+                return Err(DbErr::Custom(err_msg));
+            }
+        }
 
         // Framework responsibility: Run pending structural schema changes
         if let Err(e) = Self::run_pending_migrations(&connection).await {
@@ -228,4 +243,71 @@ fn extract_up_sql(content: &str) -> String {
     }
 
     up_lines.join("\n")
+}
+
+/// Automatically creates the internal `audit_logs` structural tracking table
+/// if it doesn't already exist, abstracting vendor-specific dialects out.
+pub async fn ensure_internal_audit_log_table(db: &DatabaseConnection) -> Result<(), String> {
+    let backend = db.get_database_backend();
+
+    // Build an un-executed conditional check statement appropriate for the database vendor
+    let check_table_sql = match backend {
+        DbBackend::MySql => {
+            // MySQL checks internal schema collections
+            "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'audit_logs';"
+        }
+        DbBackend::Postgres => {
+            // PostgreSQL looks at the public schema table catalog namespaces
+            "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'audit_logs';"
+        }
+        DbBackend::Sqlite => {
+            // SQLite looks inside the master table sequence manifest
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='audit_logs';"
+        }
+    };
+
+    // Execute check statement
+    let stmt = sea_orm::Statement::from_string(backend, check_table_sql.to_string());
+    let query_res = db
+        .query_one(stmt)
+        .await
+        .map_err(|e| format!("Failed to check for audit_logs table presence: {}", e))?;
+
+    let _table_exists = match query_res {
+        Some(row) => {
+            // Parse checking result safely across backends
+            let count: i64 = row.try_get_by_index(0).unwrap_or(0);
+            count > 0
+        }
+        None => false,
+    };
+
+    #[cfg(feature = "admin")]
+    {
+        // If it does not exist, build the vendor-dialect matching DDL syntax from the Entity definition
+        if !_table_exists {
+            crate::debug!(
+            "[GRITSHIELD] Internal table 'audit_logs' missing. Structural bootstrap initialized."
+        );
+
+            // Sea-ORM Schema builder handles native type mappings dynamically (Json -> JSON/TEXT, NaiveDateTime -> TIMESTAMP, etc.)
+            let schema = Schema::new(backend);
+            let create_table_stmt =
+                schema.create_table_from_entity(crate::gritadmin::models::audit_log::Entity);
+
+            // Execute the native dialect construction sequence
+            db.execute(backend.build(&create_table_stmt))
+                .await
+                .map_err(|e| {
+                    format!(
+                        "Failed to dynamically establish GritShield framework auto-audit table: {}",
+                        e
+                    )
+                })?;
+
+            crate::info!("[GRITSHIELD] Successfully synchronized framework internal audit tracking table.");
+        }
+    }
+
+    Ok(())
 }

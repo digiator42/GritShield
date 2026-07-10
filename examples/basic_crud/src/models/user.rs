@@ -1,4 +1,4 @@
-// src/users.rs
+// src/models/user.rs
 use chrono::NaiveDateTime;
 use gritshield::{GritModel, GritRelation};
 use sea_orm::entity::prelude::*;
@@ -22,6 +22,18 @@ pub enum Relation {
     Post,
     #[sea_orm(has_many = "super::comment::Entity")]
     Comment,
+    #[sea_orm(
+        has_many = "super::follower::Entity",
+        from = "Column::Id",
+        to = "super::follower::Column::FollowerId"
+    )]
+    Following,  // Users I am following
+    #[sea_orm(
+        has_many = "super::follower::Entity",
+        from = "Column::Id",
+        to = "super::follower::Column::FollowedId"
+    )]
+    Followers,  // Users following me
 }
 
 impl Related<super::post::Entity> for Entity {
@@ -36,4 +48,22 @@ impl Related<super::comment::Entity> for Entity {
     }
 }
 
+impl Related<super::follower::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Following.def()
+    }
+}
+
 impl ActiveModelBehavior for ActiveModel {}
+
+// Helper methods for user repository
+impl Model {
+    pub fn followers_count(&self) -> i64 {
+        // This would be calculated in the repository
+        0
+    }
+    
+    pub fn following_count(&self) -> i64 {
+        0
+    }
+}

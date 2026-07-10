@@ -228,7 +228,7 @@ impl ApiController {
         };
 
         // Test 2: Search admin fields
-        let posts_by_search = match post_repo.search_admin_fields("03:15:07").await {
+        let posts_by_search = match post_repo.search_admin_fields("03:15").await {
             Ok(results) => results,
             Err(e) => return Response::bad_request(format!("Post search failed: {}", e)),
         };
@@ -465,6 +465,35 @@ impl ApiController {
         });
 
         Response::json(200, &results)
+    }
+
+    // ============================================================
+    // ROUTE: /info/social
+    // Test social media relations with deep nesting
+    // ============================================================
+    #[get("/social")]
+    pub async fn test_social_relations(ctx: RequestContext) -> Response {
+        let db = match ctx.db.as_deref().clone() {
+            Some(d) => d,
+            None => return Response::bad_request("Database connection missing"),
+        };
+
+        let user_repo = UserRepository { db: db.clone() };
+
+        // ---- Test 1: User with their social graph ----
+        let user_with_social_list = match user_repo
+            .find_by_id(5)
+            .with_followerss()
+            .with_followings()
+            .with_posts()
+            .await
+        {
+            Ok(result) => result,
+            Err(e) => return Response::bad_request(format!("User social query failed: {}", e)),
+        };
+
+        // ---- Structural Serialization ----
+        Response::json(200, &user_with_social_list)
     }
 
     // Use the body parameter in the route macro
