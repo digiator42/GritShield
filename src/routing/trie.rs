@@ -1128,6 +1128,54 @@ impl Router {
                 admin_security_matrix_view_handler,
                 None,
             );
+            // ---- SECURITY ADMIN LOGIN ----
+            info!(
+                "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
+                "/admin/login",
+                max_len,
+                format!("->").green(),
+                method_color("GET")
+            );
+            router.add_route(
+                HttpMethod::GET,
+                "/admin/login",
+                crate::gritadmin::auth_handlers::render_login_page,
+                None,
+            );
+            // ---- SECURITY ADMIN LOGIN ----
+            info!(
+                "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
+                "/admin/api/login",
+                max_len,
+                format!("->").green(),
+                method_color("POST")
+            );
+            router.add_route(
+                HttpMethod::POST,
+                "/admin/api/login",
+                crate::gritadmin::auth_handlers::handle_login_auth,
+                None,
+            );
+            // ---- SECURITY ADMIN LOGOUT ----
+            info!(
+                "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
+                "/admin/api/logout",
+                max_len,
+                format!("->").green(),
+                method_color("GET")
+            );
+            router.add_route(
+                HttpMethod::GET,
+                "/admin/api/logout",
+                crate::gritadmin::auth_handlers::handle_logout,
+                None,
+            );
+
+            use crate::gritadmin::auth_handlers::AdminAuthMiddleware;
+            // Admin auth middle ware
+            router
+                .middlewares
+                .push(Box::new(AdminAuthMiddleware::new()));
         }
         #[cfg(feature = "swagger")]
         {

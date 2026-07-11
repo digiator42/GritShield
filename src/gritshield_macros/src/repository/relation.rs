@@ -1,6 +1,5 @@
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
-use quote::ToTokens;
 use syn::{Data, DeriveInput, Ident, LitStr, Meta, Path, Result};
 
 pub fn expand_relation(input: DeriveInput) -> Result<TokenStream> {
@@ -159,7 +158,7 @@ pub fn expand_relation(input: DeriveInput) -> Result<TokenStream> {
     let mut relations = Vec::new();
 
     // HasMany relations
-    for (field, target_path) in &parsed_has_many {
+    for (_field, target_path) in &parsed_has_many {
         let target_table = extract_table_name(target_path);
         let target_table_lit = LitStr::new(&target_table, proc_macro2::Span::call_site());
         relations.push(quote! {

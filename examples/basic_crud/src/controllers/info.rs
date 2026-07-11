@@ -451,7 +451,7 @@ impl ApiController {
             },
             "posts": {
                 "post_with_relations": post_repo.find_by_id(2).with_user().with_comments().await.ok(),
-                "posts_by_search": post_repo.search_admin_fields("03:15:07").await.ok(),
+                "posts_by_search": post_repo.search_admin_fields("by user 16").await.ok(),
                 "posts_by_user": post_repo.query().where_eq(post::Column::UserId, 1).fetch().await.ok(),
             },
             "comments": {
@@ -471,7 +471,7 @@ impl ApiController {
     // ROUTE: /info/social
     // Test social media relations with deep nesting
     // ============================================================
-    #[get("/social")]
+    #[get("/followers")]
     pub async fn test_social_relations(ctx: RequestContext) -> Response {
         let db = match ctx.db.as_deref().clone() {
             Some(d) => d,
@@ -499,6 +499,7 @@ impl ApiController {
     // Use the body parameter in the route macro
     #[post("/swagger-body", body = SwaggerTestData)]
     pub async fn test_swagger_body(ctx: RequestContext) -> Response {
+        let _serialized = ctx.json::<SwaggerTestData>().await.expect("msg");
         // Parse the JSON body
         let data: Value = match ctx.json_body().await {
             Some(d) => d,

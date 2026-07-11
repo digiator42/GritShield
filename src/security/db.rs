@@ -1,5 +1,5 @@
 use sea_orm::{
-    ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, DbErr, Schema,
+    ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, DbErr,
     Statement,
 };
 use std::fs;
@@ -291,7 +291,7 @@ pub async fn ensure_internal_audit_log_table(db: &DatabaseConnection) -> Result<
         );
 
             // Sea-ORM Schema builder handles native type mappings dynamically (Json -> JSON/TEXT, NaiveDateTime -> TIMESTAMP, etc.)
-            let schema = Schema::new(backend);
+            let schema = sea_orm::Schema::new(backend);
             let create_table_stmt =
                 schema.create_table_from_entity(crate::gritadmin::models::audit_log::Entity);
 

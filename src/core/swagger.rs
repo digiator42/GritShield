@@ -266,7 +266,7 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
 
         let operation = Operation {
             summary: format!("{} {}", method_str.to_uppercase(), path),
-            description: Some(format!("Developer-defined route: {}", path)),
+            description: Some(format!("route: {}", path)),
             operation_id: format!(
                 "dev_{}_{}",
                 method_str,
