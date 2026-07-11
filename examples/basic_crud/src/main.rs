@@ -1,7 +1,10 @@
 use gritshield::{
     core::schema::export_openapi,
     prelude::*,
-    security::db::{DbConfig, DbManager},
+    security::{
+        db::{DbConfig, DbManager},
+        middleware::AuthMiddleware,
+    },
 };
 
 mod controllers;
@@ -14,7 +17,12 @@ async fn main() {
 
     let shared_db = DbManager::connect(db_config).await.unwrap();
 
-    let router = Router::new().mount_db(shared_db.clone());
+    let router = Router::new()
+        .add_middleware(AuthMiddleware::new_session(
+            vec!["/api/info/sea-orm".to_string(), "/admin/**".to_string()],
+            Some("/api/info/sea-orm"),
+        ))
+        .mount_db(shared_db.clone());
 
     export_openapi("target/schema.json").unwrap();
 

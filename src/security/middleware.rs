@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use std::sync::atomic::Ordering;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Instant;
 
 use crate::core::env::get_env;
@@ -37,6 +37,14 @@ pub trait AfterRequestHook: Send + Sync {
     fn call(&self, ctx: &RequestContext, status: u16, duration: std::time::Duration);
 }
 
+// global accessible, thread-safe cell for administrative/user auth session store
+pub static SESSION_STORE: OnceLock<Arc<SessionStore>> = OnceLock::new();
+
+/// Global helper to retrieve or safely initialize the shared admin session memory pool
+pub fn get_session_store() -> &'static Arc<SessionStore> {
+    SESSION_STORE.get_or_init(|| Arc::new(SessionStore::new()))
+}
+
 pub struct AuthMiddleware {
     pub store: Arc<SessionStore>,
     pub jwt_handler: Option<JwtHandler>,
@@ -48,7 +56,7 @@ pub struct AuthMiddleware {
 impl AuthMiddleware {
     /// Pure Stateful Session Architecture (No JWTs)
     pub fn new_session(public_paths: Vec<String>, redirect: Option<&str>) -> Self {
-        let session_store = Arc::new(SessionStore::new());
+        let session_store = Arc::clone(get_session_store());
 
         Self {
             store: session_store,
@@ -65,8 +73,10 @@ impl AuthMiddleware {
         public_paths: Vec<String>,
         redirect: Option<&str>,
     ) -> Self {
+        let session_store = Arc::clone(get_session_store());
+
         Self {
-            store: Arc::new(SessionStore::new()),
+            store: session_store,
             jwt_handler: Some(jwt_handler),
             public_paths,
             enable_csrf: false,

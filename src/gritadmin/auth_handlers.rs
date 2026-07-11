@@ -1,17 +1,20 @@
 use crate::protocol::response::Cookie;
 use crate::protocol::response::{JsonPayload, SameSite};
 use crate::routing::trie::RequestContext;
-use crate::security::middleware::{Middleware, MiddlewareResult, MiddlewareState};
+use crate::security::middleware::{
+    get_session_store, Middleware, MiddlewareResult, MiddlewareState,
+};
 use crate::security::session::{Session, SessionStore};
 use crate::{debug, prelude::*};
 use serde_json::json;
 use std::sync::{Mutex, OnceLock};
+use crate::security::xss::Sanitizer;
 
 /// Renders the secure administrative login viewport
 pub async fn render_login_page(ctx: RequestContext) -> Response {
     // If the administrator is already authenticated, bypass login and redirect straight to the dashboard
     if let Some(cookie_header) = ctx.req.headers.get("Cookie") {
-        if cookie_header.contains("gritshield_admin_session=") {
+        if cookie_header.contains("GASESSION_ID=") {
             return Response::redirect(303, "/admin/dashboard");
         }
     }
@@ -86,16 +89,6 @@ pub async fn render_login_page(ctx: RequestContext) -> Response {
     Response::ok(login_html.to_string())
 }
 
-use crate::security::xss::Sanitizer;
-
-// Declare a globally accessible, thread-safe cell for the administrative session store
-pub static ADMIN_SESSION_STORE: OnceLock<Arc<SessionStore>> = OnceLock::new();
-
-/// Global helper to retrieve or safely initialize the shared admin session memory pool
-pub fn get_admin_store() -> &'static Arc<SessionStore> {
-    ADMIN_SESSION_STORE.get_or_init(|| Arc::new(SessionStore::new()))
-}
-
 /// Processes API authorization attempts securely
 pub async fn handle_login_auth(ctx: RequestContext) -> Response {
     // Unpack incoming JSON payload
@@ -111,8 +104,8 @@ pub async fn handle_login_auth(ctx: RequestContext) -> Response {
         .unwrap_or("");
 
     // Perform Credential Validation Checks
-    let env_admin_user = crate::core::env::get_env("GRITSHIELD_ADMIN_USER", "admin");
-    let env_admin_pass = crate::core::env::get_env("GRITSHIELD_ADMIN_PASSWORD", "gritshield2026");
+    let env_admin_user = crate::core::env::get_env("GRITSHIELD_ADMIN_USER", "");
+    let env_admin_pass = crate::core::env::get_env("GRITSHIELD_ADMIN_PASSWORD", "");
 
     if input_user != env_admin_user || input_pass != env_admin_pass {
         return Response::json(
@@ -138,7 +131,7 @@ pub async fn handle_login_auth(ctx: RequestContext) -> Response {
     }));
 
     // Fetch the shared global store reference and lock it to insert the session
-    let store = get_admin_store();
+    let store = get_session_store();
     if let Ok(mut store_guard) = store.sessions.lock() {
         store_guard.insert(new_sid.clone(), new_session);
     } else {
@@ -150,7 +143,7 @@ pub async fn handle_login_auth(ctx: RequestContext) -> Response {
 
     // Drop a secure signed cookie into the context jar matching the middleware identifier key
     let is_production = crate::core::env::get_env("APP_ENV", "development") == "production";
-    let session_cookie = Cookie::new("gritshield_admin_session", &new_sid)
+    let session_cookie = Cookie::new("GASESSION_ID", &new_sid)
         .set_secure(is_production)
         .set_same_site(SameSite::Lax);
 
@@ -169,8 +162,8 @@ pub async fn handle_login_auth(ctx: RequestContext) -> Response {
 /// Processes API administration logouts securely by tearing down tracking session records
 pub async fn handle_logout(ctx: RequestContext) -> Response {
     // If an active tracking cookie exists, clean it out of the shared global memory pool
-    if let Some(sid) = ctx.get_signed_cookie("gritshield_admin_session") {
-        let store = get_admin_store();
+    if let Some(sid) = ctx.get_signed_cookie("GASESSION_ID") {
+        let store = get_session_store();
         if let Ok(mut store_guard) = store.sessions.lock() {
             store_guard.remove(&sid);
             debug!(
@@ -181,7 +174,7 @@ pub async fn handle_logout(ctx: RequestContext) -> Response {
     }
 
     // Create an explicitly expired tombstone cookie to instruct the client to purge it
-    let clear_cookie = ctx.remove_cookie("gritshield_admin_session");
+    let clear_cookie = ctx.remove_cookie("GASESSION_ID");
 
     Response::redirect(303, "/admin/login")
 }
@@ -193,8 +186,8 @@ pub struct AdminAuthMiddleware {
 impl AdminAuthMiddleware {
     pub fn new() -> Self {
         Self {
-            // SOLUTION: Bind the middleware instance to the exact same global store instance
-            store: Arc::clone(get_admin_store()),
+            // Bind the middleware instance to the exact same global store instance
+            store: Arc::clone(get_session_store()),
         }
     }
 }
@@ -214,7 +207,7 @@ impl Middleware for AdminAuthMiddleware {
         // Extract session via signed cookie jar and locate it within the master store
         let mut active_session = None;
 
-        if let Some(sid) = ctx.get_signed_cookie("gritshield_admin_session") {
+        if let Some(sid) = ctx.get_signed_cookie("GASESSION_ID") {
             let store_guard = match self.store.sessions.lock() {
                 Ok(guard) => guard,
                 Err(_) => {
