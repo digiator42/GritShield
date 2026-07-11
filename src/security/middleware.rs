@@ -419,7 +419,7 @@ impl Middleware for AuthMiddleware {
 
                     match jwt_handler.verify(token) {
                         Ok(claims) => {
-                            debug!("[AUTH] Verified user token: {}", claims.sub);
+                            debug!("[AUTH MIDDLEWARE] Verified user token: {}", claims.sub);
                             ctx.claims = Some(claims.clone());
 
                             return MiddlewareResult::Next(Some(MiddlewareState {
@@ -429,7 +429,7 @@ impl Middleware for AuthMiddleware {
                             }));
                         }
                         Err(e) => {
-                            debug!("[AUTH] Token validation rejected: {}", e);
+                            debug!("[AUTH MIDDLEWARE] Token validation rejected: {}", e);
                         }
                     }
                 }
@@ -441,7 +441,7 @@ impl Middleware for AuthMiddleware {
         // -----------------------------------------------------------------
         if let Some(ref redirect_path) = self.redirect {
             debug!(
-                "\x1b[33m[AUTH] Unauthenticated attempt to private route {}. Redirecting...\x1b[0m",
+                "\x1b[33m[AUTH MIDDLEWARE] Unauthenticated attempt to private route {}. Redirecting...\x1b[0m",
                 ctx.req.path
             );
             return MiddlewareResult::Error(Response::redirect(303, redirect_path));

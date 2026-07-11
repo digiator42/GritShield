@@ -2,24 +2,22 @@ use crate::protocol::response::Cookie;
 use crate::protocol::response::{JsonPayload, SameSite};
 use crate::routing::trie::RequestContext;
 use crate::security::middleware::{
-    get_session_store, Middleware, MiddlewareResult, MiddlewareState,
+    get_session_store, Middleware, MiddlewareResult,
 };
 use crate::security::session::{Session, SessionStore};
-use crate::{debug, prelude::*};
-use serde_json::json;
-use std::sync::{Mutex, OnceLock};
 use crate::security::xss::Sanitizer;
+use crate::{debug, warn, error, prelude::*};
+use serde_json::json;
+use std::sync::{Arc, Mutex};
 
 /// Renders the secure administrative login viewport
 pub async fn render_login_page(ctx: RequestContext) -> Response {
     // If the administrator is already authenticated, bypass login and redirect straight to the dashboard
-    if let Some(cookie_header) = ctx.req.headers.get("Cookie") {
-        if cookie_header.contains("GASESSION_ID=") {
-            return Response::redirect(303, "/admin/dashboard");
-        }
+    if verify_and_get_admin_id(&ctx).is_some() {
+        return Response::redirect(303, "/admin/dashboard");
     }
 
-    // Render a pristine, framework-branded CSS login page using raw HTML or Maud template formatting
+    // Render a pristine, framework-branded CSS login page using raw HTML
     let login_html = r#"
         <!DOCTYPE html>
         <html lang="en">
@@ -132,7 +130,7 @@ pub async fn handle_login_auth(ctx: RequestContext) -> Response {
 
     // Fetch the shared global store reference and lock it to insert the session
     let store = get_session_store();
-    if let Ok(mut store_guard) = store.sessions.lock() {
+    if let Ok(store_guard) = store.sessions.lock() {
         store_guard.insert(new_sid.clone(), new_session);
     } else {
         return Response::new(
@@ -147,7 +145,7 @@ pub async fn handle_login_auth(ctx: RequestContext) -> Response {
         .set_secure(is_production)
         .set_same_site(SameSite::Lax);
 
-    let mut response = Response::json(
+    let response = Response::json(
         200,
         &json!({
             "status": "success",
@@ -164,7 +162,7 @@ pub async fn handle_logout(ctx: RequestContext) -> Response {
     // If an active tracking cookie exists, clean it out of the shared global memory pool
     if let Some(sid) = ctx.get_signed_cookie("GASESSION_ID") {
         let store = get_session_store();
-        if let Ok(mut store_guard) = store.sessions.lock() {
+        if let Ok(store_guard) = store.sessions.lock() {
             store_guard.remove(&sid);
             debug!(
                 "[ADMIN LOGOUT] ✓ Session evicted securely from memory store: {}",
@@ -174,9 +172,52 @@ pub async fn handle_logout(ctx: RequestContext) -> Response {
     }
 
     // Create an explicitly expired tombstone cookie to instruct the client to purge it
-    let clear_cookie = ctx.remove_cookie("GASESSION_ID");
+    let _clear_cookie = ctx.remove_cookie("GASESSION_ID");
 
     Response::redirect(303, "/admin/login")
+}
+
+/// Queries the master session pool directly using the administrative cookie jar key
+pub fn verify_and_get_admin_id(ctx: &RequestContext) -> Option<String> {
+    // Read the unique admin tracking cookie directly from the context jar
+    if let Some(admin_sid) = ctx.get_signed_cookie("GASESSION_ID") {
+        debug!(
+            "[STORE SEARCH] Found GASESSION_ID cookie value: {}",
+            admin_sid
+        );
+
+        // Fetch and lock the global memory master store
+        let store = get_session_store();
+        if let Ok(store_guard) = store.sessions.lock() {
+            // Search the master hash map for this session ID
+            if let Some(session_arc) = store_guard.get(&admin_sid) {
+                // Lock the individual session instance to inspect its inner variables
+                if let Ok(session) = session_arc.lock() {
+                    debug!(
+                        "[STORE SEARCH] ✓ Match found in global store! Session state: id={}, user_id={:?}, data={:?}",
+                        session.id, session.user_id, session.data
+                    );
+
+                    // Explicitly pull out the admin authorization key
+                    if let Some(admin_user_id) = session.data.get("admin_user_id") {
+                        return Some(admin_user_id.clone());
+                    } else {
+                        warn!(
+                            "[STORE SEARCH] ✗ Session found, but it lacks the 'admin_user_id' key."
+                        );
+                    }
+                }
+            } else {
+                warn!("[STORE SEARCH] ✗ Cookie token exists, but no matching session is registered in memory pool.");
+            }
+        } else {
+            error!("[STORE SEARCH] CRITICAL: Master session store lock is poisoned!");
+        }
+    } else {
+        debug!("[STORE SEARCH] No GASESSION_ID cookie found on incoming request context.");
+    }
+
+    None
 }
 
 pub struct AdminAuthMiddleware {
@@ -194,90 +235,45 @@ impl AdminAuthMiddleware {
 
 impl Middleware for AdminAuthMiddleware {
     fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult {
-        //Restrict to /admin, :TODO need to be strictly to admin registery routes
+        // Narrow scope to admin routes
         if !ctx.req.path.starts_with("/admin") {
             return MiddlewareResult::Next(None);
         }
 
-        // Skip auth checks if the user is explicitly heading to the login page/endpoint
+        // Skip auth check for login endpoints
         if ctx.req.path == "/admin/login" || ctx.req.path == "/admin/api/login" {
             return MiddlewareResult::Next(None);
         }
 
-        // Extract session via signed cookie jar and locate it within the master store
-        let mut active_session = None;
+        // Search the global store directly bypassing ctx.session
+        let mut is_authorized_admin = false;
 
         if let Some(sid) = ctx.get_signed_cookie("GASESSION_ID") {
-            let store_guard = match self.store.sessions.lock() {
-                Ok(guard) => guard,
-                Err(_) => {
-                    return MiddlewareResult::Error(Response::new(
-                        500,
-                        Sanitizer::trust(
-                            "<h1>500 Internal Server Error: Session Pool Poisoned</h1>",
-                        ),
-                    ));
-                }
-            };
-
-            if let Some(session_ptr) = store_guard.get(&sid) {
-                debug!("[ADMIN AUTH] ✓ Valid administrative session found: {}", sid);
-                active_session = Some(Arc::clone(&session_ptr));
-            } else {
-                debug!(
-                    "[ADMIN AUTH] ✗ Session ID found in cookie but missing from store: {}",
-                    sid
-                );
-            };
-        }
-
-        // Reject unauthorized access attempts or unassigned admin privileges
-        let session_arc = match active_session {
-            Some(s) => s,
-            None => {
-                debug!(
-                    "[ADMIN AUTH] Unauthenticated access attempt blocked for path: {}",
-                    ctx.req.path
-                );
-                if ctx.req.path.starts_with("/admin/api/") {
-                    return MiddlewareResult::Error(Response::unauthorized(
-                        "Administrative access required",
-                    ));
-                } else {
-                    return MiddlewareResult::Error(Response::redirect(303, "/admin/login"));
-                }
-            }
-        };
-
-        // Verify that this session actually contains authorized administrative credentials
-        let admin_user_id = {
-            let session = session_arc.lock().unwrap();
-            match session.data.get("admin_user_id").cloned() {
-                Some(uid) => uid,
-                None => {
-                    debug!(
-                        "[ADMIN AUTH] Session exists but lacks administrative authorization keys."
-                    );
-                    if ctx.req.path.starts_with("/admin/api/") {
-                        return MiddlewareResult::Error(Response::unauthorized(
-                            "Administrative access required",
-                        ));
-                    } else {
-                        return MiddlewareResult::Error(Response::redirect(303, "/admin/login"));
+            if let Ok(store_guard) = self.store.sessions.lock() {
+                if let Some(session_ptr) = store_guard.get(&sid) {
+                    if let Ok(session) = session_ptr.lock() {
+                        if session.data.contains_key("admin_user_id") {
+                            is_authorized_admin = true;
+                        }
                     }
                 }
             }
-        };
+        }
 
-        // Inject metadata into context and bind active session pointer to request lifecycle
-        ctx.login_user_id(&admin_user_id);
-        ctx.session = Some(Arc::clone(&session_arc));
-
-        // Pass packed state down to downstream controllers seamlessly
-        MiddlewareResult::Next(Some(MiddlewareState {
-            session: Some(session_arc),
-            claims: None,
-            session_was_stale: false,
-        }))
+        if is_authorized_admin {
+            debug!("[ADMIN AUTH] ✓ Direct store authentication check passed.");
+            // Pass Next(None) so we don't return a state that overwrites ctx.session in your connection runner
+            MiddlewareResult::Next(None)
+        } else {
+            debug!(
+                "[ADMIN AUTH] ✗ Unauthorized attempt blocked for path: {}",
+                ctx.req.path
+            );
+            if ctx.req.path.starts_with("/admin/api/") {
+                MiddlewareResult::Error(Response::unauthorized("Administrative access required"))
+            } else {
+                MiddlewareResult::Error(Response::redirect(303, "/admin/login"))
+            }
+        }
     }
 }
