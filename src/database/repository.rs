@@ -6,8 +6,8 @@ use crate::routing::trie::RequestContext;
 use crate::security::xss::Sanitizer;
 use sea_orm::{
     ActiveModelBehavior, ActiveModelTrait, ColumnTrait, DatabaseConnection, DbBackend, EntityTrait,
-    FromQueryResult, IntoActiveModel, ModelTrait, PaginatorTrait, PrimaryKeyTrait,
-    QueryFilter, QueryOrder, QuerySelect, Select, Statement, TryIntoModel, Value,
+    FromQueryResult, IntoActiveModel, ModelTrait, PaginatorTrait, PrimaryKeyTrait, QueryFilter,
+    QueryOrder, QuerySelect, Select, Statement, TryIntoModel, Value,
 };
 use sea_orm_migration::async_trait::async_trait;
 use std::collections::HashMap;
@@ -38,7 +38,6 @@ pub struct WhereSpec {
     pub operator: String, // "=", "LIKE", ">"
     pub value: String,
 }
-
 
 #[derive(serde::Deserialize, Debug)]
 pub struct DynamicColumnSpec {
@@ -198,9 +197,6 @@ impl CustomQuerySpec {
 pub type AdminHandlerFn =
     Arc<dyn Fn(RequestContext) -> Pin<Box<dyn Future<Output = Response> + Send>> + Send + Sync>;
 
-
-// ----------- action --------------
-
 /// A custom action that can be executed on one or more records.
 pub struct CustomAction {
     pub label: &'static str,
@@ -213,8 +209,7 @@ pub struct CustomAction {
 pub type ActionRegistry = HashMap<&'static str, Vec<Arc<CustomAction>>>;
 
 // Global action registry
-pub static ACTIONS_REGISTRY: Lazy<Mutex<ActionRegistry>> =
-    Lazy::new(|| Mutex::new(HashMap::new()));
+pub static ACTIONS_REGISTRY: Lazy<Mutex<ActionRegistry>> = Lazy::new(|| Mutex::new(HashMap::new()));
 
 /// Register a custom action for a specific table
 pub fn register_action(table_slug: &'static str, action: CustomAction) {
@@ -239,6 +234,8 @@ pub struct ModelMetadata {
     pub advanced_search_handler: AdminHandlerFn,
     pub detail_handler: AdminHandlerFn,
     pub bulk_delete_handler: AdminHandlerFn,
+    pub bulk_create_records_handler: AdminHandlerFn,
+    pub bulk_create_modal_handler: AdminHandlerFn,
     pub export_handler: AdminHandlerFn,
 }
 

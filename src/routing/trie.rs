@@ -937,6 +937,36 @@ impl Router {
                     model.export_handler.clone(),
                     None,
                 );
+                // Create bulk records
+                let bulk_records_path = format!("{}/bulk-create", model.route_path);
+                info!(
+                    "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
+                    bulk_records_path,
+                    max_len,
+                    format!("->").green(),
+                    method_color("POST")
+                );
+                router.add_route(
+                    HttpMethod::POST,
+                    &bulk_records_path,
+                    model.bulk_create_records_handler.clone(),
+                    None,
+                );
+                // Create bulk records MODAL
+                let bulk_records_modal_path = format!("{}/bulk-create-modal", model.route_path);
+                info!(
+                    "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
+                    bulk_records_modal_path,
+                    max_len,
+                    format!("->").green(),
+                    method_color("GET")
+                );
+                router.add_route(
+                    HttpMethod::GET,
+                    &bulk_records_modal_path,
+                    model.bulk_create_modal_handler.clone(),
+                    None,
+                );
             }
 
             // ---- CUSTOM ACTION ROUTES ----
@@ -1171,12 +1201,14 @@ impl Router {
                 None,
             );
 
+            // =============== Admin auth middleware ===============
             use crate::gritadmin::auth_handlers::AdminAuthMiddleware;
             // Admin auth middle ware
             router
                 .middlewares
                 .push(Box::new(AdminAuthMiddleware::new()));
         }
+
         #[cfg(feature = "swagger")]
         {
             // ---- SWAGGER UI ROUTE ----
@@ -1197,7 +1229,7 @@ impl Router {
 
             router.add_route(HttpMethod::GET, "/admin/docs", swagger_handler, None);
 
-            // ---- OPTIONAL: RAW OPENAPI JSON ENDPOINT ----
+            // ---- RAW OPENAPI JSON ENDPOINT ----
             let openapi_handler: AdminHandlerFn = Arc::new(|_ctx| {
                 Box::pin(async move {
                     let spec = generate_openapi_spec();

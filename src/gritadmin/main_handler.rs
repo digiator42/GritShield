@@ -18,6 +18,7 @@ use crate::{admin_shell, prelude::*};
 use maud::html;
 use sea_orm::sea_query::{Alias, ColumnDef, Table};
 use sea_orm::ColumnTrait;
+use sea_orm::PrimaryKeyTrait;
 use sea_orm::QueryFilter;
 use sea_orm::QueryResult;
 
@@ -33,17 +34,17 @@ fn get_target_table_slug(current_table: &str, col_name: &str) -> Option<String> 
         if let Some(model_schema) = schema_reg.get(current_table) {
             // Normalize column name to ignore underscores and case (e.g., "follower_id" -> "followerid")
             let normalized_col = col_name.replace("_", "").to_lowercase();
-            
+
             for relation in &model_schema.relations {
                 if relation.kind == crate::core::schema::RelationKind::BelongsTo {
                     if let Some(ref fk) = relation.foreign_key {
                         let normalized_fk = fk.replace("_", "").to_lowercase();
-                        
+
                         // Match found (e.g., "followerid" == "followerid")
                         if normalized_fk == normalized_col {
                             let target = &relation.target_table;
-                            
-                            // Check if the target table exists in ADMIN_REGISTRY, 
+
+                            // Check if the target table exists in ADMIN_REGISTRY,
                             // or fallback to singular/plural variants if there's a mismatch
                             if let Ok(admin_reg) = ADMIN_REGISTRY.lock() {
                                 if admin_reg.contains_key(target.as_str()) {
@@ -685,6 +686,14 @@ where
             onclick="document.getElementById('evolve-schema-modal').classList.remove('hidden')"
             class="bg-emerald-950/40 w-1/2 border border-emerald-800/60 hover:bg-emerald-900/40 text-emerald-400 text-xxs font-mono font-semibold px-3 py-1.5 rounded-lg transition duration-150 shadow-md" {
             "+ Add Column"
+        }
+        button
+            hx-get=(format!("/admin/{}/bulk-create-modal", table_slug))
+            hx-target="#modals-container"
+            hx-swap="innerHTML"
+            hx-indicator="body"
+            class="bg-emerald-950/40 w-1/2 border border-emerald-800/60 hover:bg-emerald-900/40 text-emerald-400 text-xxs font-mono font-semibold px-3 py-1.5 rounded-lg transition duration-150 shadow-md" {
+                "📦 Bulk Import"
         }
     };
 
@@ -2390,6 +2399,247 @@ pub async fn admin_metrics_api_handler(ctx: RequestContext) -> Response {
 
     // Serialize back out into a structured standard JSON text layout
     Response::json(200, &metrics_payload)
+}
+
+pub async fn handle_bulk_create_modal<R>(
+    _ctx: RequestContext,
+    repo: R,
+    table_slug: &'static str,
+) -> Response
+where
+    R: GritRepository + Send + Sync + 'static,
+{
+    // Auto-generate a helper blueprint from the exact editable columns registered in the grid
+    let template_fields: Vec<String> = repo
+        .grid_columns()
+        .iter()
+        .map(|c| format!("\"{}\": \"value\"", c.name))
+        .collect();
+
+    let json_placeholder = format!("[\n  {{\n    {}\n  }}\n]", template_fields.join(",\n    "));
+
+    let modal_html = html! {
+        div id="bulk-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-40 animate-fade-in" onclick="if(event.target === this) this.remove()" {
+            div class="bg-gray-950 border border-gray-800 rounded-xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh]" onclick="event.stopPropagation()" {
+
+                // Header
+                div class="p-4 border-b border-gray-800 bg-gray-900/50 flex justify-between items-center" {
+                    h3 class="text-sm font-mono font-bold text-gray-200" { "Bulk Record Ingestion Console :: " (table_slug) }
+                    button class="text-gray-500 hover:text-gray-400 font-mono text-xs" onclick="document.getElementById('bulk-modal').remove()" { "✕" }
+                }
+
+                // Form Body
+                form hx-post=(format!("/admin/{}/bulk-create", table_slug))
+                     hx-target="#matrix-wrapper"
+                     hx-vals="{\"partial\": \"matrix\"}"
+                     hx-indicator="body"
+                     hx-on--after-request="if(event.detail.successful) document.getElementById('bulk-modal').remove()"
+                     class="flex-1 flex flex-col overflow-hidden p-4 space-y-4 overflow-scroll" {
+
+                    div class="bg-gray-900/40 p-3 rounded-lg border border-gray-800/60" {
+                        span class="text-[11px] font-mono text-gray-400 block mb-1.5" { "💡 Ingestion Matrix Layout (Copy & Adapt):" }
+                        pre class="text-[11px] font-mono text-emerald-500 bg-black/60 p-2 rounded overflow-x-auto border border-emerald-950/40 select-all" {
+                            (json_placeholder)
+                        }
+                    }
+
+                    div class="flex-1 flex flex-col min-h-[280px]" {
+                        label class="text-xs font-mono text-gray-300 mb-1" { "Payload Data Stream:" }
+                        textarea
+                            name="bulk_json"
+                            placeholder="[ { ... }, { ... } ]"
+                            class="flex-1 w-full bg-black/40 border border-gray-800 rounded-lg p-3 font-mono text-xs text-gray-300 focus:outline-none focus:border-emerald-600 transition resize-none placeholder-gray-700"
+                            required {}
+                    }
+
+                    // Bottom Action Panel
+                    div class="flex justify-end items-center gap-2 pt-2 border-t border-gray-900" {
+                        button type="button"
+                                onclick="document.getElementById('bulk-modal').remove()"
+                                class="px-3 py-2 text-xs font-mono text-gray-400 hover:text-gray-300 transition" {
+                            "Cancel"
+                        }
+                        button type="submit"
+                                class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-mono text-xs rounded-lg shadow-lg shadow-emerald-900/20 transition" {
+                            "⚡ Commit Ingestion"
+                        }
+                    }
+                }
+            }
+        }
+    };
+
+    Response::new(200, Sanitizer::trust(&modal_html.into_string()))
+}
+pub async fn handle_bulk_create<R>(
+    mut ctx: RequestContext,
+    repo: R,
+    table_slug: &'static str,
+) -> Response
+where
+    R: GritRepository + Send + Sync + 'static,
+    // Handle model to active model mapping constraints
+    <R as GritRepository>::Model: Sync
+        + Send
+        + sea_orm::IntoActiveModel<<<R as GritRepository>::Entity as EntityTrait>::ActiveModel>,
+    // Handle serde deserialization limits for the payload
+    for<'de> <R as GritRepository>::Model: serde::Deserialize<'de>,
+    // Enforce that the hydrated ActiveModel can be passed across threads safely
+    <<R as GritRepository>::Entity as EntityTrait>::ActiveModel: std::marker::Send,
+    <R as GritRepository>::Id: std::str::FromStr,
+    <<R as GritRepository>::Id as std::str::FromStr>::Err: std::fmt::Display,
+{
+    use sea_orm::{ActiveModelTrait, EntityTrait, TransactionTrait};
+
+    // Unpack incoming form payload
+    let payload_str = match ctx.form.fields.get("bulk_json") {
+        Some(val) => Sanitizer::url_decode(val.as_str()),
+        None => {
+            return error_response("Missing key field 'bulk_json' inside the request body payload")
+        }
+    };
+
+    // Validate valid JSON structure
+    let json_array: serde_json::Value = match serde_json::from_str(&payload_str) {
+        Ok(val) => val,
+        Err(e) => return error_response(format!("Invalid structural JSON format: {}", e)),
+    };
+
+    let items_array = match json_array.as_array() {
+        Some(arr) => arr,
+        None => {
+            return error_response(
+                "Ingestion root wrapper is required to be an explicit Array block: [ ... ]",
+            )
+        }
+    };
+
+    if items_array.is_empty() {
+        return error_response("Ingestion stream data collection cannot be empty");
+    }
+
+    let db = repo.get_db();
+
+    // Spool up an isolated ACID transaction boundary
+    let txn = match db.begin().await {
+        Ok(t) => t,
+        Err(e) => {
+            return error_response(format!(
+                "Failed to configure safe execution context transaction: {}",
+                e
+            ))
+        }
+    };
+
+    let mut records_processed = 0;
+
+    for (idx, json_obj) in items_array.iter().enumerate() {
+        let mut item_map = match json_obj.as_object() {
+            Some(map) => map.clone(),
+            None => {
+                return error_response(format!(
+                    "Malformatted item block encountered at position index ({})",
+                    idx
+                ))
+            }
+        };
+
+        // =====================================================================
+        // Step A: Primary Key Assignment Optimization
+        // =====================================================================
+        let mut primary_key_needs_reset = false;
+        if let Some(id_val) = item_map.get("id") {
+            if id_val.as_i64() == Some(0) {
+                primary_key_needs_reset = true;
+            }
+        } else {
+            // Fallback injection if the developer omitted it entirely
+            item_map.insert("id".to_string(), serde_json::json!(0));
+            primary_key_needs_reset = true;
+        }
+
+        // =====================================================================
+        // Step B: Dynamic Date Normalization (Mimicking update cell parsing)
+        // =====================================================================
+        for (_field_name, value) in item_map.iter_mut() {
+            if let serde_json::Value::String(ref mut field_str) = value {
+                // Intercept standard human/SQL timestamp variations: "YYYY-MM-DD HH:MM:SS"
+                // Check format lengths and matching indices safely to avoid panics
+                if field_str.len() >= 19
+                    && field_str.as_bytes()[4] == b'-'
+                    && field_str.as_bytes()[7] == b'-'
+                    && field_str.as_bytes()[10] == b' '
+                {
+                    // Convert space separation directly to standard ISO-8601 'T' delimiter
+                    *field_str = field_str.replace(" ", "T");
+                }
+            }
+        }
+
+        // Wrap back to a structured Value block
+        let cleaned_json = serde_json::Value::Object(item_map);
+
+        // Hydrate the ActiveModel natively (Serde passes safely now)
+        let mut active_model =
+            match <<R as GritRepository>::Entity as EntityTrait>::ActiveModel::from_json(
+                cleaned_json,
+            ) {
+                Ok(am) => am,
+                Err(e) => {
+                    return error_response(format!(
+                        "Row hydration mapping constraints rejected at row index {}: {}",
+                        idx, e
+                    ));
+                }
+            };
+
+        // Un-set primary key if placeholder was 0 to trigger native sequences
+        if primary_key_needs_reset {
+            use sea_orm::{Iterable, PrimaryKeyToColumn};
+
+            for pk_variant in <<R as GritRepository>::Entity as EntityTrait>::PrimaryKey::iter() {
+                active_model.not_set(pk_variant.into_column());
+            }
+        }
+
+        // Insert cleanly inside the isolated transaction guard
+        if let Err(e) = active_model.insert(&txn).await {
+            return error_response(format!(
+                "Database schema violation encountered at row index {}: {}",
+                idx, e
+            ));
+        }
+        records_processed += 1;
+    }
+
+    // Commit structural changes permanently to storage
+    if let Err(e) = txn.commit().await {
+        return error_response(format!("Failed finalizing batch commit operation: {}", e));
+    }
+
+    crate::debug!(
+        "[BULK IMPORT] ✓ Successfully committed {} entries into {}",
+        records_processed,
+        table_slug
+    );
+
+    // Inject HTMX-driven interface refresh using the matrix partial layout
+    ctx.query.insert(
+        "partial".to_string(),
+        UntrustedString::new("matrix".to_string()),
+    );
+    let mut refreshed_view = handle_list(ctx, repo, table_slug).await;
+
+    // Drop a beautiful UI toast directly over HTMX custom event headers
+    let success_toast = format!(
+        r#"{{"showToast": {{"message": "Successfully ingested {} rows into {}!", "type": "success"}}}}"#,
+        records_processed, table_slug
+    );
+    refreshed_view
+        .headers
+        .push(("hx-trigger".to_string(), success_toast));
+
+    refreshed_view
 }
 
 /// Simple CSV writer (escapes commas and quotes).

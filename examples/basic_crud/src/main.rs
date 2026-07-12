@@ -10,6 +10,9 @@ use gritshield::{
 mod controllers;
 mod models;
 mod repositories;
+mod auth {
+    mod login;
+}
 
 #[tokio::main]
 async fn main() {
@@ -19,7 +22,11 @@ async fn main() {
 
     let router = Router::new()
         .add_middleware(AuthMiddleware::new_session(
-            vec!["/api/info/sea-orm".to_string(), "/admin/**".to_string()],
+            vec![
+                "/auth/login".to_string(),
+                "/api/info/sea-orm".to_string(),
+                "/admin/**".to_string(),
+            ],
             Some("/api/info/sea-orm"),
         ))
         .mount_db(shared_db.clone());

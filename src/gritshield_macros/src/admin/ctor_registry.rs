@@ -164,6 +164,40 @@ pub fn generate_registration(
                     })
                 });
 
+            let bulk_create_records_handler: #crate_root::database::repository::AdminHandlerFn =
+                ::std::sync::Arc::new(move |ctx| {
+                    use #crate_root::routing::trie::IntoResponse;
+                    let table_name = table_name;
+                    Box::pin(async move {
+                        let db = ctx.db.clone().expect("DB connection missing");
+                        let repo = #name { db: (*db).clone() };
+                        #crate_root::gritadmin::main_handler::handle_bulk_create(
+                            ctx,
+                            repo,
+                            table_name,
+                        )
+                        .await
+                        .into_response()
+                    })
+                });
+
+            let bulk_create_modal_handler: #crate_root::database::repository::AdminHandlerFn =
+                ::std::sync::Arc::new(move |ctx| {
+                    use #crate_root::routing::trie::IntoResponse;
+                    let table_name = table_name;
+                    Box::pin(async move {
+                        let db = ctx.db.clone().expect("DB connection missing");
+                        let repo = #name { db: (*db).clone() };
+                        #crate_root::gritadmin::main_handler::handle_bulk_create_modal(
+                            ctx,
+                            repo,
+                            table_name,
+                        )
+                        .await
+                        .into_response()
+                    })
+                });
+
             let export_handler: #crate_root::database::repository::AdminHandlerFn =
                 ::std::sync::Arc::new(move |ctx| {
                     let table_name = table_name;
@@ -191,6 +225,8 @@ pub fn generate_registration(
                 advanced_search_handler,
                 detail_handler,
                 bulk_delete_handler,
+                bulk_create_records_handler,
+                bulk_create_modal_handler,
                 export_handler,
             };
 
