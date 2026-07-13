@@ -1,12 +1,8 @@
 use gritshield::{
-    component,
-    core::{ioc::AutoWire, schema::export_openapi},
-    prelude::*,
-    security::{
+    GritComponent, component, core::{ioc::AutoWire, schema::export_openapi}, prelude::*, provide, security::{
         db::{DbConfig, DbManager},
         middleware::AuthMiddleware,
     },
-    GritComponent,
 };
 
 mod controllers;
@@ -16,13 +12,15 @@ mod auth {
     mod login;
 }
 
-#[derive(Clone, GritComponent)]
-pub struct PaymentService {}
+#[derive(Clone)]
+pub struct PaymentService {
+    pub api_key: String,
+}
 
 // #[component]
 impl PaymentService {
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(key: String) -> Self {
+        Self { api_key: key }
     }
     pub async fn process_charge(&self, amount: u64) {
         println!(
@@ -52,6 +50,7 @@ impl PaymentService {
 // }
 
 fn auto_wire() {
+    provide!(PaymentService, PaymentService::new("Api key....".to_string()));
     // let database_pool = Arc::new(DatabasePool);
     // let payment_client = Arc::new(PaymentService {
     //     api_key: "sk_live_secret_token_abc123".to_string(),

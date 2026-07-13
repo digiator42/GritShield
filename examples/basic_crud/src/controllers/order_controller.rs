@@ -30,7 +30,7 @@ impl OrderController {
     #[get("/checkout")]
     pub async fn checkout(&self, ctx: RequestContext) -> Response {
         self.db.execute("SELECT 1").await;
-        Response::ok(format!("Checked out safely, "))
+        Response::ok(format!("Checked out safely, {}", self.ps.api_key))
     }
 
     #[get("/checkout2")]
@@ -46,5 +46,4 @@ impl OrderController {
 
         Response::ok(JsonPayload(json!({ "status": "processed" })))
     }
-
 }

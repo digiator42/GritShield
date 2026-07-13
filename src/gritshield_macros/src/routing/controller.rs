@@ -87,6 +87,7 @@ pub fn expand_http_method(
 
     let mut dependency_resolutions = vec![];
     let mut invocation_args = vec![quote! { ctx }];
+    let mut dependency_inner_types: Vec<&Type> = vec![];
 
     for (i, arg) in input_fn.sig.inputs.iter().enumerate() {
         if i == 0 {
@@ -104,9 +105,24 @@ pub fn expand_http_method(
                     );
                 });
                 invocation_args.push(quote! { #arg_name });
+                dependency_inner_types.push(inner_type);
             }
         }
     }
+
+    // Record what this handler needs so AutoWire::verify() can catch a missing
+    // dependency (e.g. an unregistered PaymentService) at boot instead of the
+    // first time a request happens to hit this specific route.
+    let edge_submissions = dependency_inner_types.iter().map(|inner_type| {
+        quote! {
+            gritshield::inventory::submit! {
+                gritshield::core::ioc::DependencyEdge {
+                    component: std::stringify!(#fn_name),
+                    requires: std::stringify!(#inner_type),
+                }
+            }
+        }
+    });
 
     Ok(quote! {
         #input_fn
@@ -129,14 +145,13 @@ pub fn expand_http_method(
                 request_body_schema: #body_schema,
             }
         }
+
+        #(#edge_submissions)*
     })
 }
 
 /// Consolidated engine driving both controller routing paradigms
-pub fn expand_controller(
-    attr: TokenStream,
-    item: TokenStream,
-) -> Result<TokenStream> {
+pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
     let base_path_lit: LitStr = syn::parse2(attr)?;
     let base_path = base_path_lit.value();
 
@@ -196,6 +211,7 @@ pub fn expand_controller(
 
                 // Build argument dispatch list dynamically based on handler signatures
                 let mut dispatch_args = vec![];
+                let mut dispatch_dependency_types: Vec<Type> = vec![];
 
                 for arg in &method.sig.inputs {
                     if let syn::FnArg::Typed(pat_type) = arg {
@@ -217,6 +233,7 @@ pub fn expand_controller(
                                     )
                                 )
                             });
+                            dispatch_dependency_types.push(inner_type.clone());
                         }
                     }
                 }
@@ -235,6 +252,10 @@ pub fn expand_controller(
                 );
 
                 let invocation = if has_self {
+                    // The controller struct itself has to be resolvable too — track it
+                    // as a dependency of this handler so a forgotten #[component]/
+                    // #[derive(GritComponent)] on the controller shows up in verify().
+                    dispatch_dependency_types.push((**self_ty).clone());
                     quote! {
                         let controller = ::gritshield::core::ioc::CONTEXT.resolve::<#self_ty>().expect(
                             #missing_controller_msg
@@ -246,6 +267,17 @@ pub fn expand_controller(
                         #self_ty::#fn_name(#(#dispatch_args),*)
                     }
                 };
+
+                let edge_submissions = dispatch_dependency_types.iter().map(|dep_ty| {
+                    quote! {
+                        gritshield::inventory::submit! {
+                            gritshield::core::ioc::DependencyEdge {
+                                component: std::stringify!(#fn_name),
+                                requires: std::stringify!(#dep_ty),
+                            }
+                        }
+                    }
+                });
 
                 inventory_submissions.push(quote! {
                     fn #wrapper_name(ctx: gritshield::routing::trie::RequestContext) -> gritshield::futures::future::BoxFuture<'static, gritshield::protocol::response::Response> {
@@ -266,6 +298,8 @@ pub fn expand_controller(
                             request_body_schema: #body_schema,
                         }
                     }
+
+                    #(#edge_submissions)*
                 });
             }
         }
