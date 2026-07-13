@@ -70,13 +70,6 @@ pub fn component(_attr: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 #[proc_macro_attribute]
-pub fn scontroller(attr: TokenStream, item: TokenStream) -> TokenStream {
-    routing::expand_structural_controller(attr.into(), item.into())
-        .unwrap_or_else(|e| e.to_compile_error())
-        .into()
-}
-
-#[proc_macro_attribute]
 pub fn get(attr: TokenStream, item: TokenStream) -> TokenStream {
     routing::expand_http_method("GET", attr.into(), item.into())
         .unwrap_or_else(|e| e.to_compile_error())

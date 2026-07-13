@@ -17,20 +17,17 @@ mod auth {
 }
 
 #[derive(Clone, GritComponent)]
-pub struct PaymentService {
-    pub api_key: Arc<String>,
-}
+pub struct PaymentService {}
 
 // #[component]
 impl PaymentService {
-    pub fn new(api_key: String) -> Self {
-        PaymentService { api_key: Arc::new(api_key) }
+    pub fn new() -> Self {
+        Self {}
     }
     pub async fn process_charge(&self, amount: u64) {
         println!(
-            "Charging ${} via key ending in ...{}",
+            "Charging ${} via key ending in ...",
             amount,
-            &self.api_key[12..]
         );
     }
 }
@@ -55,8 +52,6 @@ impl PaymentService {
 // }
 
 fn auto_wire() {
-    // let api_key = "sk_live_secret_token_abc123".to_string();
-    // AutoWire::component(api_key);
     // let database_pool = Arc::new(DatabasePool);
     // let payment_client = Arc::new(PaymentService {
     //     api_key: "sk_live_secret_token_abc123".to_string(),

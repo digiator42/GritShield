@@ -26,7 +26,6 @@ pub use gritshield_macros::GritSchema;
 pub use gritshield_macros::GritAdmin;
 pub use gritshield_macros::action;
 pub use gritshield_macros::controller;
-pub use gritshield_macros::scontroller;
 pub use gritshield_macros::component;
 pub use gritshield_macros::GritRelation;
 pub use gritshield_macros::GritComponent;

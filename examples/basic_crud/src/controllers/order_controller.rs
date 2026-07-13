@@ -1,6 +1,6 @@
 use gritshield::protocol::response::JsonPayload;
 use gritshield::{component, prelude::*};
-use gritshield::{scontroller, GritComponent};
+use gritshield::{controller, GritComponent};
 use serde_json::json;
 
 use crate::PaymentService;
@@ -19,19 +19,32 @@ impl DatabasePool {
     }
 }
 
-// 2. STRICT LOMBOK WAY: Structs that purely consume other managed dependencies
-//    need NO manual constructors and NO `#[component]` impl tags!
 #[derive(GritComponent)]
 pub struct OrderController {
     pub db: Arc<DatabasePool>, // <-- Auto-resolved from container context
     pub ps: Arc<PaymentService>,
 }
 
-#[scontroller("/api/orders")]
+#[controller("/api/orders")]
 impl OrderController {
     #[get("/checkout")]
     pub async fn checkout(&self, ctx: RequestContext) -> Response {
         self.db.execute("SELECT 1").await;
-        Response::ok(format!("Checked out safely, {}", self.ps.api_key))
+        Response::ok(format!("Checked out safely, "))
     }
+
+    #[get("/checkout2")]
+    pub async fn checkout2(
+        ctx: RequestContext,
+        payment: Arc<PaymentService>, // <-- Automatically Injected!
+    ) -> Response {
+        // let order_payload = ctx.json_body().await.unwrap();
+
+        // Use services directly with zero manual orchestration!
+        payment.process_charge(21);
+        // db.execute("INSERT INTO orders ...").await;
+
+        Response::ok(JsonPayload(json!({ "status": "processed" })))
+    }
+
 }
