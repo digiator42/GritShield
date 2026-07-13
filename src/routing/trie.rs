@@ -1,3 +1,4 @@
+use crate::core::ioc::AutoWire;
 use crate::core::logger::{self, log_request_summary, LogLevel};
 use crate::protocol::form::FormData;
 use crate::protocol::request::{HttpMethod, Request};
@@ -706,6 +707,9 @@ pub struct Router {
 impl Router {
     pub fn new() -> Self {
         logger::init_from_env();
+
+        // Boot di container
+        AutoWire::boot_di_container();
 
         let fallback = if let Ok(guard) = GLOBAL_FALLBACK.lock() {
             guard.clone()

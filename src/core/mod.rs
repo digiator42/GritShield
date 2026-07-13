@@ -5,3 +5,4 @@ pub mod connection;
 pub mod schema;
 #[cfg(feature = "swagger")]
 pub mod swagger;
+pub mod ioc;

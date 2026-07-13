@@ -1,11 +1,14 @@
 extern crate proc_macro;
 use proc_macro::TokenStream;
-use syn::{parse_macro_input, DeriveInput};
+use syn::{
+    parse_macro_input, DeriveInput, ItemImpl
+};
 
 mod admin;
 mod core_parser;
 mod repository;
 mod routing;
+mod ioc;
 
 #[proc_macro_derive(GritAdmin, attributes(repository))]
 pub fn derive_grit_admin(input: TokenStream) -> TokenStream {
@@ -39,6 +42,12 @@ pub fn derive_grit_schema(input: TokenStream) -> TokenStream {
         .into()
 }
 
+#[proc_macro_derive(GritComponent)]
+pub fn derive_grit_component(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    ioc::component::expand_grit_component(input)
+}
+
 // ==========================================
 // ATTRIBUTE MACROS (Controllers & Endpoints)
 // ==========================================
@@ -50,6 +59,19 @@ pub fn action(attr: TokenStream, item: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn controller(attr: TokenStream, item: TokenStream) -> TokenStream {
     routing::expand_controller(attr.into(), item.into())
+        .unwrap_or_else(|e| e.to_compile_error())
+        .into()
+}
+
+#[proc_macro_attribute]
+pub fn component(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    let input_impl = parse_macro_input!(item as ItemImpl);
+    ioc::component::expand_component(input_impl)
+}
+
+#[proc_macro_attribute]
+pub fn scontroller(attr: TokenStream, item: TokenStream) -> TokenStream {
+    routing::expand_structural_controller(attr.into(), item.into())
         .unwrap_or_else(|e| e.to_compile_error())
         .into()
 }

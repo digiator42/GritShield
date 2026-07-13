@@ -2,7 +2,7 @@ use gritshield::{prelude::*};
 use maud::html;
 
 // Render Login Form (GET /login)
-#[get("/auth/login")]
+// #[get("/auth/login")]
 pub async fn get_handler(ctx: RequestContext) -> Response {
     if ctx.is_user_authenticated() {
         // User is logged in, redirect them away from the login page
@@ -45,7 +45,7 @@ pub async fn get_handler(ctx: RequestContext) -> Response {
 }
 
 // Handle Authentication Attempt (POST /login)
-#[post("/auth/login")]
+// #[post("/auth/login")]
 pub async fn post_handler(ctx: RequestContext) -> Response {
     let db = match ctx.db {
         Some(ref pool) => pool,

@@ -1,10 +1,12 @@
 use gritshield::{
-    core::schema::export_openapi,
+    component,
+    core::{ioc::AutoWire, schema::export_openapi},
     prelude::*,
     security::{
         db::{DbConfig, DbManager},
         middleware::AuthMiddleware,
     },
+    GritComponent,
 };
 
 mod controllers;
@@ -14,17 +16,75 @@ mod auth {
     mod login;
 }
 
+#[derive(Clone, GritComponent)]
+pub struct PaymentService {
+    pub api_key: Arc<String>,
+}
+
+// #[component]
+impl PaymentService {
+    pub fn new(api_key: String) -> Self {
+        PaymentService { api_key: Arc::new(api_key) }
+    }
+    pub async fn process_charge(&self, amount: u64) {
+        println!(
+            "Charging ${} via key ending in ...{}",
+            amount,
+            &self.api_key[12..]
+        );
+    }
+}
+// #[derive(GritComponent)]
+// pub struct OrderService {
+//     pub db: Arc<DatabasePool>,
+//     pub payment: Arc<PaymentService>,
+// }
+
+// #[component]
+// impl OrderService {
+//     pub fn new(db: Arc<DatabasePool>, payment: Arc<PaymentService>) -> Self {
+//         Self { db, payment }
+//     }
+
+//     pub async fn checkout(&self, order_id: u64) -> Result<(), String> {
+//         // fetch order and process payment
+//         let _ = self.db.execute("order_id").await;
+//         self.payment.process_charge(order_id).await;
+//         Ok(())
+//     }
+// }
+
+fn auto_wire() {
+    // let api_key = "sk_live_secret_token_abc123".to_string();
+    // AutoWire::component(api_key);
+    // let database_pool = Arc::new(DatabasePool);
+    // let payment_client = Arc::new(PaymentService {
+    //     api_key: "sk_live_secret_token_abc123".to_string(),
+    // });
+
+    // let order_controller =
+    //     OrderController::new(Arc::clone(&database_pool), Arc::clone(&payment_client));
+
+    // Inject environment components into the framework container state
+    // AutoWire::new_component(database_pool);
+    // AutoWire::new_component(payment_client);
+    // AutoWire::new_component(order_controller);
+    // AutoWire::controller::<OrderController>();
+}
+
 #[tokio::main]
 async fn main() {
     let db_config = DbConfig::default();
 
     let shared_db = DbManager::connect(db_config).await.unwrap();
 
+    auto_wire();
+
     let router = Router::new()
         .add_middleware(AuthMiddleware::new_session(
             vec![
                 "/auth/login".to_string(),
-                "/api/info/sea-orm".to_string(),
+                "/api/**".to_string(),
                 "/admin/**".to_string(),
             ],
             Some("/api/info/sea-orm"),
