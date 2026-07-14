@@ -6,7 +6,7 @@ GritShield uses simple environment variables for configuration with `.env` file 
 
 ```rust
 //          localhost,  port,  router
-run_server("127.0.0.1", "8080", router).await;
+ignite("127.0.0.1", "8080", router).await;
 ```
 
 Automatically rebuilds and reloads on source changes.
@@ -73,5 +73,5 @@ Access them with `get_env()` or `std::env::var()` directly.
 let mut router = Router::new().mount_logger();
 
 //          localhost,  port,  router
-run_server("127.0.0.1", "8080", router).await;
+ignite("127.0.0.1", "8080", router).await;
 ```

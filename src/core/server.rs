@@ -11,7 +11,7 @@ use tokio::time::{sleep, Duration};
 use crate::routing::trie::Router;
 use crate::{core::connection::handle_connection, error, info};
 
-pub async fn run_server(host: &str, port: &str, router: Router) {
+pub async fn ignite(host: &str, port: &str, router: Router) {
     let listener = TcpListener::bind(format!("{}:{}", host, port))
         .await
         .unwrap();

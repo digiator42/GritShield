@@ -12,23 +12,39 @@ mod auth {
     mod login;
 }
 
-#[derive(Clone)]
+// #[derive(Clone)]
+// pub struct PaymentService {
+//     pub api_key: String,
+// }
+
+// // #[component]
+// impl PaymentService {
+//     pub fn new(key: String) -> Self {
+//         Self { api_key: key }
+//     }
+//     pub async fn process_charge(&self, amount: u64) {
+//         println!(
+//             "Charging ${} via key ending in ...",
+//             amount,
+//         );
+//     }
+// }
+
 pub struct PaymentService {
-    pub api_key: String,
+    api_key: String,
 }
 
-// #[component]
+#[component]
 impl PaymentService {
-    pub fn new(key: String) -> Self {
-        Self { api_key: key }
+    pub fn new() -> Self {
+        Self {
+            api_key: "sk_live_...".to_string(),
+        }
     }
-    pub async fn process_charge(&self, amount: u64) {
-        println!(
-            "Charging ${} via key ending in ...",
-            amount,
-        );
-    }
+    
+
 }
+
 // #[derive(GritComponent)]
 // pub struct OrderService {
 //     pub db: Arc<DatabasePool>,
@@ -50,20 +66,7 @@ impl PaymentService {
 // }
 
 fn auto_wire() {
-    provide!(PaymentService, PaymentService::new("Api key....".to_string()));
-    // let database_pool = Arc::new(DatabasePool);
-    // let payment_client = Arc::new(PaymentService {
-    //     api_key: "sk_live_secret_token_abc123".to_string(),
-    // });
-
-    // let order_controller =
-    //     OrderController::new(Arc::clone(&database_pool), Arc::clone(&payment_client));
-
-    // Inject environment components into the framework container state
-    // AutoWire::new_component(database_pool);
-    // AutoWire::new_component(payment_client);
-    // AutoWire::new_component(order_controller);
-    // AutoWire::controller::<OrderController>();
+    // provide!(PaymentService, PaymentService::new("Api key....".to_string()));
 }
 
 #[tokio::main]
@@ -90,7 +93,7 @@ async fn main() {
     seed_social_media_if_empty(shared_db.as_ref()).await;
 
     // Fire the framework runtime loop
-    run_server("127.0.0.1", "8080", router).await;
+    ignite("127.0.0.1", "8080", router).await;
 }
 
 use crate::models::*;

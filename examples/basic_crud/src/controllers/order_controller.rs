@@ -33,7 +33,7 @@ impl OrderController {
         Response::ok(format!("Checked out safely, {}", self.ps.api_key))
     }
 
-    #[get("/checkout2")]
+    #[get("/checkout2", role = "Admin")]
     pub async fn checkout2(
         ctx: RequestContext,
         payment: Arc<PaymentService>, // <-- Automatically Injected!

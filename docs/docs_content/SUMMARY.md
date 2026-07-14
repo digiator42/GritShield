@@ -12,9 +12,10 @@
   - [Dynamic Routes](03_routing/dynamic-routes.md)
   - [Middleware](03_routing/middleware.md)
 
-- [Architecture](04_architecture/index.md)
-  - [Overview](04_architecture/overview.md)
-  - [Kernel Design](04_architecture/kernel-design.md)
+- [Macros Library](04_macros_library/index.md)
+  - [Http Macros](04_macros_library/http_macros.md)
+  - [Query DSL Macros](04_macros_library/query_dsl_macros.md)
+  - [Dependency Injection Macros](04_macros_library/dependency_injection_macros.md)
 
 - [Database](05_database/index.md)
   - [Migrations](05_database/migrations.md)

@@ -71,7 +71,7 @@ pub mod prelude {
 
     // Critical functions
     pub use crate::core::env::get_env;
-    pub use crate::core::server::run_server;
+    pub use crate::core::server::ignite;
 
     // Re-export macros for the prelude
     pub use crate::action;

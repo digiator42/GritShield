@@ -214,7 +214,7 @@ async fn serve_static(ctx: RequestContext) -> Response {
 #[tokio::main]
 async fn main() {
     let router = Router::new();
-    run_server("127.0.0.1", "8080", router).await;
+    ignite("127.0.0.1", "8080", router).await;
 }
 "#
     } else {
@@ -246,7 +246,7 @@ async fn main() {
         .mount_db(shared_db);
 
     // Run server
-    run_server("127.0.0.1", "8080", router).await;
+    ignite("127.0.0.1", "8080", router).await;
 }
 "#
     };

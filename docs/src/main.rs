@@ -27,5 +27,5 @@ async fn main() {
         Response::json(200, &"OK")
     });
 
-    gritshield::core::server::run_server("0.0.0.0", "8080", router, false).await;
+    gritshield::core::server::ignite("0.0.0.0", "8080", router, false).await;
 }

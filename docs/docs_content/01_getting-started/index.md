@@ -37,7 +37,7 @@ async fn hello(ctx: RequestContext) -> &'static str {
 #[tokio::main]
 async fn main() {
     let router = Router::new().mount_logger();
-    run_server("127.0.0.1", "8080", router, false).await;
+    ignite("127.0.0.1", "8080", router, false).await;
 }
 ```
 

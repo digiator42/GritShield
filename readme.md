@@ -28,7 +28,7 @@ async fn hello(_: RequestContext) -> &'static str {
 async fn main() {
     let router = Router::new().mount_logger();
 
-    run_server("127.0.0.1", "8080", router).await;
+    ignite("127.0.0.1", "8080", router).await;
 }
 ```
 
