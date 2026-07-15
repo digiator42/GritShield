@@ -1,7 +1,7 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{FnArg, GenericArgument, PathArguments, Type, DeriveInput};
 use syn::{Data, Fields};
+use syn::{DeriveInput, FnArg, GenericArgument, PathArguments, Type};
 use syn::{ImplItem, ItemImpl, Pat};
 
 pub fn expand_component(input: ItemImpl) -> TokenStream {
@@ -129,34 +129,44 @@ fn extract_inner_arc_type(ty: &Type) -> Option<&Type> {
 pub fn expand_grit_component(input: DeriveInput) -> TokenStream {
     let name = input.ident;
 
-    // Extract struct fields
-    let (fields_resolution, dependency_inner_types): (Vec<_>, Vec<Type>) = match input.data {
-        Data::Struct(data) => match data.fields {
-            Fields::Named(fields) => fields
-                .named
-                .into_iter()
-                .map(|f| {
-                    let field_name = f.ident.unwrap();
-                    let field_type = f.ty;
+    let mut dynamic_resolutions = vec![];
+    let mut static_resolutions = vec![];
+    let mut dependency_inner_types = vec![];
 
-                    // Extract inner type inside Arc<T> to find its registry lookup signature
-                    let inner_type = extract_inner_arc_type(&field_type)
-                        .cloned()
-                        .unwrap_or_else(|| field_type.clone());
+    if let Data::Struct(data) = input.data {
+        if let Fields::Named(fields) = data.fields {
+            for f in fields.named {
+                let field_name = f.ident.unwrap();
+                let field_type = f.ty;
+                let inner_type = extract_inner_arc_type(&field_type)
+                    .cloned()
+                    .unwrap_or_else(|| field_type.clone());
 
-                    let resolution = quote! {
-                        #field_name: container.resolve::<#inner_type>().expect(
-                            std::concat!("Critical DI Fault: Dependency mapping initialization failed for component: '", std::stringify!(#inner_type), "'")
-                        )
-                    };
+                // PATH A: Dynamic Resolution (The Magical Spring Boot Way)
+                dynamic_resolutions.push(quote! {
+                    #field_name: container.resolve::<#inner_type>().expect(
+                        std::concat!("Critical DI Fault: Dependency mapping initialization failed for component: '", std::stringify!(#inner_type), "'")
+                    )
+                });
 
-                    (resolution, inner_type)
-                })
-                .unzip(),
-            _ => panic!("GritComponent derive macro only supports named fields on structs"),
-        },
-        _ => panic!("GritComponent derive macro can only be used on Struct definitions"),
-    };
+                // PATH B: Strict Resolution (The Compile-Time Way)
+                static_resolutions.push(quote! {
+                    #field_name: container.get_component()
+                });
+
+                dependency_inner_types.push(inner_type);
+            }
+        } else {
+            panic!("GritComponent derive macro only supports named fields on structs");
+        }
+    } else {
+        panic!("GritComponent derive macro can only be used on Struct definitions");
+    }
+
+    // Generate strict compile-time where bounds ensuring the container has what we need
+    let trait_bounds = dependency_inner_types.iter().map(|ty| {
+        quote! { C: ::gritshield::core::ioc::HasComponent<#ty> }
+    });
 
     let edge_submissions = dependency_inner_types.iter().map(|inner_type| {
         quote! {
@@ -170,34 +180,84 @@ pub fn expand_grit_component(input: DeriveInput) -> TokenStream {
     });
 
     let expanded = quote! {
-        // Injectable implementation uses the passed active runtime container context
+        // ---------------------------------------------------------
+        // PATH A: Dynamic / Inventory Magic
+        // ---------------------------------------------------------
         impl ::gritshield::core::ioc::Injectable for #name {
             fn resolve_new(container: &::gritshield::core::ioc::GritContainer) -> Self {
                 Self {
-                    #(#fields_resolution),*
+                    #(#dynamic_resolutions),*
                 }
             }
         }
 
-        // Register a factory closure instead of instantiating immediately
         ::gritshield::inventory::submit! {
             ::gritshield::core::ioc::AutoRegisterHook {
                 name: std::stringify!(#name),
                 register_fn: |container| {
                     container.register_factory::<#name>(|c| {
-                        let instance = <#name as ::gritshield::core::ioc::Injectable>::resolve_new(c);
-                        std::sync::Arc::new(instance)
+                        std::sync::Arc::new(<#name as ::gritshield::core::ioc::Injectable>::resolve_new(c))
                     });
                 }
             }
         }
 
-        // Declare this type as available in the graph, and record what its fields
-        // need, so AutoWire::verify() can catch a missing dependency before boot.
         ::gritshield::inventory::submit! {
             ::gritshield::core::ioc::ProvidedComponent { name: std::stringify!(#name) }
         }
         #(#edge_submissions)*
+
+        // ---------------------------------------------------------
+        // PATH B: Strict Compile-Time Rust
+        // ---------------------------------------------------------
+        impl #name {
+            /// Wires dependencies strictly at compile-time.
+            /// Will fail to compile if the provided container lacks required dependencies.
+            pub fn compile_time_wire<C>(container: &C) -> std::sync::Arc<Self>
+            where
+                C: ::gritshield::core::ioc::StrictContainer,
+                #(#trait_bounds),* {
+                std::sync::Arc::new(Self {
+                    #(#static_resolutions),*
+                })
+            }
+        }
+    };
+
+    TokenStream::from(expanded)
+}
+
+// ==============================================================================
+// 2. THE NEW STRICT CONTAINER BOILERPLATE GENERATOR
+// ==============================================================================
+pub fn expand_wire_container(input: DeriveInput) -> TokenStream {
+    let name = &input.ident;
+    let mut trait_impls = vec![];
+
+    if let Data::Struct(data) = input.data {
+        if let Fields::Named(fields) = data.fields {
+            for field in fields.named {
+                let field_name = field.ident.unwrap();
+                let field_type = field.ty;
+
+                let inner_type = extract_inner_arc_type(&field_type)
+                    .cloned()
+                    .unwrap_or_else(|| field_type.clone());
+
+                trait_impls.push(quote! {
+                    impl ::gritshield::core::ioc::HasComponent<#inner_type> for #name {
+                        fn get_component(&self) -> std::sync::Arc<#inner_type> {
+                            self.#field_name.clone()
+                        }
+                    }
+                });
+            }
+        }
+    }
+
+    let expanded = quote! {
+        impl ::gritshield::core::ioc::StrictContainer for #name {}
+        #(#trait_impls)*
     };
 
     TokenStream::from(expanded)

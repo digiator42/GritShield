@@ -17,6 +17,8 @@
   - [Query DSL Macros](04_macros_library/query_dsl_macros.md)
   - [Dependency Injection Macros](04_macros_library/dependency_injection_macros.md)
 
+- [Redis](05_redis/index.md)
+
 - [Database](05_database/index.md)
   - [Migrations](05_database/migrations.md)
 

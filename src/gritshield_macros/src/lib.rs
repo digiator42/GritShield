@@ -1,14 +1,12 @@
 extern crate proc_macro;
 use proc_macro::TokenStream;
-use syn::{
-    parse_macro_input, DeriveInput, ItemImpl
-};
+use syn::{parse_macro_input, DeriveInput, ItemImpl};
 
 mod admin;
 mod core_parser;
+mod ioc;
 mod repository;
 mod routing;
-mod ioc;
 
 #[proc_macro_derive(GritAdmin, attributes(repository))]
 pub fn derive_grit_admin(input: TokenStream) -> TokenStream {
@@ -46,6 +44,12 @@ pub fn derive_grit_schema(input: TokenStream) -> TokenStream {
 pub fn derive_grit_component(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     ioc::component::expand_grit_component(input)
+}
+
+#[proc_macro_derive(WireContainer)]
+pub fn derive_wire_container(input: TokenStream) -> TokenStream {
+    let input = syn::parse_macro_input!(input as DeriveInput);
+    ioc::component::expand_wire_container(input).into()
 }
 
 // ==========================================

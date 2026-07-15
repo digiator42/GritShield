@@ -1,16 +1,17 @@
+use ::gritshield::deps::futures::FutureExt;
 use gritshield::{
     component,
     core::{ioc::AutoWire, schema::export_openapi},
     prelude::*,
+    protocol::request::HttpMethod,
     provide,
     routing::trie::BoxedResponse,
     security::{
         db::{DbConfig, DbManager},
         middleware::AuthMiddleware,
     },
-    GritComponent,
+    GritComponent, WireContainer,
 };
-use ::gritshield::deps::futures::FutureExt;
 
 mod controllers;
 mod models;
@@ -20,65 +21,9 @@ mod auth {
 }
 mod services;
 
-// #[derive(Clone)]
-// pub struct PaymentService {
-//     pub api_key: String,
-// }
-
-// // #[component]
-// impl PaymentService {
-//     pub fn new(key: String) -> Self {
-//         Self { api_key: key }
-//     }
-//     pub async fn process_charge(&self, amount: u64) {
-//         println!(
-//             "Charging ${} via key ending in ...",
-//             amount,
-//         );
-//     }
-// }
-
-pub struct PaymentService {
-    api_key: String,
-}
-
-#[component]
-impl PaymentService {
-    pub fn new() -> Self {
-        Self {
-            api_key: "sk_live_...".to_string(),
-        }
-    }
-}
-
-#[get("/hello")]
-pub fn hello_handler(ctx: RequestContext) -> Response {
-    Response::ok("Hello, World!")
-}
-
-// #[derive(GritComponent)]
-// pub struct OrderService {
-//     pub db: Arc<DatabasePool>,
-//     pub payment: Arc<PaymentService>,
-// }
-
-// #[component]
-// impl OrderService {
-//     pub fn new(db: Arc<DatabasePool>, payment: Arc<PaymentService>) -> Self {
-//         Self { db, payment }
-//     }
-
-//     pub async fn checkout(&self, order_id: u64) -> Result<(), String> {
-//         // fetch order and process payment
-//         let _ = self.db.execute("order_id").await;
-//         self.payment.process_charge(order_id).await;
-//         Ok(())
-//     }
-// }
-
 async fn auto_wire() {
     // provide!(PaymentService, PaymentService::new("Api key....".to_string()));
-     // 1. Setup local environment configurations, preferred to get it from env
+    // 1. Setup local environment configurations, preferred to get it from env
     let redis_url = "redis://127.0.0.1:6379/";
 
     // 2. Instantiate your asynchronous Redis service
@@ -86,13 +31,56 @@ async fn auto_wire() {
 
     // AutoWire::component(redis_service);
 
-	// use provider!, 
-	// provide!(RedisService, RedisService::new(redis_url).unwrap());
+    // use provider!,
+    provide!(RedisService, RedisService::new(redis_url).unwrap());
 
     // 4. Register other manually managed components (like DB pools or keys)
     // let api_key = "sk_live_secret_token_abc123".to_string();
     // AutoWire::component(api_key);
 }
+
+// 1. Define Dependencies
+pub struct DatabasePool;
+pub struct PaymentService;
+
+impl PaymentService {
+    pub async fn checkout(&self, ctx: RequestContext) -> Response {
+        Response::ok("Compile-time safety verified!".to_string())
+    }
+}
+
+// 2. Define Controller
+// #[derive(Clone, GritComponent)]
+pub struct OrderController {
+    pub db: Arc<DatabasePool>,
+    pub ps: Arc<PaymentService>,
+}
+
+impl OrderController {
+    // Instead of #[controller], we define standard async methods
+    pub async fn checkout(&self, ctx: RequestContext) -> Response {
+        Response::ok("Compile-time safety verified!".to_string())
+    }
+}
+
+// 3. Define Application Container
+#[derive(Clone, WireContainer)] // Automatically proves it has dependencies
+pub struct AppContainer {
+    pub db: Arc<DatabasePool>,
+    pub ps: Arc<PaymentService>,
+}
+
+// fn auto_wire_compile_time() -> Arc<OrderController> {
+//     // A. Manually assemble dependencies
+//     let container = AppContainer {
+//         db: Arc::new(DatabasePool),
+//         ps: Arc::new(PaymentService),
+//     };
+
+    // B. Safely build the controller at compile-time (returns Arc<OrderController>)
+    // let order_controller = OrderController::compile_time_wire(&container);
+//     order_controller
+// }
 
 #[tokio::main]
 async fn main() {
@@ -100,9 +88,21 @@ async fn main() {
 
     let shared_db = DbManager::connect(db_config).await.unwrap();
 
-    auto_wire().await;
+    // let order_controller = auto_wire_compile_time();
+    let order_controller = Arc::new(OrderController {
+        db: Arc::new(DatabasePool),
+        ps: Arc::new(PaymentService),
+    });
 
     let router = Router::new()
+        .route((
+            "/api/orders/checkout",
+            HttpMethod::GET,
+            move |ctx: RequestContext| {
+                let oc = order_controller.clone();
+                async move { oc.ps.checkout(ctx).await }.boxed()
+            },
+        ))
         .add_middleware(AuthMiddleware::new_session(
             vec![
                 "/auth/login".to_string(),

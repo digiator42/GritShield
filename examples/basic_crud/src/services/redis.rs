@@ -11,7 +11,6 @@ pub struct RedisService {
     manager: Arc<OnceCell<ConnectionManager>>,
 }
 
-#[component]
 impl RedisService {
     /// Create a new Redis client instance. This is INSTANT and does NOT make network calls.
     pub fn new(redis_url: &str) -> Result<Self, redis::RedisError> {

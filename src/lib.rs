@@ -24,12 +24,13 @@ pub use gritadmin::shell::admin_shell;
 pub use gritshield_macros::GritSchema;
 #[cfg(feature = "admin")]
 pub use gritshield_macros::GritAdmin;
-pub use gritshield_macros::action;
-pub use gritshield_macros::controller;
-pub use gritshield_macros::component;
 pub use gritshield_macros::GritRelation;
 pub use gritshield_macros::GritComponent;
 pub use gritshield_macros::GritModel;
+pub use gritshield_macros::WireContainer;
+pub use gritshield_macros::action;
+pub use gritshield_macros::controller;
+pub use gritshield_macros::component;
 pub use gritshield_macros::{delete, get, patch, post, put};
 
 // explicit module namespace for startup macros

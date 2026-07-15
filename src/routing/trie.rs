@@ -708,9 +708,6 @@ impl Router {
     pub fn new() -> Self {
         logger::init_from_env();
 
-        // Boot di container
-        AutoWire::boot_di_container();
-
         let fallback = if let Ok(guard) = GLOBAL_FALLBACK.lock() {
             guard.clone()
         } else {

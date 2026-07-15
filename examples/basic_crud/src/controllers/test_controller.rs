@@ -3,8 +3,9 @@ use gritshield::protocol::response::JsonPayload;
 use gritshield::GritComponent;
 use serde_json::json;
 
+use crate::OrderController;
 use crate::PaymentService;
-use crate::controllers::order_controller::DatabasePool;
+use crate::DatabasePool;
 
 pub struct TestController {
     pub key: Arc<String>,
@@ -14,21 +15,23 @@ pub struct TestController {
 impl TestController {
     #[get("/api/orders/checkout/test")]
     pub async fn checkout(
-        ctx: RequestContext,
+        ste: Arc<String>,
         payment: Arc<PaymentService>, // <-- Automatically Injected!
                                     //   db: Arc<DatabasePool>,        // <-- Automatically Injected!
-                                      // oc: Arc<OrderController>,
+                                      oc: Arc<OrderController>,
     ) -> Response {
         // let order_payload = ctx.json_body().await.unwrap();
 
         // Use services directly with zero manual orchestration!
-        payment.process_charge(21).await;
+        // payment.process_charge(21).await;
         // db.execute("INSERT INTO orders ...").await;
 
         // let _ = oc.checkout(32).await;
 
         // oc.payment.process_charge(32).await;
         // let key = oc.payment.api_key.clone();
+
+        // oc.checkout(ctx);
 
         Response::ok(JsonPayload(json!({ "status": "key" })))
     }

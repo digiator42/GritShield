@@ -12,6 +12,14 @@ pub trait Injectable: Sized + 'static {
 // A function pointer type that takes the container reference and yields an Arc trait object
 pub type ComponentFactory = fn(&GritContainer) -> Arc<dyn Any + Send + Sync>;
 
+/// A compile-time proof that a container holds a specific dependency `T`.
+pub trait HasComponent<T> {
+    fn get_component(&self) -> std::sync::Arc<T>;
+}
+
+/// A marker trait for strict compile-time App Containers
+pub trait StrictContainer: Sized + Send + Sync + 'static {}
+
 pub struct GritContainer {
     dependencies: RwLock<HashMap<TypeId, Arc<dyn Any + Send + Sync>>>,
     factories: RwLock<HashMap<TypeId, ComponentFactory>>,
