@@ -2,9 +2,10 @@
 
 GritShield provides **compile-time dependency injection** with zero runtime overhead, inspired by Spring Boot's `@Autowired`.
 
-The Two Approaches
+## **Paradigm A:**
+**Dynamic / Inventory Magic** (The Spring Boot Way)  
 
-## `#[component]` 
+### `#[component]` 
 
 Constructor-Based Injection
 
@@ -65,7 +66,7 @@ impl PaymentService {
 }
 ```
 
-## `GritComponent`
+### `GritComponent`
 
 Field-Based Injection
 
@@ -102,7 +103,7 @@ impl OrderController {
 }
 ```
 
-## `provide!`
+### `provide!`
 
 For explicit registration of dependencies (config values, API keys, etc.):
 
@@ -118,11 +119,125 @@ provide!(AppConfig, AppConfig {
 ```
 
 
-## Verification at Boot
+### Verification at Boot
 
 ```rust
 
 // At application startup, verify all dependencies are registered, 
-// this is by default called at routes intialization, you don't have to call it, 
+// you have to call boot_di_container at bootstrap
 AutoWire::boot_di_container();
+```
+
+## **Paradigm B:**
+**Strict Compile-Time Safe** (The Rust Way)
+
+### Define Components
+
+Your controller structure remains exactly the same! The `#[derive(GritComponent)]` macro automatically implements constructors for both runtime and compile-time wiring.
+
+Rust
+
+```rust
+use std::sync::Arc;
+use gritshield::core::ioc::GritComponent;
+use gritshield::routing::trie::RequestContext;
+use gritshield::protocol::response::Response;
+
+pub struct DatabasePool;
+pub struct PaymentService;
+
+#[derive(Clone, GritComponent)]
+pub struct OrderController {
+    pub db: Arc<DatabasePool>,
+    pub ps: Arc<PaymentService>,
+}
+
+impl OrderController {
+    pub async fn checkout(&self, ctx: RequestContext) -> Response {
+        Response::ok("Compile-time safety verified!".to_string())
+    }
+}
+```
+
+### `WireContainer`
+
+You declare a concrete container struct holding your top-level dependencies. Add the `#[derive(WireContainer)]` macro to automatically compile the trait-bound structural proofs.
+
+Rust
+
+```rust
+use gritshield::core::ioc::WireContainer;
+
+#[derive(Clone, WireContainer)]
+pub struct AppContainer {
+    pub db: Arc<DatabasePool>,
+    pub ps: Arc<PaymentService>,
+}
+```
+
+### Mount & Ignite
+
+Manually assemble your structural graph. Use `.compile_time_wire(&container)` to generate an immutable, thread-safe controller clone instance. Then pass it cleanly into your declarative `Router` using scoped futures.
+
+Rust
+
+```rust
+use gritshield::routing::trie::{Router, HttpMethod};
+use gritshield::deps::futures::future::FutureExt;
+
+#[tokio::main]
+async fn main() {
+    // Explicitly build the typed container
+    let container = AppContainer { 
+        db: Arc::new(DatabasePool), 
+        ps: Arc::new(PaymentService), 
+    };
+
+    // Safely wire the controller. 
+    // This will FAIL to compile if AppContainer misses `db` or `ps`!
+    let order_controller = OrderController::compile_time_wire(&container);
+
+    // Explicitly mount routes using standard clone-capture closures
+    let router = Router::new()
+        .route((
+            "/api/orders/checkout",
+            HttpMethod::GET,
+            move |ctx: RequestContext| {
+                let oc = order_controller.clone();
+                async move { oc.checkout(ctx).await }.boxed()
+            }
+        ));
+
+    // Ignite
+    ignite("127.0.0.1", "8080", router).await;
+}
+```
+
+## What Happens When a Dependency is Missing?
+
+### In Paradigm A (Dynamic):
+
+If you forget to provide `PaymentService`, your application will compile successfully, but it will safely panic right at boot time during verification before processing incoming connections:
+
+- To make this safe, you need to call boot_di_container at bootstrap.
+
+Plaintext
+
+```shell
+thread 'main' panicked at 'GritShield DI graph is incomplete (1 missing dependency):
+- OrderController requires PaymentService but it was not provided!'
+```
+
+### In Paradigm B (Compile-Time):
+
+If you remove `ps: Arc<PaymentService>` from `AppContainer`, **your code will refuse to compile entirely**. The compiler checks the generic bounds on `compile_time_wire` and throws a clear error message:
+
+Plaintext
+
+```
+error[E0277]: the trait bound `AppContainer: HasComponent<PaymentService>` is not satisfied
+  --> src/main.rs:24:28
+   |
+24 |     let order_controller = OrderController::compile_time_wire(&container);
+   |                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `HasComponent<PaymentService>` is not implemented for `AppContainer`
 ```

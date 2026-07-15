@@ -12,6 +12,8 @@
   - [Dynamic Routes](03_routing/dynamic-routes.md)
   - [Middleware](03_routing/middleware.md)
 
+- [Dependency Injection](04_dependency_injection/index.md)
+
 - [Macros Library](04_macros_library/index.md)
   - [Http Macros](04_macros_library/http_macros.md)
   - [Query DSL Macros](04_macros_library/query_dsl_macros.md)

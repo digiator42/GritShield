@@ -63,11 +63,14 @@ impl OrderController {
     }
 }
 
+pub struct Logger;
+
 // 3. Define Application Container
 #[derive(Clone, WireContainer)] // Automatically proves it has dependencies
 pub struct AppContainer {
     pub db: Arc<DatabasePool>,
     pub ps: Arc<PaymentService>,
+    pub log: Arc<Logger>,
 }
 
 // fn auto_wire_compile_time() -> Arc<OrderController> {
