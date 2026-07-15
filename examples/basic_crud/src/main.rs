@@ -1,8 +1,14 @@
 use gritshield::{
-    GritComponent, component, core::{ioc::AutoWire, schema::export_openapi}, prelude::*, provide, security::{
+    component,
+    core::{ioc::AutoWire, schema::export_openapi},
+    prelude::*,
+    provide,
+    routing::trie::BoxedResponse,
+    security::{
         db::{DbConfig, DbManager},
         middleware::AuthMiddleware,
     },
+    GritComponent,
 };
 
 mod controllers;
@@ -41,8 +47,11 @@ impl PaymentService {
             api_key: "sk_live_...".to_string(),
         }
     }
-    
+}
 
+#[get("/hello")]
+pub fn hello_handler(ctx: RequestContext) -> Response {
+    Response::ok("Hello, World!")
 }
 
 // #[derive(GritComponent)]

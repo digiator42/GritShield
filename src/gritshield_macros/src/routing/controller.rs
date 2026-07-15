@@ -85,6 +85,9 @@ pub fn expand_http_method(
     let wrapper_name = Ident::new(&format!("{}_wrapper", fn_name), fn_name.span());
     let http_method_ident = Ident::new(method_name, fn_name.span());
 
+    // Check if the function is async
+    let is_async = input_fn.sig.asyncness.is_some();
+
     let mut dependency_resolutions = vec![];
     let mut invocation_args = vec![quote! { ctx }];
     let mut dependency_inner_types: Vec<&Type> = vec![];
@@ -124,6 +127,17 @@ pub fn expand_http_method(
         }
     });
 
+    // Generate the handler call based on sync/async
+    let handler_call = if is_async {
+        quote! {
+            #fn_name(#(#invocation_args),*).await.into_response()
+        }
+    } else {
+        quote! {
+            #fn_name(#(#invocation_args),*).into_response()
+        }
+    };
+
     Ok(quote! {
         #input_fn
 
@@ -133,7 +147,9 @@ pub fn expand_http_method(
 
             #(#dependency_resolutions)*
 
-            #fn_name(#(#invocation_args),*).map(|res| res.into_response()).boxed()
+            async move {
+                #handler_call
+            }.boxed()
         }
 
         gritshield::inventory::submit! {
@@ -209,6 +225,9 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
                 let http_method_ident = Ident::new(&http_method, fn_name.span());
                 let wrapper_name = Ident::new(&format!("{}_wrapper", fn_name), fn_name.span());
 
+                // Check if the method is async
+                let is_async = method.sig.asyncness.is_some();
+
                 // Build argument dispatch list dynamically based on handler signatures
                 let mut dispatch_args = vec![];
                 let mut dispatch_dependency_types: Vec<Type> = vec![];
@@ -251,11 +270,14 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
                     "' was not instantiated in the DI container."
                 );
 
-                let invocation = if has_self {
-                    // The controller struct itself has to be resolvable too — track it
-                    // as a dependency of this handler so a forgotten #[component]/
-                    // #[derive(GritComponent)] on the controller shows up in verify().
+                // Add controller itself as dependency if it has self
+                // as a dependency of this handler so a forgotten #[component]/
+                // #[derive(GritComponent)] on the controller shows up in verify().
+                if has_self {
                     dispatch_dependency_types.push((**self_ty).clone());
+                }
+
+                let invocation = if has_self {
                     quote! {
                         let controller = ::gritshield::core::ioc::CONTEXT.resolve::<#self_ty>().expect(
                             #missing_controller_msg
@@ -265,6 +287,17 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
                 } else {
                     quote! {
                         #self_ty::#fn_name(#(#dispatch_args),*)
+                    }
+                };
+
+                // Generate the handler call based on sync/async
+                let handler_call = if is_async {
+                    quote! {
+                        #invocation.await.into_response()
+                    }
+                } else {
+                    quote! {
+                        #invocation.into_response()
                     }
                 };
 
@@ -285,7 +318,7 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
                         use gritshield::futures::future::FutureExt;
 
                         async move {
-                            #invocation.await.into_response()
+                            #handler_call
                         }.boxed()
                     }
 
