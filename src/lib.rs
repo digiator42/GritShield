@@ -45,6 +45,7 @@ pub mod deps {
     pub use chrono;
     pub use futures_util;
     pub use once_cell;
+    pub use futures;
     pub use rust_decimal;
     pub use rust_decimal::Decimal;
     pub use sea_orm;

@@ -10,6 +10,7 @@ use gritshield::{
     },
     GritComponent,
 };
+use ::gritshield::deps::futures::FutureExt;
 
 mod controllers;
 mod models;
@@ -17,6 +18,7 @@ mod repositories;
 mod auth {
     mod login;
 }
+mod services;
 
 // #[derive(Clone)]
 // pub struct PaymentService {
@@ -74,8 +76,22 @@ pub fn hello_handler(ctx: RequestContext) -> Response {
 //     }
 // }
 
-fn auto_wire() {
+async fn auto_wire() {
     // provide!(PaymentService, PaymentService::new("Api key....".to_string()));
+     // 1. Setup local environment configurations, preferred to get it from env
+    let redis_url = "redis://127.0.0.1:6379/";
+
+    // 2. Instantiate your asynchronous Redis service
+    let redis_service = RedisService::new(redis_url).unwrap();
+
+    // AutoWire::component(redis_service);
+
+	// use provider!, 
+	// provide!(RedisService, RedisService::new(redis_url).unwrap());
+
+    // 4. Register other manually managed components (like DB pools or keys)
+    // let api_key = "sk_live_secret_token_abc123".to_string();
+    // AutoWire::component(api_key);
 }
 
 #[tokio::main]
@@ -84,7 +100,7 @@ async fn main() {
 
     let shared_db = DbManager::connect(db_config).await.unwrap();
 
-    auto_wire();
+    auto_wire().await;
 
     let router = Router::new()
         .add_middleware(AuthMiddleware::new_session(
@@ -105,7 +121,7 @@ async fn main() {
     ignite("127.0.0.1", "8080", router).await;
 }
 
-use crate::models::*;
+use crate::{models::*, services::redis::RedisService};
 use chrono::Utc;
 use rand::seq::SliceRandom;
 use rand::Rng;

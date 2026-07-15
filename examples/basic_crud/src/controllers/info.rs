@@ -1,9 +1,11 @@
+use chrono::{Duration, Utc};
 use gritshield::deps::sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use gritshield::{database::repository::GritRepository, prelude::*};
 use serde_json::Value;
 
 use crate::repositories::comment::CommentRepository;
 use crate::repositories::post::PostRepository;
+use crate::services::redis::RedisService;
 use crate::{
     models::{comment, post, user},
     repositories::user::UserRepository,
@@ -27,10 +29,12 @@ impl ApiController {
     // ROUTE: /info
     // ============================================================
     #[get("/info")]
-    pub async fn system_info(ctx: RequestContext) -> Response {
+    pub async fn system_info(ctx: RequestContext, redis: Arc<RedisService>) -> Response {
         let db = ctx.db.as_deref().unwrap().clone();
 
         let user_repo = UserRepository { db: db.clone() };
+
+        let redis = redis.get("Key").await.unwrap().unwrap();
 
         let sea_user_with_posts = user::Entity::find()
             .filter(user::Column::Email.eq("user_1@example.com"))

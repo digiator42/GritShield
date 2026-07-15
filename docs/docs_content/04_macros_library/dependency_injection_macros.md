@@ -4,7 +4,7 @@ GritShield provides **compile-time dependency injection** with zero runtime ov
 
 The Two Approaches
 
-## `component` 
+## `#[component]` 
 
 Constructor-Based Injection
 
@@ -75,13 +75,14 @@ Field-Based Injection
 
 #[derive(GritComponent)]
 pub struct OrderController {
-    pub db: Arc<DatabasePool>,   // Needs to annotated as well
-    pub ps: Arc<PaymentService>, // Needs to annotated as well
-    pub config: Arc<AppConfig>,  // Needs to annotated as well
+    pub db: Arc<DatabasePool>,   // Needs to be annotated as well
+    pub ps: Arc<PaymentService>, // Needs to be annotated as well
+    pub config: Arc<AppConfig>,  // Needs to be annotated as well
 }
 
 #[controller("/api/orders")]
 impl OrderController {
+    // The only change here is `self`, you can access 
     #[get("/")]
     pub async fn list_orders(&self, ctx: RequestContext) -> Response {
         self.db.execute("SELECT * FROM orders").await;
@@ -121,8 +122,7 @@ provide!(AppConfig, AppConfig {
 
 ```rust
 
-// At application startup, verify all dependencies are registered, this is by default called at routes intialization, you don't have to call it, unless you want to inject dependencies after router init.
+// At application startup, verify all dependencies are registered, 
+// this is by default called at routes intialization, you don't have to call it, 
 AutoWire::boot_di_container();
 ```
-
-This catches missing dependencies **at boot time**, not at runtime when a route is first hit.
