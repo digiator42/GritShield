@@ -106,14 +106,14 @@ async fn main() {
                 async move { oc.ps.checkout(ctx).await }.boxed()
             },
         ))
-        .add_middleware(AuthMiddleware::new_session(
-            vec![
-                "/auth/login".to_string(),
-                "/api/**".to_string(),
-                "/admin/**".to_string(),
-            ],
-            Some("/api/info/sea-orm"),
-        ))
+        // .add_middleware(AuthMiddleware::new_session(
+        //     vec![
+        //         "/auth/login".to_string(),
+        //         "/api/**".to_string(),
+        //         "/admin/**".to_string(),
+        //     ],
+        //     Some("/api/info/sea-orm"),
+        // ))
         .mount_db(shared_db.clone());
 
     export_openapi("target/schema.json").unwrap();

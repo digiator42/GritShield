@@ -12,7 +12,7 @@ use crate::security::jwt::{Claims, JwtHandler};
 use crate::security::rate_limit::RateLimiter;
 use crate::security::session::{Session, SessionStore};
 use crate::security::xss::Sanitizer;
-use crate::{debug, error};
+use crate::{debug, error, info};
 use chrono::Local;
 use colored::*;
 use uuid::Uuid;
@@ -382,7 +382,7 @@ impl Middleware for AuthMiddleware {
                 }
 
                 if !csrf_verified {
-                    debug!(
+                    info!(
                         "\x1b[31m[SECURITY ALERT] CSRF Validation Failed for Route: {}\x1b[0m",
                         ctx.req.path
                     );
