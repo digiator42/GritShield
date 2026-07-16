@@ -3,6 +3,9 @@ name: Build and Deploy mdBook
 on:
   push:
     branches: [main]
+    paths:
+      - 'docs/**'
+      - '.github/workflows/docs.yaml' # Re-runs if any change in pipeline itself
 
 # Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
 permissions:
@@ -38,7 +41,6 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v4
 
-      # Upload the generated 'book' folder from inside the 'docs' directory
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
