@@ -4,38 +4,18 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Instant;
 
 use crate::core::env::get_env;
-use crate::protocol::request::HttpMethod;
-use crate::protocol::response::Response;
-use crate::protocol::response::{Cookie, SameSite};
+use crate::http::request::HttpMethod;
+use crate::http::response::{Response, Cookie, SameSite};
 use crate::routing::trie::RequestContext;
 use crate::security::jwt::{Claims, JwtHandler};
 use crate::security::rate_limit::RateLimiter;
 use crate::security::session::{Session, SessionStore};
 use crate::security::xss::Sanitizer;
+use crate::middleware::{Middleware, MiddlewareResult, MiddlewareState};
 use crate::{debug, error, info};
 use chrono::Local;
 use colored::*;
 use uuid::Uuid;
-
-pub enum MiddlewareResult {
-    Next(Option<MiddlewareState>), // State can hold session data, claims, or both
-    Error(Response),               // Stop and return error immediately
-}
-
-// A state packer to carry data down the pipe safely
-pub struct MiddlewareState {
-    pub session: Option<Arc<Mutex<Session>>>,
-    pub claims: Option<Claims>,
-    pub session_was_stale: bool,
-}
-
-pub trait Middleware: Send + Sync {
-    fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult;
-}
-
-pub trait AfterRequestHook: Send + Sync {
-    fn call(&self, ctx: &RequestContext, status: u16, duration: std::time::Duration);
-}
 
 // global accessible, thread-safe cell for administrative/user auth session store
 pub static SESSION_STORE: OnceLock<Arc<SessionStore>> = OnceLock::new();
@@ -113,13 +93,11 @@ impl AuthMiddleware {
                         return true;
                     }
                 }
-                // If prefix doesn't match, skip to next rule
                 continue;
             }
 
             // Check for ":*" wildcard catch-all
-            if rule_segments.len() >= 1 && rule_segments[rule_segments.len() - 1].starts_with(":*")
-            {
+            if rule_segments.len() >= 1 && rule_segments[rule_segments.len() - 1].starts_with(":*") {
                 let rule_prefix_len = rule_segments.len() - 1;
 
                 if incoming_segments.len() >= rule_prefix_len {
@@ -134,7 +112,6 @@ impl AuthMiddleware {
                         return true;
                     }
                 }
-                // If prefix doesn't match, skip to next rule
                 continue;
             }
 
@@ -449,262 +426,5 @@ impl Middleware for AuthMiddleware {
 
         let err_body = Sanitizer::trust("<h1>401 Unauthorized</h1><p>Access Denied.</p>");
         MiddlewareResult::Error(Response::new(401, err_body))
-    }
-}
-
-pub struct RateLimitMiddleware {
-    pub limiter: RateLimiter,
-}
-
-impl Middleware for RateLimitMiddleware {
-    fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult {
-        // SECURELY resolve the true user identity string
-        let client_ip = ctx.resolve_client_ip();
-
-        // logging to see who is making requests
-        println!(
-            "[GRITSHIELD RATE-LIMIT] Evaluating limits for bucket identifier: {}",
-            client_ip
-        );
-
-        if self.limiter.is_allowed(client_ip) {
-            // Pass execution forward down the routing chain
-            MiddlewareResult::Next(None)
-        } else {
-            // Client hit the ceiling limit! Push back with an explicit HTTP 429 back-off directive
-            let err_body = Sanitizer::trust(
-                "<h1>429 Too Many Requests</h1>\
-                 <p>Slow down, friend. Your API bucket limits have been exhausted.</p>",
-            );
-
-            let mut res = Response::new(429, err_body);
-
-            // Instruct downstream agents/browsers exactly how long to wait before trying again
-            res.headers
-                .push(("Retry-After".to_string(), "60".to_string()));
-            res.headers.push((
-                "Content-Type".to_string(),
-                "text/html; charset=utf-8".to_string(),
-            ));
-
-            MiddlewareResult::Error(res)
-        }
-    }
-}
-
-pub struct IPBlacklistMiddleware {
-    // Using HashSet for high-performance O(1) lookups
-    pub blacklisted_ips: HashSet<String>,
-}
-
-impl IPBlacklistMiddleware {
-    /// Constructor helper to instantiate the blacklist layer smoothly
-    pub fn new(ips: Vec<&str>) -> Self {
-        let mut set = HashSet::new();
-        for ip in ips {
-            set.insert(ip.to_string());
-        }
-        Self {
-            blacklisted_ips: set,
-        }
-    }
-}
-
-impl Middleware for IPBlacklistMiddleware {
-    fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult {
-        // Leverage your secure IP resolver from earlier
-        let client_ip = ctx.resolve_client_ip();
-
-        // Check the HashSet instantly
-        if self.blacklisted_ips.contains(&client_ip) {
-            error!(
-                "[SECURITY ALERT] Blocked request attempt from blacklisted IP: {}",
-                client_ip
-            );
-
-            ctx.telemetry
-                .total_blocked_ips
-                .fetch_add(1, Ordering::SeqCst);
-
-            let err_body = Sanitizer::trust(
-                "<h1>403 Forbidden</h1>\
-                 <p>Access denied. Your IP address has been blocked.</p>",
-            );
-
-            let mut res = Response::new(403, err_body);
-            res.headers.push((
-                "Content-Type".to_string(),
-                "text/html; charset=utf-8".to_string(),
-            ));
-
-            // Drop connection right here! Do not proceed to handlers or next middlewares
-            MiddlewareResult::Error(res)
-        } else {
-            // All clear. Move down the execution pipeline chain smoothly
-            MiddlewareResult::Next(None)
-        }
-    }
-}
-
-pub struct MetricsTracker;
-
-impl AfterRequestHook for MetricsTracker {
-    fn call(&self, ctx: &RequestContext, status: u16, _: std::time::Duration) {
-        if status >= 500 {
-            error!(
-                "🚨 [ALERT] Critical server failure detected on path: {}",
-                ctx.req.path
-            );
-        }
-    }
-}
-
-pub struct CorsMiddleware {
-    allowed_origins: Vec<String>,
-}
-
-impl CorsMiddleware {
-    /// Accept an array or vector of strings during initialization
-    pub fn new(origins: Vec<String>) -> Self {
-        Self {
-            allowed_origins: origins,
-        }
-    }
-}
-
-impl Middleware for CorsMiddleware {
-    fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult {
-        // Extract the origin the browser is currently calling from
-        // (Adjust the header lookup syntax based on GritShield's exact req structure)
-        let inbound_origin = ctx.req.headers.get("Origin").cloned().unwrap_or_default();
-
-        // Determine the target match. If the domain is whitelisted, echo it!
-        // Otherwise, fallback to your primary origin safely.
-        let dynamic_origin = if self.allowed_origins.contains(&inbound_origin) {
-            inbound_origin
-        } else {
-            self.allowed_origins
-                .first()
-                .cloned()
-                .unwrap_or_else(|| "http://localhost:3000".to_string())
-        };
-
-        // Handle preflight checks
-        if ctx.req.method == HttpMethod::OPTIONS || ctx.req.method == HttpMethod::UNKNOWN {
-            let mut res = Response::ok("Preflight Allowed");
-
-            res.headers.push((
-                "Access-Control-Allow-Origin".to_string(),
-                dynamic_origin.clone(),
-            ));
-            res.headers.push((
-                "Access-Control-Allow-Methods".to_string(),
-                "POST, GET, OPTIONS, PUT, PATCH, DELETE".to_string(),
-            ));
-            res.headers.push((
-                "Access-Control-Allow-Headers".to_string(),
-                "Content-Type, Authorization".to_string(),
-            ));
-            res.headers
-                .push(("Access-Control-Max-Age".to_string(), "86400".to_string()));
-
-            return MiddlewareResult::Error(res);
-        }
-
-        // Handle standard operations
-        ctx.headers
-            .insert("Access-Control-Allow-Origin".to_string(), dynamic_origin);
-        ctx.headers.insert(
-            "Access-Control-Allow-Methods".to_string(),
-            "GET, POST, PUT, PATCH, DELETE, OPTIONS".to_string(),
-        );
-        ctx.headers.insert(
-            "Access-Control-Allow-Headers".to_string(),
-            "Content-Type, Authorization".to_string(),
-        );
-
-        MiddlewareResult::Next(None)
-    }
-}
-
-pub struct LoggerMiddleware;
-
-impl Middleware for LoggerMiddleware {
-    fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult {
-        let now = Local::now();
-        let timestamp = now.format("%Y-%m-%d %H:%M:%S").to_string();
-
-        println!(
-            "[{}] {} request to {}",
-            timestamp.green(),
-            format!("{:?}", ctx.req.method).blue(),
-            ctx.req.path.yellow()
-        );
-
-        MiddlewareResult::Next(None)
-    }
-}
-pub struct SessionMiddleware {
-    pub store: Arc<SessionStore>,
-}
-
-impl Middleware for SessionMiddleware {
-    fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult {
-        // pull the cryptographically signed cookie (Tamper-proof!)
-        let session_id = ctx.get_signed_cookie("session_id");
-
-        let store = match self.store.sessions.lock() {
-            Ok(guard) => guard,
-            Err(_) => {
-                return MiddlewareResult::Error(Response::new(
-                    500,
-                    Sanitizer::trust("<h1>500 Internal Server Error: Session Pool Poisoned</h1>"),
-                ));
-            }
-        };
-
-        // Try to look up an existing valid session in our memory map
-        if let Some(ref sid) = session_id {
-            if let Some(session_ptr) = store.get(sid) {
-                // Attach the pointer copy directly to the active request context
-                ctx.session = Some(Arc::clone(&session_ptr));
-                return MiddlewareResult::Next(Some(MiddlewareState {
-                    session: Some(Arc::clone(&session_ptr)),
-                    claims: None,
-                    session_was_stale: false,
-                }));
-            }
-        }
-
-        // No session found or it expired? Create one on the fly!
-        let new_sid = Uuid::new_v4().to_string();
-        let new_session = Arc::new(Mutex::new(Session {
-            id: new_sid.clone(),
-            data: std::collections::HashMap::new(),
-            user_id: None,
-            last_accessed: Instant::now(),
-        }));
-
-        // Insert into master framework memory tracking pool
-        store.insert(new_sid.clone(), Arc::clone(&new_session));
-
-        // Drop the secure signed cookie straight back into the browser's CookieJar
-        let is_production = get_env("APP_ENV", "development") == "production";
-        let session_cookie = Cookie::new("session_id", &new_sid)
-            .set_secure(is_production) // Automatically true on prod, false on localhost HTTP
-            .set_same_site(SameSite::Lax);
-
-        if session_id == None {
-            ctx.set_signed_cookie(session_cookie);
-        }
-
-        // Bind the freshly minted session into the current request flow
-        ctx.session = Some(Arc::clone(&new_session));
-
-        MiddlewareResult::Next(Some(MiddlewareState {
-            session: Some(new_session),
-            claims: None,
-            session_was_stale: false,
-        }))
     }
 }

@@ -1,9 +1,10 @@
-use crate::protocol::response::Cookie;
-use crate::protocol::response::{JsonPayload, SameSite};
+use crate::http::response::Cookie;
+use crate::http::response::{JsonPayload, SameSite};
 use crate::routing::trie::RequestContext;
-use crate::security::middleware::{
-    get_session_store, Middleware, MiddlewareResult,
+use crate::middleware::{
+    Middleware, MiddlewareResult,
 };
+use crate::middleware::auth::get_session_store;
 use crate::security::session::{Session, SessionStore};
 use crate::security::xss::Sanitizer;
 use crate::{debug, warn, error, prelude::*};

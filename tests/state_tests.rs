@@ -1,4 +1,4 @@
-use gritshield::protocol::request::{HttpMethod, Request};
+use gritshield::http::request::{HttpMethod, Request};
 use gritshield::routing::trie::RequestContext;
 use gritshield::security::cookies::CookieJar;
 use gritshield::security::session::{Session, SessionStore};

@@ -9,7 +9,7 @@ use tokio::sync::broadcast;
 use tokio::time::{sleep, Duration};
 
 use crate::routing::trie::Router;
-use crate::{core::connection::handle_connection, error, info};
+use crate::{http::handle_connection, error, info};
 
 pub async fn ignite(host: &str, port: &str, router: Router) {
     let listener = TcpListener::bind(format!("{}:{}", host, port))

@@ -2,14 +2,12 @@ use ::gritshield::deps::futures::FutureExt;
 use gritshield::{
     component,
     core::{ioc::AutoWire, schema::export_openapi},
+    database::db::{DbConfig, DbManager},
+    http::request::HttpMethod,
+    middleware::AuthMiddleware,
     prelude::*,
-    protocol::request::HttpMethod,
     provide,
     routing::trie::BoxedResponse,
-    security::{
-        db::{DbConfig, DbManager},
-        middleware::AuthMiddleware,
-    },
     GritComponent, WireContainer,
 };
 
@@ -80,8 +78,8 @@ pub struct AppContainer {
 //         ps: Arc::new(PaymentService),
 //     };
 
-    // B. Safely build the controller at compile-time (returns Arc<OrderController>)
-    // let order_controller = OrderController::compile_time_wire(&container);
+// B. Safely build the controller at compile-time (returns Arc<OrderController>)
+// let order_controller = OrderController::compile_time_wire(&container);
 //     order_controller
 // }
 
@@ -106,14 +104,14 @@ async fn main() {
                 async move { oc.ps.checkout(ctx).await }.boxed()
             },
         ))
-        // .add_middleware(AuthMiddleware::new_session(
-        //     vec![
-        //         "/auth/login".to_string(),
-        //         "/api/**".to_string(),
-        //         "/admin/**".to_string(),
-        //     ],
-        //     Some("/api/info/sea-orm"),
-        // ))
+        .add_middleware(AuthMiddleware::new_session(
+            vec![
+                "/auth/login".to_string(),
+                "/api/**".to_string(),
+                "/admin/**".to_string(),
+            ],
+            Some("/api/info/sea-orm"),
+        ))
         .mount_db(shared_db.clone());
 
     export_openapi("target/schema.json").unwrap();

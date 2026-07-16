@@ -5,7 +5,7 @@ use tokio::io::AsyncReadExt;
 use tokio::net::TcpStream;
 use tokio::time::timeout;
 
-use crate::protocol::form::{FormData, UploadedFile};
+use crate::http::form::{FormData, UploadedFile};
 use crate::security::xss::UntrustedString;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

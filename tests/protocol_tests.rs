@@ -1,5 +1,5 @@
-use gritshield::protocol::request::{HttpMethod, Request};
-use gritshield::protocol::response::{Cookie, Response};
+use gritshield::http::request::{HttpMethod, Request};
+use gritshield::http::response::{Cookie, Response};
 use gritshield::security::xss::Sanitizer;
 use gritshield::security::xss::UntrustedString;
 use std::collections::HashMap;

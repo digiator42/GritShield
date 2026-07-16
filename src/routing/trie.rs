@@ -1,15 +1,13 @@
 use crate::core::ioc::AutoWire;
 use crate::core::logger::{self, log_request_summary, LogLevel};
-use crate::protocol::form::FormData;
-use crate::protocol::request::{HttpMethod, Request};
-use crate::protocol::response::{Cookie, Response};
+use crate::http::form::FormData;
+use crate::http::request::{HttpMethod, Request};
+use crate::http::response::{Cookie, Response};
+use crate::middleware::{AfterRequestHook, Middleware, MiddlewareResult, MiddlewareState};
 use crate::routing::file_system::FILE_ROUTING_REGISTRY;
 use crate::security::cookies::CookieJar;
 use crate::security::errors::{default_framework_error_handler, GlobalErrorHandler, ShieldError};
 use crate::security::jwt::Claims;
-use crate::security::middleware::{
-    AfterRequestHook, Middleware, MiddlewareResult, MiddlewareState,
-};
 use crate::security::session::{Session, SessionStore};
 use crate::security::telemetry::SystemTelemetry;
 use crate::security::xss::{Sanitizer, UntrustedString};
@@ -33,7 +31,10 @@ use crate::database::repository::AdminHandlerFn;
 
 // Swagger-specific items
 #[cfg(feature = "swagger")]
-use crate::core::swagger::{generate_openapi_spec, render_swagger_ui};
+use {
+    crate::core::swagger::spec::generate_openapi_spec,
+    crate::core::swagger::ui::render_swagger_ui,
+};
 
 // Admin-specific items
 #[cfg(feature = "admin")]
@@ -763,7 +764,7 @@ impl Router {
         {
             use crate::database::repository::{ACTIONS_REGISTRY, ADMIN_REGISTRY};
             use crate::gritadmin::metrics::admin_security_matrix_view_handler;
-            use crate::protocol::request::HttpMethod;
+            use crate::http::request::HttpMethod;
 
             let registry = ADMIN_REGISTRY.lock().unwrap();
 
@@ -1271,7 +1272,7 @@ impl Router {
     ///
     /// ### Example
     /// You can declare a matrix of routes in one place:
-    /// ```rust
+    /// ```rust,no_run,ignore
     /// let app_routes = vec![
     ///     ("/login",    HttpMethod::GET,  handle_login),
     ///     ("/register", HttpMethod::POST, handle_register),
@@ -1280,7 +1281,7 @@ impl Router {
     /// ```
     ///
     /// Then register them all elegantly in a single line:
-    /// ```rust
+    /// ```rust,no_run,ignore
     /// app_routes.into_iter().for_each(|r| router.route(r));
     /// ```
     pub fn route<H>(mut self, route_info: (&str, HttpMethod, H)) -> Self

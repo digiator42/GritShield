@@ -1,6 +1,6 @@
 #![no_main]
 
-use gritshield::protocol::request::Request;
+use gritshield::http::request::Request;
 use libfuzzer_sys::fuzz_target;
 
 use std::io::Write;

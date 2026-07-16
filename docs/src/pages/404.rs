@@ -1,5 +1,5 @@
 use crate::root::layout::main_layout;
-use gritshield::protocol::response::Response;
+use gritshield::http::response::Response;
 use gritshield::routing::trie::RequestContext;
 use gritshield::security::xss::Sanitizer;
 use maud::html;

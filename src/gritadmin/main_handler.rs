@@ -11,7 +11,7 @@ use crate::deps::sea_orm::{
 };
 use crate::gritadmin::metrics::gather_all_metrics;
 use crate::gritadmin::models::audit_log;
-use crate::protocol::response::IntoResponseBody;
+use crate::http::response::IntoResponseBody;
 use crate::security::errors::ShieldError;
 use crate::security::xss::UntrustedString;
 use crate::{admin_shell, prelude::*};

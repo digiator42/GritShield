@@ -1,7 +1,7 @@
+use gritshield::http::request::HttpMethod;
 use gritshield::prelude::*;
-use gritshield::protocol::request::HttpMethod;
 use lazy_static::lazy_static;
-use maud::{Markup, PreEscaped, html};
+use maud::{html, Markup, PreEscaped};
 use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
 use regex::Regex;
 use std::fs;

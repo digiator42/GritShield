@@ -1,6 +1,6 @@
 use crate::{
     core::env::get_env,
-    protocol::response::{Cookie, Response, SameSite}, warn,
+    http::response::{Cookie, Response, SameSite}, warn,
 };
 use hmac::{Hmac, Mac};
 use sha2::Sha256;

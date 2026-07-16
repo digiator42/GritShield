@@ -59,7 +59,7 @@ macro_rules! render {
             .await
             .into_string();
 
-        $crate::protocol::response::Response::new(
+        $crate::http::response::Response::new(
             200,
             $crate::security::xss::Sanitizer::trust(&final_html),
         )
@@ -72,7 +72,7 @@ macro_rules! render {
             .await
             .into_string();
 
-        $crate::protocol::response::Response::new(
+        $crate::http::response::Response::new(
             200,
             $crate::security::xss::Sanitizer::trust(&final_html),
         )

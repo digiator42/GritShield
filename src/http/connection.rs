@@ -1,14 +1,13 @@
 use crate::{
     core::env::get_env,
     debug, error,
-    protocol::{request::Request, response::Response},
+    http::{request::Request, response::Response},
+    middleware::MiddlewareResult,
     routing::{
         trie::{RequestContext, Router, RoutingResult, GLOBAL_FALLBACK},
         websocket::WS_REGISTRY,
     },
-    security::{
-        cookies::CookieJar, errors::ShieldError, middleware::MiddlewareResult, xss::Sanitizer,
-    },
+    security::{cookies::CookieJar, errors::ShieldError, xss::Sanitizer},
     warn,
 };
 use colored::Colorize;

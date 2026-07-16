@@ -1,4 +1,4 @@
-use gritshield::protocol::response::JsonPayload;
+use gritshield::http::response::JsonPayload;
 use gritshield::{component, prelude::*};
 use gritshield::{controller, GritComponent};
 use serde_json::json;
@@ -30,7 +30,7 @@ impl OrderController {
     #[get("/checkout")]
     pub async fn checkout(&self, ctx: RequestContext) -> Response {
         self.db.execute("SELECT 1").await;
-        Response::ok(format!("Checked out safely, {}", self.ps.api_key))
+        Response::ok(format!("Checked out safely"))
     }
 
     #[get("/checkout2", role = "Admin")]
@@ -41,7 +41,7 @@ impl OrderController {
         // let order_payload = ctx.json_body().await.unwrap();
 
         // Use services directly with zero manual orchestration!
-        payment.process_charge(21);
+        // payment.process_charge(21);
         // db.execute("INSERT INTO orders ...").await;
 
         Response::ok(JsonPayload(json!({ "status": "processed" })))

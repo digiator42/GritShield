@@ -1,7 +1,7 @@
 use crate::deps::once_cell::sync::Lazy;
 use crate::deps::sea_orm::sea_query::{Alias, Condition, Expr, JoinType, Query};
 use crate::deps::sea_orm::DbErr;
-use crate::protocol::response::Response;
+use crate::http::response::Response;
 use crate::routing::trie::RequestContext;
 use crate::security::xss::Sanitizer;
 use sea_orm::{

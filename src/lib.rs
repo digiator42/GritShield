@@ -1,11 +1,8 @@
 pub mod core;
 pub mod database;
 pub mod routing;
-pub mod protocol {
-    pub mod form;
-    pub mod request;
-    pub mod response;
-}
+pub mod http;
+pub mod middleware;
 pub mod macros;
 pub mod security;
 pub mod utils;
@@ -64,16 +61,16 @@ pub mod deps {
 /// use gritshield::prelude::*;
 pub mod prelude {
     pub use crate::macros;
-    pub use crate::protocol::form::{FormData, UploadedFile};
-    pub use crate::protocol::request::Request;
-    pub use crate::protocol::response::Response;
+    pub use crate::http::form::{FormData, UploadedFile};
+    pub use crate::http::request::Request;
+    pub use crate::http::response::Response;
     pub use crate::routing::templates::TemplateEngine;
     pub use crate::routing::trie::{RequestContext, Router};
     pub use crate::security::xss::Sanitizer;
 
     // Critical functions
     pub use crate::core::env::get_env;
-    pub use crate::core::server::ignite;
+    pub use crate::http::ignite;
 
     // Re-export macros for the prelude
     pub use crate::action;

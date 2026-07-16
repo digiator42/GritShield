@@ -1,4 +1,4 @@
-use gritshield::{prelude::*, protocol::request::HttpMethod};
+use gritshield::{http::request::HttpMethod, prelude::*};
 
 mod pages {
     #[path = "docs/[..path].rs"]

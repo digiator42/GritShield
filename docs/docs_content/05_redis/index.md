@@ -117,7 +117,7 @@ Rust
 ```rust
 use std::sync::Arc;
 use gritshield::routing::trie::RequestContext;
-use gritshield::protocol::response::Response;
+use gritshield::http::response::Response;
 use crate::services::RedisService;
 
 #[derive(GritComponent)]
@@ -160,4 +160,3 @@ impl StoreController {
     }
 }
 ```
-

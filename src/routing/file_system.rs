@@ -2,7 +2,7 @@ use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use crate::protocol::request::HttpMethod;
+use crate::http::request::HttpMethod;
 use crate::routing::trie::IntoHandler;
 
 pub struct RegisteredFileRoute {

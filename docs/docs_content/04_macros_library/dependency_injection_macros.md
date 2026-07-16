@@ -1,9 +1,10 @@
- Dependency Injection (IoC) System
+Dependency Injection (IoC) System
 
 GritShield provides **compile-time dependency injection** with zero runtime overhead, inspired by Spring Boot's `@Autowired`.
 
 ## **Paradigm A:**
-**Dynamic / Inventory Magic** (The Spring Boot Way)  
+
+**Dynamic / Inventory Magic** (The Spring Boot Way)
 
 ### `#[component]` 
 
@@ -22,7 +23,7 @@ impl PaymentService {
             api_key: "sk_live_...".to_string(),
         }
     }
-    
+
     pub async fn process_payment(&self, amount: f64) -> Result<PaymentResult> {
         // Business logic
     }
@@ -59,7 +60,7 @@ impl PaymentService {
             db,
         }
     }
-    
+
     pub async fn process_payment(&self, amount: f64) -> Result<PaymentResult> {
         // Business logic
     }
@@ -83,13 +84,13 @@ pub struct OrderController {
 
 #[controller("/api/orders")]
 impl OrderController {
-    // The only change here is `self`, you can access 
+    // The only change here is `self`, you can access
     #[get("/")]
     pub async fn list_orders(&self, ctx: RequestContext) -> Response {
         self.db.execute("SELECT * FROM orders").await;
         Response::ok("Orders listed")
     }
-    
+
     // Or inject directly into handler methods!
     #[post("/checkout")]
     pub async fn checkout(
@@ -118,17 +119,17 @@ provide!(AppConfig, AppConfig {
 
 ```
 
-
 ### Verification at Boot
 
 ```rust
 
-// At application startup, verify all dependencies are registered, 
+// At application startup, verify all dependencies are registered,
 // you have to call boot_di_container at bootstrap
 AutoWire::boot_di_container();
 ```
 
 ## **Paradigm B:**
+
 **Strict Compile-Time Safe** (The Rust Way)
 
 ### Define Components
@@ -141,7 +142,7 @@ Rust
 use std::sync::Arc;
 use gritshield::core::ioc::GritComponent;
 use gritshield::routing::trie::RequestContext;
-use gritshield::protocol::response::Response;
+use gritshield::http::response::Response;
 
 pub struct DatabasePool;
 pub struct PaymentService;
@@ -188,12 +189,12 @@ use gritshield::deps::futures::future::FutureExt;
 #[tokio::main]
 async fn main() {
     // Explicitly build the typed container
-    let container = AppContainer { 
-        db: Arc::new(DatabasePool), 
-        ps: Arc::new(PaymentService), 
+    let container = AppContainer {
+        db: Arc::new(DatabasePool),
+        ps: Arc::new(PaymentService),
     };
 
-    // Safely wire the controller. 
+    // Safely wire the controller.
     // This will FAIL to compile if AppContainer misses `db` or `ps`!
     let order_controller = OrderController::compile_time_wire(&container);
 

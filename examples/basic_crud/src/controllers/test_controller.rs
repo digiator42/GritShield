@@ -1,11 +1,11 @@
+use gritshield::http::response::JsonPayload;
 use gritshield::prelude::*;
-use gritshield::protocol::response::JsonPayload;
 use gritshield::GritComponent;
 use serde_json::json;
 
+use crate::DatabasePool;
 use crate::OrderController;
 use crate::PaymentService;
-use crate::DatabasePool;
 
 pub struct TestController {
     pub key: Arc<String>,
@@ -17,8 +17,8 @@ impl TestController {
     pub async fn checkout(
         ste: Arc<String>,
         payment: Arc<PaymentService>, // <-- Automatically Injected!
-                                    //   db: Arc<DatabasePool>,        // <-- Automatically Injected!
-                                      oc: Arc<OrderController>,
+        //   db: Arc<DatabasePool>,        // <-- Automatically Injected!
+        oc: Arc<OrderController>,
     ) -> Response {
         // let order_payload = ctx.json_body().await.unwrap();
 

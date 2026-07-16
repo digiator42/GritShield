@@ -1,5 +1,5 @@
 use crate::info;
-use crate::protocol::request::Request;
+use crate::http::request::Request;
 use colored::*;
 use std::fmt;
 use std::sync::OnceLock;

@@ -141,7 +141,7 @@ pub fn expand_http_method(
     Ok(quote! {
         #input_fn
 
-        #vis fn #wrapper_name(ctx: gritshield::routing::trie::RequestContext) -> gritshield::futures::future::BoxFuture<'static, gritshield::protocol::response::Response> {
+        #vis fn #wrapper_name(ctx: gritshield::routing::trie::RequestContext) -> gritshield::futures::future::BoxFuture<'static, gritshield::http::response::Response> {
             use gritshield::routing::trie::IntoResponse;
             use gritshield::futures::future::FutureExt;
 
@@ -155,7 +155,7 @@ pub fn expand_http_method(
         gritshield::inventory::submit! {
             gritshield::routing::trie::AutoRoute {
                 path: #path,
-                method: gritshield::protocol::request::HttpMethod::#http_method_ident,
+                method: gritshield::http::request::HttpMethod::#http_method_ident,
                 handler: #wrapper_name,
                 required_role: #required_role_opt,
                 request_body_schema: #body_schema,
@@ -313,7 +313,7 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
                 });
 
                 inventory_submissions.push(quote! {
-                    fn #wrapper_name(ctx: gritshield::routing::trie::RequestContext) -> gritshield::futures::future::BoxFuture<'static, gritshield::protocol::response::Response> {
+                    fn #wrapper_name(ctx: gritshield::routing::trie::RequestContext) -> gritshield::futures::future::BoxFuture<'static, gritshield::http::response::Response> {
                         use gritshield::routing::trie::IntoResponse;
                         use gritshield::futures::future::FutureExt;
 
@@ -325,7 +325,7 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
                     gritshield::inventory::submit! {
                         gritshield::routing::trie::AutoRoute {
                             path: #combined_path,
-                            method: gritshield::protocol::request::HttpMethod::#http_method_ident,
+                            method: gritshield::http::request::HttpMethod::#http_method_ident,
                             handler: #wrapper_name,
                             required_role: #required_role_opt,
                             request_body_schema: #body_schema,
