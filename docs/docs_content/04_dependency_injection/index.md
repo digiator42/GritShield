@@ -8,7 +8,7 @@ GritShield offers a unique **Dual-Engine Dependency Injection** architecture. De
 In this paradigm, GritShield handles the plumbing behind the scenes using dynamic registration. You decorate your structs, and the runtime container scans and hooks them up automatically.
 
 - With the inventory magic, main.rs stays completely clean and never changes. You can add 50 new controllers across 50 different source files. As long as they use your `#[derive(GritComponent)]` or `#[controller]` tags, GritShield discovers them, sets up their routing links, and injects them completely in the background.
-- Refere to usage [Macro Library](/04_macros_library/dependency_injection_macros.html#paradigm-a)
+- Refere to usage [Macro Library](/GritShield/04_macros_library/dependency_injection_macros.html#paradigm-a)
 
 ## Paradigm B: The Strict Compile-Time Pathway
 

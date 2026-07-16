@@ -41,6 +41,24 @@ impl Request {
         }
     }
 
+    pub fn fill(
+        method: HttpMethod,
+        path: String,
+        uri: String,
+        headers: HashMap<String, String>,
+        body: Vec<u8>,
+        query: HashMap<String, UntrustedString>,
+    ) -> Self {
+        Request {
+            method,
+            path,
+            uri,
+            headers,
+            body,
+            query,
+        }
+    }
+
     pub async fn parse(stream: &mut TcpStream) -> Result<Self, String> {
         const MAX_REQUEST_SIZE: usize = 1024 * 1024; // 1MB
 
