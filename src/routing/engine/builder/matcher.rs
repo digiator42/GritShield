@@ -4,8 +4,6 @@ use crate::security::xss::UntrustedString;
 use std::collections::HashMap;
 
 impl Router {
-
-
     pub fn match_route<'a>(&'a self, method: &HttpMethod, path: &str) -> RoutingResult<'a> {
         let mut current = &self.root;
         let mut params = HashMap::new();

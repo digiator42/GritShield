@@ -156,3 +156,16 @@ macro_rules! register_ws {
         }
     };
 }
+
+#[macro_export]
+macro_rules! log_route {
+    ($path:expr, $max_len:expr, $method:expr) => {
+        crate::trace!(
+            "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
+            $path,
+            $max_len,
+            "->".green(),
+            method_color($method)
+        );
+    };
+}

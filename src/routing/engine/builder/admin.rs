@@ -1,4 +1,4 @@
-use crate::info;
+use crate::{http::HttpMethod, info};
 use crate::routing::engine::Router;
 use crate::routing::AutoRoute;
 use colored::*;
@@ -15,18 +15,19 @@ use {
 #[cfg(feature = "admin")]
 use {
     crate::database::repository::jql::DynamicColumnSpec,
+    crate::database::repository::registry::{ACTIONS_REGISTRY, ADMIN_REGISTRY},
+    crate::gritadmin::auth_handlers::{
+        handle_login_auth, handle_logout, render_login_page, AdminAuthMiddleware,
+    },
     crate::gritadmin::main_handler::*,
     crate::gritadmin::metrics::{
         admin_metrics_api_handler, admin_metrics_html_handler, admin_security_matrix_view_handler,
     },
-    crate::gritadmin::auth_handlers::{
-            handle_login_auth, handle_logout, render_login_page, AdminAuthMiddleware,
-    },
-    crate::database::repository::registry::{ACTIONS_REGISTRY, ADMIN_REGISTRY},
-    crate::security::xss::Sanitizer,
-    std::sync::Arc,
     crate::prelude::*,
+    crate::security::xss::Sanitizer,
     crate::trace,
+    crate::log_route,
+    std::sync::Arc,
 };
 
 fn method_color(method: &str) -> colored::ColoredString {
@@ -54,14 +55,18 @@ impl Router {
         }
         max_len += 4;
 
-        for route in all_auto_routes {
+        let log_route = |path: &str, max_len: usize, method: &HttpMethod| {
             info!(
                 "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
-                route.path,
+                path,
                 max_len,
                 "->".green(),
-                method_color(&format!("{:?}", route.method))
+                method_color(&format!("{:?}", method))
             );
+        };
+
+        for route in all_auto_routes {
+            log_route(route.path, max_len, &route.method);
 
             if let Some(role) = route.required_role {
                 self.role_registry.insert(route.path.to_string(), role);
@@ -118,13 +123,7 @@ impl Router {
 
         // Register table routes
         for (_table_name, model) in registry.iter() {
-            trace!(
-                "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
-                model.route_path,
-                max_len,
-                "->".green(),
-                method_color("GET")
-            );
+            log_route!(model.route_path, max_len, "GET");
             self.add_route(
                 HttpMethod::GET,
                 model.route_path,
@@ -133,13 +132,7 @@ impl Router {
             );
 
             let search = format!("{}/search", model.route_path);
-            trace!(
-                "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
-                search,
-                max_len,
-                "->".green(),
-                method_color("GET")
-            );
+            log_route!(&search, max_len, "GET");
             self.add_route(
                 HttpMethod::GET,
                 Box::leak(search.into_boxed_str()),
@@ -148,13 +141,7 @@ impl Router {
             );
 
             let delete_path = format!("{}/delete", model.route_path);
-            trace!(
-                "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
-                delete_path,
-                max_len,
-                "->".green(),
-                method_color("DELETE")
-            );
+            log_route!(&delete_path, max_len, "DELETE");
             self.add_route(
                 HttpMethod::DELETE,
                 Box::leak(delete_path.into_boxed_str()),
@@ -163,13 +150,7 @@ impl Router {
             );
 
             let patch_path = format!("{}/update-cell", model.route_path);
-            trace!(
-                "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
-                patch_path,
-                max_len,
-                "->".green(),
-                method_color("PATCH")
-            );
+            log_route!(&patch_path, max_len, "PATCH");
             self.add_route(
                 HttpMethod::PATCH,
                 Box::leak(patch_path.into_boxed_str()),
@@ -178,13 +159,7 @@ impl Router {
             );
 
             let advanced_search_path = format!("{}/query-explorer", model.route_path);
-            trace!(
-                "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
-                advanced_search_path,
-                max_len,
-                "->".green(),
-                method_color("GET")
-            );
+            log_route!(&advanced_search_path, max_len, "GET");
             self.add_route(
                 HttpMethod::GET,
                 Box::leak(advanced_search_path.into_boxed_str()),
@@ -193,13 +168,7 @@ impl Router {
             );
 
             let detail_path = format!("{}/:id", model.route_path);
-            trace!(
-                "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
-                detail_path,
-                max_len,
-                "->".green(),
-                method_color("GET")
-            );
+            log_route!(&detail_path, max_len, "GET");
             self.add_route(
                 HttpMethod::GET,
                 Box::leak(detail_path.into_boxed_str()),
@@ -208,13 +177,7 @@ impl Router {
             );
 
             let bulk_path = format!("{}/bulk-delete", model.route_path);
-            trace!(
-                "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
-                bulk_path,
-                max_len,
-                "->".green(),
-                method_color("POST")
-            );
+            log_route!(&bulk_path, max_len, "POST");
             self.add_route(
                 HttpMethod::POST,
                 Box::leak(bulk_path.into_boxed_str()),
@@ -223,13 +186,7 @@ impl Router {
             );
 
             let export_path = format!("{}/export", model.route_path);
-            trace!(
-                "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
-                export_path,
-                max_len,
-                "->".green(),
-                method_color("GET")
-            );
+            log_route!(&export_path, max_len, "GET");
             self.add_route(
                 HttpMethod::GET,
                 Box::leak(export_path.into_boxed_str()),
@@ -238,13 +195,7 @@ impl Router {
             );
 
             let bulk_records_path = format!("{}/bulk-create", model.route_path);
-            trace!(
-                "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
-                bulk_records_path,
-                max_len,
-                "->".green(),
-                method_color("POST")
-            );
+            log_route!(&bulk_records_path, max_len, "POST");
             self.add_route(
                 HttpMethod::POST,
                 Box::leak(bulk_records_path.into_boxed_str()),
@@ -253,13 +204,7 @@ impl Router {
             );
 
             let bulk_records_modal_path = format!("{}/bulk-create-modal", model.route_path);
-            trace!(
-                "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
-                bulk_records_modal_path,
-                max_len,
-                "->".green(),
-                method_color("GET")
-            );
+            log_route!(&bulk_records_modal_path, max_len, "GET");
             self.add_route(
                 HttpMethod::GET,
                 Box::leak(bulk_records_modal_path.into_boxed_str()),
@@ -272,47 +217,23 @@ impl Router {
         for (table_slug, _) in ACTIONS_REGISTRY.lock().unwrap().iter() {
             let action_path = format!("/admin/{}/action/:action_name", table_slug);
             let path = Box::leak(action_path.into_boxed_str());
-            trace!(
-                "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
-                path,
-                max_len,
-                "->".green(),
-                method_color("POST")
-            );
+            log_route!(path, max_len, "POST");
             self.add_route(HttpMethod::POST, path, handle_custom_action, None);
 
             let bulk_action_path = format!("/admin/{}/bulk-action/:action_name", table_slug);
             let bulk_path = Box::leak(bulk_action_path.into_boxed_str());
-            trace!(
-                "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
-                bulk_path,
-                max_len,
-                "->".green(),
-                method_color("POST")
-            );
+            log_route!(bulk_path, max_len, "POST");
             self.add_route(HttpMethod::POST, bulk_path, handle_custom_action, None);
         }
 
         // Dashboard
         let dashboard_handler: AdminHandlerFn = Arc::new(|ctx| Box::pin(handle_dashboard(ctx)));
-        trace!(
-            "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
-            "/admin/dashboard",
-            max_len,
-            "->".green(),
-            method_color("GET")
-        );
+        log_route!("/admin/dashboard", max_len, "GET");
         self.add_route(HttpMethod::GET, "/admin/dashboard", dashboard_handler, None);
 
         // Palette
         let palette_handler: AdminHandlerFn = Arc::new(|ctx| Box::pin(handle_search_palette(ctx)));
-        trace!(
-            "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
-            "/admin/api/search-palette",
-            max_len,
-            "->".green(),
-            method_color("GET")
-        );
+        log_route!("/admin/api/search-palette", max_len, "GET");
         self.add_route(
             HttpMethod::GET,
             "/admin/api/search-palette",
@@ -323,12 +244,10 @@ impl Router {
         // Alter table
         let alter_table_handler: AdminHandlerFn =
             Arc::new(|_ctx| Box::pin(async move { Response::ok("Alter table route".to_string()) }));
-        trace!(
-            "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
+        log_route!(
             "/admin/api/alter-table/:table_slug/add-column",
             max_len,
-            "->".green(),
-            method_color("POST")
+            "POST"
         );
         self.add_route(
             HttpMethod::POST,
@@ -382,13 +301,7 @@ impl Router {
                 }
             })
         });
-        trace!(
-            "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
-            "/admin/api/create-table",
-            max_len,
-            "->".green(),
-            method_color("POST")
-        );
+        log_route!("/admin/api/create-table", max_len, "POST");
         self.add_route(
             HttpMethod::POST,
             "/admin/api/create-table",
@@ -397,13 +310,7 @@ impl Router {
         );
 
         // Metrics
-        trace!(
-            "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
-            "/admin/api/metrics",
-            max_len,
-            "->".green(),
-            method_color("GET")
-        );
+        log_route!("/admin/api/metrics", max_len, "GET");
         self.add_route(
             HttpMethod::GET,
             "/admin/api/metrics",
@@ -411,13 +318,7 @@ impl Router {
             None,
         );
 
-        trace!(
-            "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
-            "/admin/metrics",
-            max_len,
-            "->".green(),
-            method_color("GET")
-        );
+        log_route!("/admin/metrics", max_len, "GET");
         self.add_route(
             HttpMethod::GET,
             "/admin/metrics",
@@ -426,13 +327,7 @@ impl Router {
         );
 
         // Security settings
-        trace!(
-            "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
-            "/admin/settings/security",
-            max_len,
-            "->".green(),
-            method_color("GET")
-        );
+        log_route!("/admin/settings/security", max_len, "GET");
         self.add_route(
             HttpMethod::GET,
             "/admin/settings/security",
@@ -441,22 +336,10 @@ impl Router {
         );
 
         // Auth routes
-        trace!(
-            "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
-            "/admin/login",
-            max_len,
-            "->".green(),
-            method_color("GET")
-        );
+        log_route!("/admin/login", max_len, "GET");
         self.add_route(HttpMethod::GET, "/admin/login", render_login_page, None);
 
-        trace!(
-            "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
-            "/admin/api/login",
-            max_len,
-            "->".green(),
-            method_color("POST")
-        );
+        log_route!("/admin/api/login", max_len, "POST");
         self.add_route(
             HttpMethod::POST,
             "/admin/api/login",
@@ -464,13 +347,7 @@ impl Router {
             None,
         );
 
-        trace!(
-            "[DYN-ROUTER] >>: {0:<1$} {2} [{3:<6}]",
-            "/admin/api/logout",
-            max_len,
-            "->".green(),
-            method_color("GET")
-        );
+        log_route!("/admin/api/logout", max_len, "GET");
         self.add_route(HttpMethod::GET, "/admin/api/logout", handle_logout, None);
 
         // Admin auth middleware

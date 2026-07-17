@@ -19,7 +19,6 @@ fn method_color(method: &str) -> colored::ColoredString {
 
 impl Router {
 
-
     /// Seamlessly crawls a filesystem folder, computes URL paths,
     /// and mounts handlers dynamically.
     pub fn mount_file_routes<P: AsRef<Path>>(
