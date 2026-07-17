@@ -1,4 +1,3 @@
-use crate::core::ioc::AutoWire;
 use crate::core::logger::{self, log_request_summary, LogLevel};
 use crate::http::form::FormData;
 use crate::http::request::{HttpMethod, Request};
@@ -27,19 +26,18 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 // shared dependency if EITHER feature is enabled
 #[cfg(any(feature = "swagger", feature = "admin"))]
-use crate::database::repository::AdminHandlerFn;
+use crate::database::repository::registry::AdminHandlerFn;
 
 // Swagger-specific items
 #[cfg(feature = "swagger")]
 use {
-    crate::core::swagger::spec::generate_openapi_spec,
-    crate::core::swagger::ui::render_swagger_ui,
+    crate::core::swagger::spec::generate_openapi_spec, crate::core::swagger::ui::render_swagger_ui,
 };
 
 // Admin-specific items
 #[cfg(feature = "admin")]
 use {
-    crate::database::repository::DynamicColumnSpec,
+    crate::database::repository::jql::DynamicColumnSpec,
     crate::gritadmin::main_handler::*,
     crate::gritadmin::metrics::{admin_metrics_api_handler, admin_metrics_html_handler},
 };
@@ -762,7 +760,7 @@ impl Router {
         // Admin routes
         #[cfg(feature = "admin")]
         {
-            use crate::database::repository::{ACTIONS_REGISTRY, ADMIN_REGISTRY};
+            use crate::database::repository::registry::{ACTIONS_REGISTRY, ADMIN_REGISTRY};
             use crate::gritadmin::metrics::admin_security_matrix_view_handler;
             use crate::http::request::HttpMethod;
 

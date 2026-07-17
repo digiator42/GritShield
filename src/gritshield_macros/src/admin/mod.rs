@@ -72,7 +72,7 @@ pub fn expand_admin(input: DeriveInput) -> syn::Result<TokenStream> {
         };
 
         grid_column_tokens.push(quote! {
-            #crate_root::database::repository::GridColumn {
+            #crate_root::database::GridColumn {
                 name: #col,
                 label: #label_str,
                 is_editable: #is_editable,
@@ -275,7 +275,7 @@ pub fn expand_admin(input: DeriveInput) -> syn::Result<TokenStream> {
                     #entity_module::Column::Id
                 }
 
-                fn grid_columns(&self) -> ::std::vec::Vec<#crate_root::database::repository::GridColumn> {
+                fn grid_columns(&self) -> ::std::vec::Vec<#crate_root::database::GridColumn> {
                     ::std::vec![ #(#grid_column_tokens),* ]
                 }
 

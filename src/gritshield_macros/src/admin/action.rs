@@ -81,7 +81,7 @@ pub fn expand_action(attr: TokenStream, item: TokenStream) -> TokenStream {
 
         #[#crate_root::startup::ctor(unsafe)]
         fn #register_fn_name() {
-            let action = #crate_root::database::repository::CustomAction {
+            let action = #crate_root::database::repository::registry::CustomAction {
                 label: #label,
                 icon: #icon_expr,
                 color: #color,
@@ -92,7 +92,7 @@ pub fn expand_action(attr: TokenStream, item: TokenStream) -> TokenStream {
                 }),
             };
 
-            #crate_root::database::repository::register_action(#table, action);
+            #crate_root::database::repository::registry::register_action(#table, action);
         }
     };
 

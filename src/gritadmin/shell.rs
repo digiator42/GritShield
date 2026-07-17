@@ -1,4 +1,5 @@
-use crate::{database::repository::ADMIN_REGISTRY, prelude::*};
+use crate::prelude::*;
+use crate::database::repository::registry::ADMIN_REGISTRY;
 
 /// The Master Shell Layout that loads HTMX globally.
 pub fn admin_shell(title: &str, content: Markup, is_htmx: bool) -> Response {

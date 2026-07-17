@@ -1,21 +1,13 @@
-use std::collections::HashSet;
-use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::Instant;
-
 use crate::core::env::get_env;
 use crate::http::request::HttpMethod;
 use crate::http::response::{Response, Cookie, SameSite};
 use crate::routing::trie::RequestContext;
-use crate::security::jwt::{Claims, JwtHandler};
-use crate::security::rate_limit::RateLimiter;
+use crate::security::jwt::{JwtHandler};
 use crate::security::session::{Session, SessionStore};
 use crate::security::xss::Sanitizer;
 use crate::middleware::{Middleware, MiddlewareResult, MiddlewareState};
-use crate::{debug, error, info};
-use chrono::Local;
-use colored::*;
-use uuid::Uuid;
+use crate::{debug, info};
 
 // global accessible, thread-safe cell for administrative/user auth session store
 pub static SESSION_STORE: OnceLock<Arc<SessionStore>> = OnceLock::new();

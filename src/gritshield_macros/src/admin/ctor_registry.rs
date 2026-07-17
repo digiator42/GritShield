@@ -41,7 +41,7 @@ pub fn generate_registration(
                 ),*
             ];
 
-            let list_handler: #crate_root::database::repository::AdminHandlerFn =
+            let list_handler: #crate_root::database::repository::registry::AdminHandlerFn =
                 ::std::sync::Arc::new(move |ctx| {
                     let table_name = table_name;
                     Box::pin(async move {
@@ -59,7 +59,7 @@ pub fn generate_registration(
                     })
                 });
 
-            let search_handler: #crate_root::database::repository::AdminHandlerFn =
+            let search_handler: #crate_root::database::repository::registry::AdminHandlerFn =
                 ::std::sync::Arc::new(move |ctx| {
                     let table_name = table_name;
                     Box::pin(async move {
@@ -77,7 +77,7 @@ pub fn generate_registration(
                     })
                 });
 
-            let delete_handler: #crate_root::database::repository::AdminHandlerFn =
+            let delete_handler: #crate_root::database::repository::registry::AdminHandlerFn =
                 ::std::sync::Arc::new(move |ctx| {
                     let table_name = table_name;
                     Box::pin(async move {
@@ -95,7 +95,7 @@ pub fn generate_registration(
                     })
                 });
 
-            let patch_handler: #crate_root::database::repository::AdminHandlerFn =
+            let patch_handler: #crate_root::database::repository::registry::AdminHandlerFn =
                 ::std::sync::Arc::new(move |ctx| {
                     let table_name = table_name;
                     Box::pin(async move {
@@ -113,7 +113,7 @@ pub fn generate_registration(
                     })
                 });
 
-            let advanced_search_handler: #crate_root::database::repository::AdminHandlerFn =
+            let advanced_search_handler: #crate_root::database::repository::registry::AdminHandlerFn =
                 ::std::sync::Arc::new(move |ctx| {
                     let table_name = table_name;
                     Box::pin(async move {
@@ -130,7 +130,7 @@ pub fn generate_registration(
                     })
                 });
 
-            let detail_handler: #crate_root::database::repository::AdminHandlerFn =
+            let detail_handler: #crate_root::database::repository::registry::AdminHandlerFn =
                 ::std::sync::Arc::new(move |ctx| {
                     use #crate_root::routing::trie::IntoResponse;
                     let table_name = table_name;
@@ -147,7 +147,7 @@ pub fn generate_registration(
                     })
                 });
 
-            let bulk_delete_handler: #crate_root::database::repository::AdminHandlerFn =
+            let bulk_delete_handler: #crate_root::database::repository::registry::AdminHandlerFn =
                 ::std::sync::Arc::new(move |ctx| {
                     use #crate_root::routing::trie::IntoResponse;
                     let table_name = table_name;
@@ -164,7 +164,7 @@ pub fn generate_registration(
                     })
                 });
 
-            let bulk_create_records_handler: #crate_root::database::repository::AdminHandlerFn =
+            let bulk_create_records_handler: #crate_root::database::repository::registry::AdminHandlerFn =
                 ::std::sync::Arc::new(move |ctx| {
                     use #crate_root::routing::trie::IntoResponse;
                     let table_name = table_name;
@@ -181,7 +181,7 @@ pub fn generate_registration(
                     })
                 });
 
-            let bulk_create_modal_handler: #crate_root::database::repository::AdminHandlerFn =
+            let bulk_create_modal_handler: #crate_root::database::repository::registry::AdminHandlerFn =
                 ::std::sync::Arc::new(move |ctx| {
                     use #crate_root::routing::trie::IntoResponse;
                     let table_name = table_name;
@@ -198,7 +198,7 @@ pub fn generate_registration(
                     })
                 });
 
-            let export_handler: #crate_root::database::repository::AdminHandlerFn =
+            let export_handler: #crate_root::database::repository::registry::AdminHandlerFn =
                 ::std::sync::Arc::new(move |ctx| {
                     let table_name = table_name;
                     Box::pin(async move {
@@ -213,7 +213,7 @@ pub fn generate_registration(
                     })
                 });
 
-            let meta = #crate_root::database::repository::ModelMetadata {
+            let meta = #crate_root::database::repository::registry::ModelMetadata {
                 table_name,
                 table_slug,
                 route_path,
@@ -232,7 +232,7 @@ pub fn generate_registration(
 
             println!("REGISTERING ADMIN MODEL: {}", table_name);
 
-            #crate_root::database::repository::register_model(table_name, meta);
+            #crate_root::database::repository::registry::register_model(table_name, meta);
         }
     }
 }

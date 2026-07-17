@@ -1,6 +1,6 @@
 use super::models::*;
-use crate::database::repository::{ACTIONS_REGISTRY, ADMIN_REGISTRY};
 use crate::core::schema::SCHEMA_REGISTRY;
+use crate::database::repository::registry::{ACTIONS_REGISTRY, ADMIN_REGISTRY};
 use crate::http::request::HttpMethod;
 use crate::routing::trie::AutoRoute;
 use std::collections::HashMap;
@@ -79,17 +79,21 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
         // Build request body from schema registry if present
         let request_body = if let Some(schema_name) = route.request_body_schema {
             let registry = SCHEMA_REGISTRY.lock().unwrap();
-            
+
             // matching fallback (checks exact match, then snake_case/lowercase equivalents)
             let search_name = schema_name.to_string();
             let search_lower = search_name.to_lowercase();
             let search_snake = search_name.replace(" ", "_").to_lowercase();
 
-            let model_schema_opt = registry.get(&search_name)
+            let model_schema_opt = registry
+                .get(&search_name)
                 .or_else(|| registry.get(&search_lower))
                 .or_else(|| {
-                    registry.iter()
-                        .find(|(k, _)| k.to_lowercase() == search_lower || k.to_lowercase() == search_snake)
+                    registry
+                        .iter()
+                        .find(|(k, _)| {
+                            k.to_lowercase() == search_lower || k.to_lowercase() == search_snake
+                        })
                         .map(|(_, v)| v)
                 });
 
@@ -216,7 +220,11 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
         };
 
         let path_item = paths.entry(openapi_path).or_insert(PathItem {
-            get: None, post: None, put: None, delete: None, patch: None,
+            get: None,
+            post: None,
+            put: None,
+            delete: None,
+            patch: None,
         });
 
         match method {
@@ -247,16 +255,26 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
                 "id" => Schema {
                     type_: "integer".to_string(),
                     format: Some("int64".to_string()),
-                    properties: None, required: None, items: None, enum_values: None,
+                    properties: None,
+                    required: None,
+                    items: None,
+                    enum_values: None,
                 },
                 "created_at" | "updated_at" | "timestamp" => Schema {
                     type_: "string".to_string(),
                     format: Some("date-time".to_string()),
-                    properties: None, required: None, items: None, enum_values: None,
+                    properties: None,
+                    required: None,
+                    items: None,
+                    enum_values: None,
                 },
                 _ => Schema {
                     type_: "string".to_string(),
-                    format: None, properties: None, required: None, items: None, enum_values: None,
+                    format: None,
+                    properties: None,
+                    required: None,
+                    items: None,
+                    enum_values: None,
                 },
             };
             let col_name = col_str.to_string();
@@ -270,7 +288,10 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
                 Schema {
                     type_: "integer".to_string(),
                     format: Some("int64".to_string()),
-                    properties: None, required: None, items: None, enum_values: None,
+                    properties: None,
+                    required: None,
+                    items: None,
+                    enum_values: None,
                 },
             );
             required.insert(0, "id".to_string());
@@ -298,7 +319,10 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
                 schema: Schema {
                     type_: "integer".to_string(),
                     format: Some("int32".to_string()),
-                    properties: None, required: None, items: None, enum_values: None,
+                    properties: None,
+                    required: None,
+                    items: None,
+                    enum_values: None,
                 },
                 description: Some("Page number".to_string()),
             },
@@ -308,7 +332,11 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
                 required: false,
                 schema: Schema {
                     type_: "string".to_string(),
-                    format: None, properties: None, required: None, items: None, enum_values: None,
+                    format: None,
+                    properties: None,
+                    required: None,
+                    items: None,
+                    enum_values: None,
                 },
                 description: Some("Search query".to_string()),
             },
@@ -321,11 +349,21 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
                 required: false,
                 schema: Schema {
                     type_: "string".to_string(),
-                    format: None, properties: None, required: None, items: None,
+                    format: None,
+                    properties: None,
+                    required: None,
+                    items: None,
                     enum_values: Some(vec![
-                        "eq".to_string(), "ne".to_string(), "gt".to_string(), "gte".to_string(),
-                        "lt".to_string(), "lte".to_string(), "contains".to_string(),
-                        "startswith".to_string(), "endswith".to_string(), "is_null".to_string(),
+                        "eq".to_string(),
+                        "ne".to_string(),
+                        "gt".to_string(),
+                        "gte".to_string(),
+                        "lt".to_string(),
+                        "lte".to_string(),
+                        "contains".to_string(),
+                        "startswith".to_string(),
+                        "endswith".to_string(),
+                        "is_null".to_string(),
                         "is_not_null".to_string(),
                     ]),
                 },
@@ -337,7 +375,11 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
                 required: false,
                 schema: Schema {
                     type_: "string".to_string(),
-                    format: None, properties: None, required: None, items: None, enum_values: None,
+                    format: None,
+                    properties: None,
+                    required: None,
+                    items: None,
+                    enum_values: None,
                 },
                 description: Some(format!("Filter value for column '{}'", col)),
             });
@@ -345,7 +387,11 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
 
         let base_route = meta.route_path.to_string();
         let list_item = paths.entry(base_route.clone()).or_insert(PathItem {
-            get: None, post: None, put: None, delete: None, patch: None
+            get: None,
+            post: None,
+            put: None,
+            delete: None,
+            patch: None,
         });
         list_item.get = Some(Operation {
             summary: format!("List {} records", table_slug),
@@ -366,7 +412,11 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
                                 MediaType {
                                     schema: Schema {
                                         type_: "string".to_string(),
-                                        format: None, properties: None, required: None, items: None, enum_values: None,
+                                        format: None,
+                                        properties: None,
+                                        required: None,
+                                        items: None,
+                                        enum_values: None,
                                     },
                                 },
                             );
@@ -382,11 +432,18 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
         // ---- DETAIL ENDPOINT ----
         let detail_path = format!("{}/{{id}}", base_route.trim_end_matches('/'));
         let detail_item = paths.entry(detail_path).or_insert(PathItem {
-            get: None, post: None, put: None, delete: None, patch: None
+            get: None,
+            post: None,
+            put: None,
+            delete: None,
+            patch: None,
         });
         detail_item.get = Some(Operation {
             summary: format!("Get {} record details", table_slug),
-            description: Some(format!("Get a single {} record with all fields.", table_slug)),
+            description: Some(format!(
+                "Get a single {} record with all fields.",
+                table_slug
+            )),
             operation_id: format!("get_{}", table_slug),
             tags: vec![table_slug.to_string()],
             parameters: vec![Parameter {
@@ -395,7 +452,11 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
                 required: true,
                 schema: Schema {
                     type_: "string".to_string(),
-                    format: None, properties: None, required: None, items: None, enum_values: None,
+                    format: None,
+                    properties: None,
+                    required: None,
+                    items: None,
+                    enum_values: None,
                 },
                 description: Some("Record ID".to_string()),
             }],
@@ -412,7 +473,11 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
                                 MediaType {
                                     schema: Schema {
                                         type_: "string".to_string(),
-                                        format: None, properties: None, required: None, items: None, enum_values: None,
+                                        format: None,
+                                        properties: None,
+                                        required: None,
+                                        items: None,
+                                        enum_values: None,
                                     },
                                 },
                             );
@@ -420,7 +485,13 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
                         }),
                     },
                 );
-                res.insert("404".to_string(), Response { description: "Not Found".to_string(), content: None });
+                res.insert(
+                    "404".to_string(),
+                    Response {
+                        description: "Not Found".to_string(),
+                        content: None,
+                    },
+                );
                 res
             },
             request_body: None,
@@ -438,7 +509,11 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
                 required: true,
                 schema: Schema {
                     type_: "string".to_string(),
-                    format: None, properties: None, required: None, items: None, enum_values: None,
+                    format: None,
+                    properties: None,
+                    required: None,
+                    items: None,
+                    enum_values: None,
                 },
                 description: Some("Record ID to delete".to_string()),
             }],
@@ -446,17 +521,17 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
                 let mut res = HashMap::new();
                 res.insert(
                     "200".to_string(),
-                    Response { 
-                        description: "Record successfully deleted".to_string(), 
-                        content: None 
-                    }
+                    Response {
+                        description: "Record successfully deleted".to_string(),
+                        content: None,
+                    },
                 );
                 res.insert(
-                    "404".to_string(), 
-                    Response { 
-                        description: "Record not found".to_string(), 
-                        content: None 
-                    }
+                    "404".to_string(),
+                    Response {
+                        description: "Record not found".to_string(),
+                        content: None,
+                    },
                 );
                 res
             },
@@ -466,7 +541,11 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
         // ---- BULK DELETE ----
         let bulk_path = format!("{}/bulk-delete", base_route.trim_end_matches('/'));
         let bulk_item = paths.entry(bulk_path).or_insert(PathItem {
-            get: None, post: None, put: None, delete: None, patch: None
+            get: None,
+            post: None,
+            put: None,
+            delete: None,
+            patch: None,
         });
         bulk_item.post = Some(Operation {
             summary: format!("Bulk delete {} records", table_slug),
@@ -476,7 +555,13 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
             parameters: vec![],
             responses: {
                 let mut res = HashMap::new();
-                res.insert("200".to_string(), Response { description: "Success".to_string(), content: None });
+                res.insert(
+                    "200".to_string(),
+                    Response {
+                        description: "Success".to_string(),
+                        content: None,
+                    },
+                );
                 res
             },
             request_body: Some(RequestBody {
@@ -495,13 +580,18 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
                                         "ids".to_string(),
                                         Schema {
                                             type_: "string".to_string(),
-                                            format: None, properties: None, required: None, items: None, enum_values: None,
+                                            format: None,
+                                            properties: None,
+                                            required: None,
+                                            items: None,
+                                            enum_values: None,
                                         },
                                     );
                                     props
                                 }),
                                 required: Some(vec!["ids".to_string()]),
-                                items: None, enum_values: None,
+                                items: None,
+                                enum_values: None,
                             },
                         },
                     );
@@ -513,11 +603,18 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
         // ---- PATCH CELL ----
         let patch_path = format!("{}/update-cell", base_route.trim_end_matches('/'));
         let patch_item = paths.entry(patch_path).or_insert(PathItem {
-            get: None, post: None, put: None, delete: None, patch: None
+            get: None,
+            post: None,
+            put: None,
+            delete: None,
+            patch: None,
         });
         patch_item.patch = Some(Operation {
             summary: format!("Update a single cell in {} table", table_slug),
-            description: Some(format!("Update a single field/column of a {} record.", table_slug)),
+            description: Some(format!(
+                "Update a single field/column of a {} record.",
+                table_slug
+            )),
             operation_id: format!("patch_cell_{}", table_slug),
             tags: vec![table_slug.to_string()],
             parameters: vec![],
@@ -534,7 +631,11 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
                                 MediaType {
                                     schema: Schema {
                                         type_: "string".to_string(),
-                                        format: None, properties: None, required: None, items: None, enum_values: None,
+                                        format: None,
+                                        properties: None,
+                                        required: None,
+                                        items: None,
+                                        enum_values: None,
                                     },
                                 },
                             );
@@ -544,7 +645,10 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
                 );
                 res.insert(
                     "400".to_string(),
-                    Response { description: "Bad Request".to_string(), content: None }
+                    Response {
+                        description: "Bad Request".to_string(),
+                        content: None,
+                    },
                 );
                 res
             },
@@ -564,27 +668,40 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
                                         "id".to_string(),
                                         Schema {
                                             type_: "string".to_string(),
-                                            format: None, properties: None, required: None, items: None, enum_values: None,
+                                            format: None,
+                                            properties: None,
+                                            required: None,
+                                            items: None,
+                                            enum_values: None,
                                         },
                                     );
                                     props.insert(
                                         "column".to_string(),
                                         Schema {
                                             type_: "string".to_string(),
-                                            format: None, properties: None, required: None, items: None, enum_values: None,
+                                            format: None,
+                                            properties: None,
+                                            required: None,
+                                            items: None,
+                                            enum_values: None,
                                         },
                                     );
                                     props.insert(
                                         "table_to_modify".to_string(),
                                         Schema {
                                             type_: "string".to_string(),
-                                            format: None, properties: None, required: None, items: None, enum_values: None,
+                                            format: None,
+                                            properties: None,
+                                            required: None,
+                                            items: None,
+                                            enum_values: None,
                                         },
                                     );
                                     props
                                 }),
                                 required: Some(vec!["id".to_string(), "column".to_string()]),
-                                items: None, enum_values: None,
+                                items: None,
+                                enum_values: None,
                             },
                         },
                     );
@@ -607,11 +724,21 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
         for action in actions {
             let action_path = format!("/admin/{}/action/{{action_name}}", table_slug);
             let action_item = paths.entry(action_path).or_insert(PathItem {
-                get: None, post: None, put: None, delete: None, patch: None
+                get: None,
+                post: None,
+                put: None,
+                delete: None,
+                patch: None,
             });
             action_item.post = Some(Operation {
-                summary: format!("Execute custom action '{}' on {} table", action.label, table_slug),
-                description: Some(format!("Execute the '{}' custom action for {} records.", action.label, table_slug)),
+                summary: format!(
+                    "Execute custom action '{}' on {} table",
+                    action.label, table_slug
+                ),
+                description: Some(format!(
+                    "Execute the '{}' custom action for {} records.",
+                    action.label, table_slug
+                )),
                 operation_id: format!("action_{}_{}", table_slug, action.label.replace(" ", "_")),
                 tags: vec![table_slug.to_string(), "custom_actions".to_string()],
                 parameters: vec![Parameter {
@@ -620,7 +747,10 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
                     required: true,
                     schema: Schema {
                         type_: "string".to_string(),
-                        format: None, properties: None, required: None, items: None,
+                        format: None,
+                        properties: None,
+                        required: None,
+                        items: None,
                         enum_values: Some(vec![action.label.to_string()]),
                     },
                     description: Some("Action name".to_string()),
@@ -638,7 +768,11 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
                                     MediaType {
                                         schema: Schema {
                                             type_: "string".to_string(),
-                                            format: None, properties: None, required: None, items: None, enum_values: None,
+                                            format: None,
+                                            properties: None,
+                                            required: None,
+                                            items: None,
+                                            enum_values: None,
                                         },
                                     },
                                 );
@@ -664,10 +798,16 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
                                             "ids".to_string(),
                                             Schema {
                                                 type_: "array".to_string(),
-                                                format: None, properties: None, required: None,
+                                                format: None,
+                                                properties: None,
+                                                required: None,
                                                 items: Some(Box::new(Schema {
                                                     type_: "string".to_string(),
-                                                    format: None, properties: None, required: None, items: None, enum_values: None,
+                                                    format: None,
+                                                    properties: None,
+                                                    required: None,
+                                                    items: None,
+                                                    enum_values: None,
                                                 })),
                                                 enum_values: None,
                                             },
@@ -675,7 +815,8 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
                                         props
                                     }),
                                     required: Some(vec!["ids".to_string()]),
-                                    items: None, enum_values: None,
+                                    items: None,
+                                    enum_values: None,
                                 },
                             },
                         );
