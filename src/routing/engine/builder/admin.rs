@@ -1,6 +1,6 @@
-use crate::{http::HttpMethod, info};
 use crate::routing::engine::Router;
 use crate::routing::AutoRoute;
+use crate::{http::HttpMethod, info};
 use colored::*;
 // shared dependency if EITHER feature is enabled
 #[cfg(any(feature = "swagger", feature = "admin"))]
@@ -16,17 +16,20 @@ use {
 use {
     crate::database::repository::jql::DynamicColumnSpec,
     crate::database::repository::registry::{ACTIONS_REGISTRY, ADMIN_REGISTRY},
-    crate::gritadmin::auth_handlers::{
+    crate::gritadmin::auth::handlers::{
         handle_login_auth, handle_logout, render_login_page, AdminAuthMiddleware,
     },
-    crate::gritadmin::main_handler::*,
-    crate::gritadmin::metrics::{
+    crate::gritadmin::dashboard::handlers::{
+        handle_custom_action, handle_dashboard,
+        handle_search_palette,
+    },
+    crate::gritadmin::{
+        dashboard::handle_create_table_dynamic,
+        dashboard::responses::*,
         admin_metrics_api_handler, admin_metrics_html_handler, admin_security_matrix_view_handler,
     },
-    crate::prelude::*,
-    crate::security::xss::Sanitizer,
-    crate::trace,
     crate::log_route,
+    crate::prelude::*,
     std::sync::Arc,
 };
 

@@ -1,8 +1,14 @@
 use crate::prelude::*;
+use crate::routing::engine::RequestContext;
 use chrono::{DateTime, Utc};
 use maud::html;
 use maud::Markup;
 use serde::Serialize;
+use sea_orm::{ConnectionTrait, Statement};
+use std::sync::atomic::Ordering;
+use std::time::Instant;
+use sysinfo::System;
+
 
 #[derive(Serialize, Debug)]
 pub struct HardeningMatrix {
@@ -65,11 +71,6 @@ pub struct ProcessMetrics {
     pub uptime_seconds: u64,
     pub pid: u32,
 }
-
-use sea_orm::{ConnectionTrait, Statement};
-use std::sync::atomic::Ordering;
-use std::time::Instant;
-use sysinfo::System;
 
 // Keep track of application startup time globally
 lazy_static::lazy_static! {
@@ -430,126 +431,4 @@ pub fn render_hardening_matrix(matrix: &HardeningMatrix) -> maud::Markup {
             }
         }
     }
-}
-
-// GET /admin/api/metrics json
-pub async fn admin_metrics_api_handler(ctx: RequestContext) -> Response {
-    // Fetch real-time snapshot metrics safely
-    let metrics_payload = gather_all_metrics(&ctx).await;
-
-    // Serialize back out into a structured standard JSON text layout
-    Response::json(200, &metrics_payload)
-}
-
-// GET /admin/metrics html
-pub async fn admin_metrics_html_handler(ctx: RequestContext) -> Response {
-    // Fetch real-time snapshot metrics safely
-    let metrics_payload = gather_all_metrics(&ctx).await;
-
-    // Render the Maud template code component into a raw String
-    let rendered_html = render_metrics_dashboard(&metrics_payload).into_string();
-
-    // Return the response marked explicitly as HTML payload
-    Response::ok(rendered_html)
-}
-
-// GET /admin/settings/security
-pub async fn admin_security_matrix_view_handler(ctx: RequestContext) -> Response {
-    let current_user_authenticated = ctx.claims.is_some();
-
-    // Extract GritShield Atomic Performance Metrics
-    let total_blocked_ips = ctx.telemetry.total_blocked_ips.load(Ordering::Relaxed);
-    let total_rate_limited_reqs = ctx
-        .telemetry
-        .total_rate_limited_reqs
-        .load(Ordering::Relaxed);
-
-    let is_production =
-        std::env::var("APP_ENV").unwrap_or_else(|_| "Development".to_string()) == "production";
-    let is_ssl = ctx
-        .headers
-        .get("x-forwarded-proto")
-        .map(|v| v == "https")
-        .unwrap_or(false);
-
-    // Scan headers mapping inside RequestContext case-insensitively
-    let has_csp = ctx.headers.contains_key("content-security-policy");
-    let has_nosniff = ctx
-        .headers
-        .get("x-content-type-options")
-        .map(|v| v.to_lowercase() == "nosniff")
-        .unwrap_or(false);
-    let has_frame_opt = ctx.headers.contains_key("x-frame-options");
-    let has_hsts = ctx.headers.contains_key("strict-transport-security");
-
-    // Safely extract and audit incoming cookies inside the Mutex guard
-    let mut audited_cookies = Vec::new();
-    {
-        if let Ok(jar_guard) = ctx.cookies.lock() {
-            // Read from your provided `incoming: HashMap<String, String>` map structure
-            for (name, value) in &jar_guard.incoming {
-                // Run a server policy audit: cookies should have strict prefixes like __Host- or __Secure-
-                let compliance = if name.starts_with("__Host-")
-                    || name.starts_with("__Secure-")
-                    || name == "session_id"
-                {
-                    "Secure Compliant"
-                } else {
-                    "Needs Review"
-                };
-
-                // Truncate long tokens (like session JWTs) securely to keep UI neat
-                let preview = if value.len() > 16 {
-                    format!("{}...", &value[0..12])
-                } else {
-                    value.clone()
-                };
-
-                audited_cookies.push(InboundCookieDetails {
-                    name: name.clone(),
-                    value_preview: preview,
-                    server_policy_compliance: compliance,
-                });
-            }
-        }
-    }
-
-    // Check if the firewall has actively blocked IPs or rate-limited requests to set degraded state
-    let is_rate_limiting_degraded = total_blocked_ips > 0 || total_rate_limited_reqs > 100;
-
-    // Identify active admin session count (mocked to 1 or pull from dynamic tracking system if available)
-    let live_admin_sessions = if current_user_authenticated { 1 } else { 0 };
-
-    // Construct state model package
-    let matrix_state = HardeningMatrix {
-        timestamp: chrono::Utc::now(),
-        ssl_active: is_ssl,
-        database_encryption_status: if is_production {
-            "AES-256-GCM Cryptographic Active"
-        } else {
-            "Unencrypted Volume Map"
-        },
-        max_login_attempts: 5,
-        environment_mode: if is_production {
-            "Production".to_string()
-        } else {
-            "Development".to_string()
-        },
-
-        csp_enabled: has_csp,
-        nosniff_enabled: has_nosniff,
-        clickjacking_protected: has_frame_opt,
-        hsts_enabled: has_hsts,
-
-        current_request_authenticated: current_user_authenticated,
-        incoming_cookies: audited_cookies,
-
-        // Missing fields added here to satisfy structural initialization
-        active_admin_sessions: live_admin_sessions,
-        rate_limiting_degraded: is_rate_limiting_degraded,
-    };
-
-    let html_payload = render_hardening_matrix(&matrix_state).into_string();
-
-    Response::ok(html_payload)
 }

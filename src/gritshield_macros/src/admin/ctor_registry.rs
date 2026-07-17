@@ -50,7 +50,7 @@ pub fn generate_registration(
                             db: (*db).clone(),
                         };
 
-                        #crate_root::gritadmin::main_handler::handle_list(
+                        #crate_root::gritadmin::dashboard::handle_list(
                             ctx,
                             repo,
                             table_name,
@@ -68,7 +68,7 @@ pub fn generate_registration(
                             db: (*db).clone(),
                         };
 
-                        #crate_root::gritadmin::main_handler::handle_search(
+                        #crate_root::gritadmin::dashboard::handle_search(
                             ctx,
                             repo,
                             table_name,
@@ -86,7 +86,7 @@ pub fn generate_registration(
                             db: (*db).clone(),
                         };
 
-                        #crate_root::gritadmin::main_handler::handle_delete(
+                        #crate_root::gritadmin::dashboard::handle_delete(
                             ctx,
                             repo,
                             table_name,
@@ -104,7 +104,7 @@ pub fn generate_registration(
                             db: (*db).clone(),
                         };
 
-                        #crate_root::gritadmin::main_handler::handle_patch(
+                        #crate_root::gritadmin::dashboard::handle_patch(
                             ctx,
                             repo,
                             table_name,
@@ -121,7 +121,7 @@ pub fn generate_registration(
                         let repo = #name {
                             db: (*db).clone(),
                         };
-                        #crate_root::gritadmin::main_handler::handle_custom_search_viewer(
+                        #crate_root::gritadmin::dashboard::handle_custom_search_viewer(
                             ctx,
                             repo,
                             table_name,
@@ -137,7 +137,7 @@ pub fn generate_registration(
                     Box::pin(async move {
                         let db = ctx.db.clone().expect("DB connection missing");
                         let repo = #name { db: (*db).clone() };
-                        #crate_root::gritadmin::main_handler::handle_detail(
+                        #crate_root::gritadmin::dashboard::handle_detail(
                             ctx,
                             repo,
                             table_name,
@@ -154,7 +154,7 @@ pub fn generate_registration(
                     Box::pin(async move {
                         let db = ctx.db.clone().expect("DB connection missing");
                         let repo = #name { db: (*db).clone() };
-                        #crate_root::gritadmin::main_handler::handle_bulk_delete(
+                        #crate_root::gritadmin::dashboard::handle_bulk_delete(
                             ctx,
                             repo,
                             table_name,
@@ -171,7 +171,7 @@ pub fn generate_registration(
                     Box::pin(async move {
                         let db = ctx.db.clone().expect("DB connection missing");
                         let repo = #name { db: (*db).clone() };
-                        #crate_root::gritadmin::main_handler::handle_bulk_create(
+                        #crate_root::gritadmin::dashboard::handle_bulk_create(
                             ctx,
                             repo,
                             table_name,
@@ -188,7 +188,7 @@ pub fn generate_registration(
                     Box::pin(async move {
                         let db = ctx.db.clone().expect("DB connection missing");
                         let repo = #name { db: (*db).clone() };
-                        #crate_root::gritadmin::main_handler::handle_bulk_create_modal(
+                        #crate_root::gritadmin::dashboard::handle_bulk_create_modal(
                             ctx,
                             repo,
                             table_name,
@@ -204,7 +204,7 @@ pub fn generate_registration(
                     Box::pin(async move {
                         let db = ctx.db.clone().expect("DB connection missing");
                         let repo = #name { db: (*db).clone() };
-                        #crate_root::gritadmin::main_handler::handle_export(
+                        #crate_root::gritadmin::dashboard::handle_export(
                             ctx,
                             repo,
                             table_name,
