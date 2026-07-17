@@ -27,7 +27,7 @@ macro_rules! register_ws {
 
 ```rust
 use futures_util::sink::SinkExt;
-use gritshield::{futures::StreamExt, routing::trie::RequestContext};
+use gritshield::{futures::StreamExt, routing::engine::RequestContext};
 use tokio::net::TcpStream;
 use tokio_tungstenite::WebSocketStream;
 

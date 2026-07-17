@@ -1,5 +1,5 @@
 use crate::http::response::Response;
-use crate::routing::trie::RequestContext;
+use crate::routing::engine::RequestContext;
 use crate::security::rate_limit::RateLimiter;
 use crate::security::xss::Sanitizer;
 use crate::middleware::{Middleware, MiddlewareResult};

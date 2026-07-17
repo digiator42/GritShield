@@ -17,13 +17,13 @@ gritshield = { path = "../gritshield" }
 
 ## Supported Macros
 
-| Macro     | HTTP Method | Supports Role |
-|-----------|-------------|---------------|
-| `#[get]`  | GET         | Yes           |
-| `#[post]` | POST        | Yes           |
-| `#[put]`  | PUT         | Yes           |
-| `#[patch]`| PATCH       | Yes           |
-| `#[delete]` | DELETE    | Yes           |
+| Macro       | HTTP Method | Supports Role |
+| ----------- | ----------- | ------------- |
+| `#[get]`    | GET         | Yes           |
+| `#[post]`   | POST        | Yes           |
+| `#[put]`    | PUT         | Yes           |
+| `#[patch]`  | PATCH       | Yes           |
+| `#[delete]` | DELETE      | Yes           |
 
 ## Syntax Options
 
@@ -44,7 +44,7 @@ gritshield = { path = "../gritshield" }
 
 ## Requirements
 
-- Your handler must accept `gritshield::routing::trie::RequestContext`
+- Your handler must accept `gritshield::routing::engine::RequestContext`
 - Your handler should return a type that implements `IntoResponse`
 
 ---

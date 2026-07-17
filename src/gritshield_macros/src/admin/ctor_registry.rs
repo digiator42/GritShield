@@ -132,7 +132,7 @@ pub fn generate_registration(
 
             let detail_handler: #crate_root::database::repository::registry::AdminHandlerFn =
                 ::std::sync::Arc::new(move |ctx| {
-                    use #crate_root::routing::trie::IntoResponse;
+                    use #crate_root::routing::engine::IntoResponse;
                     let table_name = table_name;
                     Box::pin(async move {
                         let db = ctx.db.clone().expect("DB connection missing");
@@ -149,7 +149,7 @@ pub fn generate_registration(
 
             let bulk_delete_handler: #crate_root::database::repository::registry::AdminHandlerFn =
                 ::std::sync::Arc::new(move |ctx| {
-                    use #crate_root::routing::trie::IntoResponse;
+                    use #crate_root::routing::engine::IntoResponse;
                     let table_name = table_name;
                     Box::pin(async move {
                         let db = ctx.db.clone().expect("DB connection missing");
@@ -166,7 +166,7 @@ pub fn generate_registration(
 
             let bulk_create_records_handler: #crate_root::database::repository::registry::AdminHandlerFn =
                 ::std::sync::Arc::new(move |ctx| {
-                    use #crate_root::routing::trie::IntoResponse;
+                    use #crate_root::routing::engine::IntoResponse;
                     let table_name = table_name;
                     Box::pin(async move {
                         let db = ctx.db.clone().expect("DB connection missing");
@@ -183,7 +183,7 @@ pub fn generate_registration(
 
             let bulk_create_modal_handler: #crate_root::database::repository::registry::AdminHandlerFn =
                 ::std::sync::Arc::new(move |ctx| {
-                    use #crate_root::routing::trie::IntoResponse;
+                    use #crate_root::routing::engine::IntoResponse;
                     let table_name = table_name;
                     Box::pin(async move {
                         let db = ctx.db.clone().expect("DB connection missing");
@@ -230,7 +230,6 @@ pub fn generate_registration(
                 export_handler,
             };
 
-            println!("REGISTERING ADMIN MODEL: {}", table_name);
 
             #crate_root::database::repository::registry::register_model(table_name, meta);
         }

@@ -116,7 +116,7 @@ Rust
 
 ```rust
 use std::sync::Arc;
-use gritshield::routing::trie::RequestContext;
+use gritshield::routing::engine::RequestContext;
 use gritshield::http::response::Response;
 use crate::services::RedisService;
 

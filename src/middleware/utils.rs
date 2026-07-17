@@ -1,9 +1,9 @@
 // src/middleware/utils.rs
-use std::sync::{Arc, Mutex};
 use crate::http::response::Response;
-use crate::routing::trie::RequestContext;
+use crate::routing::engine::RequestContext;
 use crate::security::jwt::Claims;
 use crate::security::session::Session;
+use std::sync::{Arc, Mutex};
 
 pub enum MiddlewareResult {
     Next(Option<MiddlewareState>), // State can hold session data, claims, or both

@@ -1,6 +1,6 @@
 use crate::root::layout::main_layout;
 use gritshield::http::response::Response;
-use gritshield::routing::trie::RequestContext;
+use gritshield::routing::engine::RequestContext;
 use gritshield::security::xss::Sanitizer;
 use maud::html;
 

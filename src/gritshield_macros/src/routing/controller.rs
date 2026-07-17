@@ -141,8 +141,8 @@ pub fn expand_http_method(
     Ok(quote! {
         #input_fn
 
-        #vis fn #wrapper_name(ctx: gritshield::routing::trie::RequestContext) -> gritshield::futures::future::BoxFuture<'static, gritshield::http::response::Response> {
-            use gritshield::routing::trie::IntoResponse;
+        #vis fn #wrapper_name(ctx: gritshield::routing::engine::RequestContext) -> gritshield::futures::future::BoxFuture<'static, gritshield::http::response::Response> {
+            use gritshield::routing::engine::IntoResponse;
             use gritshield::futures::future::FutureExt;
 
             #(#dependency_resolutions)*
@@ -153,7 +153,7 @@ pub fn expand_http_method(
         }
 
         gritshield::inventory::submit! {
-            gritshield::routing::trie::AutoRoute {
+            gritshield::routing::engine::AutoRoute {
                 path: #path,
                 method: gritshield::http::request::HttpMethod::#http_method_ident,
                 handler: #wrapper_name,
@@ -313,8 +313,8 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
                 });
 
                 inventory_submissions.push(quote! {
-                    fn #wrapper_name(ctx: gritshield::routing::trie::RequestContext) -> gritshield::futures::future::BoxFuture<'static, gritshield::http::response::Response> {
-                        use gritshield::routing::trie::IntoResponse;
+                    fn #wrapper_name(ctx: gritshield::routing::engine::RequestContext) -> gritshield::futures::future::BoxFuture<'static, gritshield::http::response::Response> {
+                        use gritshield::routing::engine::IntoResponse;
                         use gritshield::futures::future::FutureExt;
 
                         async move {
@@ -323,7 +323,7 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
                     }
 
                     gritshield::inventory::submit! {
-                        gritshield::routing::trie::AutoRoute {
+                        gritshield::routing::engine::AutoRoute {
                             path: #combined_path,
                             method: gritshield::http::request::HttpMethod::#http_method_ident,
                             handler: #wrapper_name,

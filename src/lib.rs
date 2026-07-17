@@ -1,9 +1,9 @@
 pub mod core;
 pub mod database;
-pub mod routing;
 pub mod http;
-pub mod middleware;
 pub mod macros;
+pub mod middleware;
+pub mod routing;
 pub mod security;
 pub mod utils;
 
@@ -17,17 +17,17 @@ pub mod gritadmin;
 #[cfg(feature = "admin")]
 pub use gritadmin::shell::admin_shell;
 
-#[cfg(feature = "swagger")]
-pub use gritshield_macros::GritSchema;
+pub use gritshield_macros::action;
+pub use gritshield_macros::component;
+pub use gritshield_macros::controller;
 #[cfg(feature = "admin")]
 pub use gritshield_macros::GritAdmin;
-pub use gritshield_macros::GritRelation;
 pub use gritshield_macros::GritComponent;
 pub use gritshield_macros::GritModel;
+pub use gritshield_macros::GritRelation;
+#[cfg(feature = "swagger")]
+pub use gritshield_macros::GritSchema;
 pub use gritshield_macros::WireContainer;
-pub use gritshield_macros::action;
-pub use gritshield_macros::controller;
-pub use gritshield_macros::component;
 pub use gritshield_macros::{delete, get, patch, post, put};
 
 // explicit module namespace for startup macros
@@ -41,9 +41,9 @@ pub mod startup {
 // -----------------------------------------------------------------
 pub mod deps {
     pub use chrono;
+    pub use futures;
     pub use futures_util;
     pub use once_cell;
-    pub use futures;
     pub use rust_decimal;
     pub use rust_decimal::Decimal;
     pub use sea_orm;
@@ -60,12 +60,13 @@ pub mod deps {
 /// Instead of importing 10 different things, just use:
 /// use gritshield::prelude::*;
 pub mod prelude {
-    pub use crate::macros;
     pub use crate::http::form::{FormData, UploadedFile};
     pub use crate::http::request::Request;
     pub use crate::http::response::Response;
+    pub use crate::http::HttpMethod;
+    pub use crate::macros;
+    pub use crate::routing::engine::{RequestContext, Router};
     pub use crate::routing::templates::TemplateEngine;
-    pub use crate::routing::trie::{RequestContext, Router};
     pub use crate::security::xss::Sanitizer;
 
     // Critical functions
@@ -75,12 +76,12 @@ pub mod prelude {
     // Re-export macros for the prelude
     pub use crate::action;
     pub use crate::controller;
-    #[cfg(feature = "swagger")]
-    pub use crate::GritSchema;
     #[cfg(feature = "admin")]
     pub use crate::GritAdmin;
-    pub use crate::GritRelation;
     pub use crate::GritModel;
+    pub use crate::GritRelation;
+    #[cfg(feature = "swagger")]
+    pub use crate::GritSchema;
     pub use crate::{delete, get, patch, post, put};
 
     // External essentials the developer will always need

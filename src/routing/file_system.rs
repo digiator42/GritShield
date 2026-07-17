@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use crate::http::request::HttpMethod;
-use crate::routing::trie::IntoHandler;
+use crate::routing::engine::IntoHandler;
 
 pub struct RegisteredFileRoute {
     pub method: HttpMethod,

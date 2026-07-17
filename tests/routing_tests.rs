@@ -1,7 +1,7 @@
 use gritshield::futures::future::FutureExt;
 use gritshield::http::request::{HttpMethod, Request};
 use gritshield::http::response::Response;
-use gritshield::routing::trie::{RequestContext, Router, RoutingResult};
+use gritshield::routing::engine::{RequestContext, Router, RoutingResult};
 use gritshield::security::xss::Sanitizer;
 use std::collections::HashMap;
 

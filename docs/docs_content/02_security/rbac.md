@@ -1,4 +1,3 @@
-
 GritShield provides RBAC through session user IDs and middleware.
 
 ## Session-Based RBAC
@@ -6,10 +5,11 @@ GritShield provides RBAC through session user IDs and middleware.
 GritShield provides convenient built-in role checking methods directly on `RequestContext` for clean and secure authorization.
 
 > ### First you need to store user roles in the session after login:
->💡 ShieldResult<T> is `Result<T, ShieldError>`
+>
+> 💡 ShieldResult<T> is `Result<T, ShieldError>`
 
 ```rust
-use gritshield::routing::trie::ShieldResult;
+use gritshield::routing::engine::ShieldResult;
 
 #[post("/login")]
 async fn login(ctx: RequestContext) -> ShieldResult<Response> {
@@ -39,7 +39,9 @@ pub async fn dashboard(ctx: RequestContext) -> Response {
 ```
 
 ## Fixed Role Checking (with Hierarchy)
+
 Rust
+
 ```rust
 pub async fn admin_panel(ctx: RequestContext) -> Response {
     // Simple check
@@ -51,7 +53,7 @@ pub async fn admin_panel(ctx: RequestContext) -> Response {
     Response::ok("Welcome Admin")
 }
 
-// Simpler 
+// Simpler
 pub async fn admin_panel(ctx: RequestContext) -> ShieldResult<Response> {
     // Or using strict guard with ?, Admin passes, Auditor will not!
     ctx.require_role("Operator")?;
@@ -102,9 +104,11 @@ How It Works
                         |
                      [Contributor]
 ```
-- **But** `Operator` cann't access `Manager` or it's `childs` content, because they are on different branches!. 
+
+- **But** `Operator` cann't access `Manager` or it's `childs` content, because they are on different branches!.
 
 ### Now use built-in functions inside your handlers
+
 ```rust
 pub async fn manage_users(ctx: RequestContext) -> Response {
     // Check with inheritance tree

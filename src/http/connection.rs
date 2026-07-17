@@ -4,7 +4,7 @@ use crate::{
     http::{request::Request, response::Response},
     middleware::MiddlewareResult,
     routing::{
-        trie::{RequestContext, Router, RoutingResult, GLOBAL_FALLBACK},
+        engine::{RequestContext, Router, RoutingResult, GLOBAL_FALLBACK},
         websocket::WS_REGISTRY,
     },
     security::{cookies::CookieJar, errors::ShieldError, xss::Sanitizer},

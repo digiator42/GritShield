@@ -2,7 +2,7 @@ use super::models::*;
 use crate::core::schema::SCHEMA_REGISTRY;
 use crate::database::repository::registry::{ACTIONS_REGISTRY, ADMIN_REGISTRY};
 use crate::http::request::HttpMethod;
-use crate::routing::trie::AutoRoute;
+use crate::routing::engine::AutoRoute;
 use std::collections::HashMap;
 
 pub fn generate_openapi_spec() -> OpenApiSpec {

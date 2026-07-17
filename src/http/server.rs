@@ -8,7 +8,7 @@ use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 use tokio::time::{sleep, Duration};
 
-use crate::routing::trie::Router;
+use crate::routing::engine::Router;
 use crate::{http::handle_connection, error, info};
 
 pub async fn ignite(host: &str, port: &str, router: Router) {

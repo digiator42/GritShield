@@ -141,7 +141,7 @@ Rust
 ```rust
 use std::sync::Arc;
 use gritshield::core::ioc::GritComponent;
-use gritshield::routing::trie::RequestContext;
+use gritshield::routing::engine::RequestContext;
 use gritshield::http::response::Response;
 
 pub struct DatabasePool;
@@ -183,7 +183,7 @@ Manually assemble your structural graph. Use `.compile_time_wire(&container)` to
 Rust
 
 ```rust
-use gritshield::routing::trie::{Router, HttpMethod};
+use gritshield::routing::engine::{Router, HttpMethod};
 use gritshield::deps::futures::future::FutureExt;
 
 #[tokio::main]

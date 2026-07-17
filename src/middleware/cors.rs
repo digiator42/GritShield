@@ -1,6 +1,6 @@
 use crate::http::request::HttpMethod;
 use crate::http::response::Response;
-use crate::routing::trie::RequestContext;
+use crate::routing::engine::RequestContext;
 use crate::middleware::{Middleware, MiddlewareResult};
 
 pub struct CorsMiddleware {

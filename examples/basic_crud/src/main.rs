@@ -7,7 +7,7 @@ use gritshield::{
     middleware::AuthMiddleware,
     prelude::*,
     provide,
-    routing::trie::BoxedResponse,
+    routing::engine::BoxedResponse,
     GritComponent, WireContainer,
 };
 

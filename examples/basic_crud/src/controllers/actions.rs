@@ -1,5 +1,3 @@
-// src/actions.rs or inside src/main.rs
-
 use gritshield::action;
 use gritshield::prelude::*;
 use sea_orm::ConnectionTrait;
