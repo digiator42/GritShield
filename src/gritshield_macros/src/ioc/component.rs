@@ -183,6 +183,10 @@ pub fn expand_grit_component(input: DeriveInput) -> TokenStream {
         // ---------------------------------------------------------
         // PATH A: Dynamic / Inventory Magic
         // ---------------------------------------------------------
+        
+        // Only mark it if the dynamic registration hook actually runs!
+        impl ::gritshield::core::ioc::RuntimeInjectable for #name {}
+
         impl ::gritshield::core::ioc::Injectable for #name {
             fn resolve_new(container: &::gritshield::core::ioc::GritContainer) -> Self {
                 Self {

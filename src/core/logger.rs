@@ -53,7 +53,7 @@ impl LogLevel {
 
 // Logger
 pub struct Logger {
-    level: LogLevel,
+    pub level: LogLevel,
 }
 
 impl Logger {

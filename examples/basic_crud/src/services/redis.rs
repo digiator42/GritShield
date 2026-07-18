@@ -1,8 +1,10 @@
-use gritshield::component;
+use gritshield::{component, mark_injectable};
 use redis::aio::ConnectionManager;
 use redis::AsyncCommands;
 use std::sync::Arc;
 use tokio::sync::OnceCell;
+
+mark_injectable!(RedisService);
 
 #[derive(Clone)]
 pub struct RedisService {

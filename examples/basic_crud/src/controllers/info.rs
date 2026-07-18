@@ -34,7 +34,7 @@ impl ApiController {
 
         let user_repo = UserRepository { db: db.clone() };
 
-        let redis = redis.get("Key").await.unwrap().unwrap();
+        // let redis = redis.get("Key").await.unwrap().unwrap();
 
         let sea_user_with_posts = user::Entity::find()
             .filter(user::Column::Email.eq("user_1@example.com"))

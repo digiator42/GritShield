@@ -23,6 +23,7 @@ pub use gritshield_macros::controller;
 #[cfg(feature = "admin")]
 pub use gritshield_macros::GritAdmin;
 pub use gritshield_macros::GritComponent;
+pub use gritshield_macros::GritWire;
 pub use gritshield_macros::GritModel;
 pub use gritshield_macros::GritRelation;
 #[cfg(feature = "swagger")]

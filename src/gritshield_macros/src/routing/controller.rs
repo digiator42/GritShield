@@ -103,6 +103,11 @@ pub fn expand_http_method(
                 let inner_type = extract_inner_arc_type(arg_type).unwrap_or(arg_type);
 
                 dependency_resolutions.push(quote! {
+                    // This forces a stable compile-time check directly on the type itself!
+                    const _: fn() = || {
+                        fn assert_runtime_injectable<T: ::gritshield::core::ioc::RuntimeInjectable>() {}
+                        assert_runtime_injectable::<#inner_type>();
+                    };
                     let #arg_name = ::gritshield::core::ioc::CONTEXT.resolve::<#inner_type>().expect(
                         std::concat!("DI Error: Missing component '", std::stringify!(#inner_type), "' for standalone router handler context")
                     );
@@ -229,6 +234,7 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
                 let is_async = method.sig.asyncness.is_some();
 
                 // Build argument dispatch list dynamically based on handler signatures
+                let mut dispatch_checks = vec![];
                 let mut dispatch_args = vec![];
                 let mut dispatch_dependency_types: Vec<Type> = vec![];
 
@@ -241,6 +247,15 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
                         } else {
                             let inner_type = extract_inner_arc_type(arg_type).unwrap_or(arg_type);
 
+                            // 1. Push a completely clean, independent statement for the compilation check
+                            dispatch_checks.push(quote! {
+                                const _: fn() = || {
+                                    fn assert_runtime_injectable<T: ::gritshield::core::ioc::RuntimeInjectable>() {}
+                                    assert_runtime_injectable::<#inner_type>();
+                                };
+                            });
+
+                            // 2. Keep dispatch_args as a pure value expression[cite: 3]
                             dispatch_args.push(quote! {
                                 ::gritshield::core::ioc::CONTEXT.resolve::<#inner_type>().expect(
                                     std::concat!(
@@ -252,6 +267,7 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
                                     )
                                 )
                             });
+                            
                             dispatch_dependency_types.push(inner_type.clone());
                         }
                     }
@@ -316,6 +332,9 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
                     fn #wrapper_name(ctx: gritshield::routing::engine::RequestContext) -> gritshield::futures::future::BoxFuture<'static, gritshield::http::response::Response> {
                         use gritshield::routing::engine::IntoResponse;
                         use gritshield::futures::future::FutureExt;
+
+                        // Run the compile-time checks safely as standalone statements
+                        #(#dispatch_checks)*
 
                         async move {
                             #handler_call

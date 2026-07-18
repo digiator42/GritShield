@@ -24,8 +24,8 @@ pub struct MockService {
 #[test]
 fn test_dynamic_di_auto_wire_verification() {
     // Submit mock components using framework's provider macro
-    gritshield::provide!(MockDatabase, MockDatabase { url: "sqlite::memory:".into() });
-    gritshield::provide!(MockLogger, MockLogger);
+    gritshield::inject!(MockDatabase, MockDatabase { url: "sqlite::memory:".into() });
+    gritshield::inject!(MockLogger, MockLogger);
 
     // Verify that the graph passes verification successfully
     let verification_result = AutoWire::verify();

@@ -9,6 +9,9 @@ pub trait Injectable: Sized + 'static {
     fn resolve_new(container: &GritContainer) -> Self;
 }
 
+/// Marker trait indicating a type can be implicitly pulled out of the global dynamic `CONTEXT`.
+pub trait RuntimeInjectable {}
+
 // A function pointer type that takes the container reference and yields an Arc trait object
 pub type ComponentFactory = fn(&GritContainer) -> Arc<dyn Any + Send + Sync>;
 
@@ -168,18 +171,33 @@ impl AutoWire {
     }
 }
 
-/// Registers a component that has no `#[component]`/`#[derive(GritComponent)]` of its
-/// own — typically a raw config value (an API key string, a connection URL, a numeric
-/// limit) — while still emitting the `ProvidedComponent` metadata that `AutoWire::verify()`
-/// needs to see it. Use this in place of a bare `AutoWire::component(...)` call so a
-/// forgotten registration shows up as a graph-verification failure instead of a runtime
-/// `.expect()` panic the first time something tries to resolve it.
+/// Pair this with `inject!` once per type — this handles the compile-time bound,
+/// `inject!` handles the runtime registration, and they don't have to happen in the
+/// same place or at the same time.
 ///
 /// ```ignore
-/// provide!(StripeApiKey, StripeApiKey("sk_live_...".to_string()));
+/// // in redis.rs, at module scope, right after `struct RedisService`:
+/// gritshield::mark_injectable!(RedisService);
 /// ```
 #[macro_export]
-macro_rules! provide {
+macro_rules! mark_injectable {
+    ($ty:ty) => {
+        impl $crate::core::ioc::RuntimeInjectable for $ty {}
+    };
+}
+
+/// Registers a runtime-constructed value into the DI container, Safe to call from anywhere,
+/// including inside a function.
+/// This does **not** by itself satisfy a `RuntimeInjectable` bound on `$ty` — call
+/// `mark_injectable!($ty)` once at module scope for that. Forgetting it means `$ty`
+/// registers fine at runtime but any handler that injects it will fail to compile,
+///
+/// ```ignore
+/// let redis_url = std::env::var("REDIS_URL").unwrap();
+/// inject!(RedisService, RedisService::new(&redis_url).unwrap());
+/// ```
+#[macro_export]
+macro_rules! inject {
     ($ty:ty, $value:expr) => {
         $crate::inventory::submit! {
             $crate::core::ioc::ProvidedComponent { name: std::stringify!($ty) }

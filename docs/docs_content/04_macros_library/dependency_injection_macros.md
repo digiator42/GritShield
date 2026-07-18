@@ -134,20 +134,20 @@ AutoWire::boot_di_container();
 
 ### Define Components
 
-Your controller structure remains exactly the same! The `#[derive(GritComponent)]` macro automatically implements constructors for both runtime and compile-time wiring.
+Your controller structure remains exactly the same! But for compile-time wiring you need to annotate the dependency with `#[derive(GritWire)]` macro.
 
 Rust
 
 ```rust
 use std::sync::Arc;
-use gritshield::core::ioc::GritComponent;
+use crate::GritWire;
 use gritshield::routing::engine::RequestContext;
 use gritshield::http::response::Response;
 
 pub struct DatabasePool;
 pub struct PaymentService;
 
-#[derive(Clone, GritComponent)]
+#[derive(Clone, GritWire)]
 pub struct OrderController {
     pub db: Arc<DatabasePool>,
     pub ps: Arc<PaymentService>,

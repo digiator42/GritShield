@@ -1,13 +1,6 @@
 
 GritShield integrates with SeaORM for type-safe, async database access.
 
-## Supported Databases
-
-- PostgreSQL
-- MySQL
-- SQLite
-- (Any database SeaORM supports)
-
 ## Quick Start
 
 ```rust
@@ -42,13 +35,13 @@ impl ActiveModelBehavior for ActiveModel {}
 
 ```rust
 #[get("/users")]
-async fn list_users(ctx: RequestContext) -> Result<Response, FrameworkError> {
+async fn list_users(ctx: RequestContext) -> Result<Response, ShieldError> {
     let db = ctx.db.as_ref().ok_or_else(|| {
-        FrameworkError::DatabaseFailure("No database connection".into())
+        ShieldError::DatabaseFailure("No database connection".into())
     })?;
     
     let users = User::find().all(db.as_ref()).await
-        .map_err(|e| FrameworkError::DatabaseFailure(e.to_string()))?;
+        .map_err(|e| ShieldError::DatabaseFailure(e.to_string()))?;
     
     Response::json(200, &users)
 }

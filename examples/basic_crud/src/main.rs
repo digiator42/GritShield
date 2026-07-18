@@ -1,6 +1,14 @@
 use ::gritshield::deps::futures::FutureExt;
 use gritshield::{
-    GritComponent, WireContainer, component, core::{LogLevel, ioc::AutoWire, logger::Logger, schema::export_openapi}, database::db::{DbConfig, DbManager}, http::request::HttpMethod, middleware::AuthMiddleware, prelude::*, provide, routing::engine::BoxedResponse,
+    component,
+    core::{ioc::AutoWire, logger::Logger, schema::export_openapi, LogLevel},
+    database::db::{DbConfig, DbManager},
+    http::request::HttpMethod,
+    middleware::AuthMiddleware,
+    prelude::*,
+    inject,
+    routing::engine::BoxedResponse,
+    GritComponent, GritWire, WireContainer,
 };
 
 mod controllers;
@@ -11,7 +19,12 @@ mod auth {
 }
 mod services;
 
-async fn auto_wire() {
+// #[get("/hello")]
+// pub async fn system_info(ctx: RequestContext, redis: Arc<OrderController>) -> Response {
+//     Response::ok("")
+// }
+
+fn auto_wire() {
     // provide!(PaymentService, PaymentService::new("Api key....".to_string()));
     // 1. Setup local environment configurations, preferred to get it from env
     let redis_url = "redis://127.0.0.1:6379/";
@@ -19,19 +32,16 @@ async fn auto_wire() {
     // 2. Instantiate your asynchronous Redis service
     let redis_service = RedisService::new(redis_url).unwrap();
 
-    // AutoWire::component(redis_service);
-
     // use provider!,
-    provide!(RedisService, RedisService::new(redis_url).unwrap());
-
-    // 4. Register other manually managed components (like DB pools or keys)
-    // let api_key = "sk_live_secret_token_abc123".to_string();
-    // AutoWire::component(api_key);
+    inject!(RedisService, redis_service);
+    
 }
 
+
 // 1. Define Dependencies
-pub struct DatabasePool;
-pub struct PaymentService;
+pub struct DatabasePool {}
+
+pub struct PaymentService {}
 
 impl PaymentService {
     pub async fn checkout(&self, ctx: RequestContext) -> Response {
@@ -40,20 +50,11 @@ impl PaymentService {
 }
 
 // 2. Define Controller
-// #[derive(Clone, GritComponent)]
+#[derive(Clone, GritWire)]
 pub struct OrderController {
     pub db: Arc<DatabasePool>,
     pub ps: Arc<PaymentService>,
 }
-
-impl OrderController {
-    // Instead of #[controller], we define standard async methods
-    pub async fn checkout(&self, ctx: RequestContext) -> Response {
-        Response::ok("Compile-time safety verified!".to_string())
-    }
-}
-
-pub struct Logger;
 
 // 3. Define Application Container
 #[derive(Clone, WireContainer)] // Automatically proves it has dependencies
@@ -63,17 +64,20 @@ pub struct AppContainer {
     pub log: Arc<Logger>,
 }
 
-// fn auto_wire_compile_time() -> Arc<OrderController> {
-//     // A. Manually assemble dependencies
-//     let container = AppContainer {
-//         db: Arc::new(DatabasePool),
-//         ps: Arc::new(PaymentService),
-//     };
+fn auto_wire_compile_time() -> Arc<OrderController> {
+    // A. Manually assemble dependencies
+    let container = AppContainer {
+        db: Arc::new(DatabasePool {}),
+        ps: Arc::new(PaymentService {}),
+        log: Arc::new(Logger {
+            level: LogLevel::Debug,
+        }),
+    };
 
-// B. Safely build the controller at compile-time (returns Arc<OrderController>)
-// let order_controller = OrderController::compile_time_wire(&container);
-//     order_controller
-// }
+    // B. Safely build the controller at compile-time (returns Arc<OrderController>)
+    let order_controller = OrderController::compile_time_wire(&container);
+    order_controller
+}
 
 #[tokio::main]
 async fn main() {
@@ -81,11 +85,10 @@ async fn main() {
 
     let shared_db = DbManager::connect(db_config).await.unwrap();
 
-    // let order_controller = auto_wire_compile_time();
-    let order_controller = Arc::new(OrderController {
-        db: Arc::new(DatabasePool),
-        ps: Arc::new(PaymentService),
-    });
+    let order_controller = auto_wire_compile_time();
+
+    auto_wire();
+    AutoWire::boot_di_container();
 
     let router = Router::new()
         .route((
@@ -96,14 +99,14 @@ async fn main() {
                 async move { oc.ps.checkout(ctx).await }.boxed()
             },
         ))
-        .add_middleware(AuthMiddleware::new_session(
-            vec![
-                "/auth/login".to_string(),
-                "/api/**".to_string(),
-                "/admin/**".to_string(),
-            ],
-            Some("/api/info/sea-orm"),
-        ))
+        // .add_middleware(AuthMiddleware::new_session(
+        //     vec![
+        //         "/auth/login".to_string(),
+        //         "/api/**".to_string(),
+        //         "/admin/**".to_string(),
+        //     ],
+        //     Some("/api/info/sea-orm"),
+        // ))
         .mount_db(shared_db.clone());
 
     export_openapi("target/schema.json").unwrap();

@@ -46,6 +46,14 @@ pub fn derive_grit_component(input: TokenStream) -> TokenStream {
     ioc::component::expand_grit_component(input)
 }
 
+#[proc_macro_derive(GritWire)]
+pub fn derive_grit_wire(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    ioc::wire::expand_grit_wire(input)
+        .unwrap_or_else(|err| err.to_compile_error())
+        .into()
+}
+
 #[proc_macro_derive(WireContainer)]
 pub fn derive_wire_container(input: TokenStream) -> TokenStream {
     let input = syn::parse_macro_input!(input as DeriveInput);
