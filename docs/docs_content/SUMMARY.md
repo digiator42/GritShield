@@ -12,6 +12,8 @@
   - [Dynamic Routes](03_routing/dynamic-routes.md)
   - [Middleware](03_routing/middleware.md)
 
+- [Admin Panel](04_admin_panel/index.md)
+
 - [Dependency Injection](04_dependency_injection/index.md)
 
 - [Macros Library](04_macros_library/index.md)
