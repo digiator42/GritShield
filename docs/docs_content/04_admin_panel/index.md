@@ -84,7 +84,7 @@ Controls which columns appear in the table and their display order. Columns are 
 ```rust
 grid_columns = ["id", "email", "username", "created_at", "status"]
 ```
-![grid_columns](/images/grid_columns.png)
+![grid_columns](/GritShield/images/grid_columns.png)
 
 ### `read_only`
 
@@ -114,7 +114,7 @@ Any editable field (not in `read_only`) can be modified directly in the grid:
 
 Changes are automatically persisted.
 
-![inline_edit](/images/inline_edit.png)
+![inline_edit](/GritShield/images/inline_edit.png)
 
 ---
 
@@ -152,7 +152,7 @@ Traditional page-by-page navigation with page numbers.
 
 **Toggle between modes** using the "Navigation" dropdown in the filter bar.
 
-![infinite_scroll](/images/infinite_scroll.png)
+![infinite_scroll](/GritShield/images/infinite_scroll.png)
 
 ---
 
@@ -186,7 +186,7 @@ SELECT users.username, posts.title FROM users JOIN posts ON users.id = posts.use
 SELECT id, email, created_at FROM users WHERE created_at > '2024-01-01'
 ```
 
-![jql_explorer](/images/query_explorer.png)
+![jql_explorer](/GritShield/images/query_explorer.png)
 
 ---
 
