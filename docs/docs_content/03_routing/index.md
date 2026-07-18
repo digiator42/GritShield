@@ -22,8 +22,8 @@ async fn user(ctx: RequestContext) -> String {
     format!("User: {}", ctx.params.get("id").unwrap().as_str())
 }
 
-// Wildcard routes: /static/*path
-#[get("/static/*path")]
+// Wildcard routes: /static/**
+#[get("/static/:*path")]
 async fn static_files(ctx: RequestContext) -> Response {
     let path = ctx.params.get("*path").unwrap().as_str();
     Response::static_file(&format!("static/{}", path))
@@ -36,7 +36,7 @@ Routes are matched in the order they're added. Wildcards have lowest priority:
 
 1. Exact matches (`/users/profile`)
 2. Parameter matches (`/users/:id`)
-3. Wildcard matches (`/docs/*path`)
+3. Wildcard matches (`/docs/:*path`)
 
 ## Manual Registration
 

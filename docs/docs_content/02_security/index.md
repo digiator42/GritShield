@@ -62,7 +62,7 @@ Enabled automatically in session mode.
 HTML forms must include csrf_token value:
 
 ```rust
-let token = ctx.get_csrf_token();
+let csrf_token = ctx.get_csrf_token();
 
 // using maud
 render!(ctx, "title", html! {

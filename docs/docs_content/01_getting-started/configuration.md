@@ -70,8 +70,24 @@ Access them with `get_env()` or `std::env::var()` directly.
 
 ```rust
 // Adds logger info for each request, status, cookies, ...
-let mut router = Router::new().mount_logger();
+let mut router = Router::new().mount_logger(LogLevel::Debug);
 
-//          localhost,  port,  router
+// Each level gives you the lower levels logs, Debug shows Info, Warn, Error logs
+pub enum LogLevel {
+    Off = 0,
+    Error = 1,
+    Warn = 2,
+    Info = 3,
+    Debug = 4,
+    Trace = 5,
+}
+
+//     localhost,  port,  router
 ignite("127.0.0.1", "8080", router).await;
+```
+
+Or simply add .env var
+
+```env
+GRIT_LOG=debug
 ```

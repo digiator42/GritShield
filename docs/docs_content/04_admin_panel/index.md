@@ -8,7 +8,7 @@ GritAdmin provides an auto-generated administrative interface for your database 
 
 ### 1. Configure Admin Credentials
 
-Add the following to your `.env` file:
+Add the following to your `.env` file or change with your credentials:
 
 ```env
 GRITSHIELD_ADMIN_USER=admin
@@ -21,15 +21,15 @@ These credentials will be used to log into the admin panel at `/admin/login`.
 
 ### 2. Define Your Model
 
-First, define your database entity using SeaORM with the `GritModel` and `GritRelation` macros:
+First, define your database entity using SeaORM:
 
 ```rust
 // src/models/user.rs
 use chrono::NaiveDateTime;
-use gritshield::{GritModel, GritRelation};
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
-#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize, GritModel)]
+
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "users")]
 pub struct Model {
     #[sea_orm(primary_key)]
@@ -40,7 +40,8 @@ pub struct Model {
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
 }
-#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation, GritRelation)]
+
+#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 #[grit(table = "users")]
 pub enum Relation {
     #[sea_orm(has_many = "super::post::Entity")]
@@ -59,13 +60,22 @@ use gritshield::GritAdmin;
 #[derive(GritAdmin)]
 #[repository(
     searchable = ["email", "username"],       // Columns searchable via admin search
-    grid_columns = ["id", "email", "username", "created_at", "status"],
-    read_only = ["id", "created_at"],         // Non-editable columns
+    grid_columns = ["id", "email", "username", "created_at", "status"], // Define table order
+    read_only = ["id", "created_at"],         // Non-editable columns, by default `id` is not editable
 )]
 pub struct UserRepository {
     pub db: sea_orm::DatabaseConnection,
 }
 ```
+> [!IMPORTANT]
+> GriAdmin expects your model to be at root `src/models/user.rs`, if not, define the model path in repository macro
+
+```rust
+#[repository(
+    entity = "crate::module::model"
+)]
+```
+
 ---
 
 ## Repository Attributes Explained
@@ -188,70 +198,6 @@ SELECT id, email, created_at FROM users WHERE created_at > '2024-01-01'
 
 ![jql_explorer](/GritShield/images/query_explorer.png)
 
----
-
-## Complete Example
-
-Here's a complete example with a User and Post relationship:
-
-### Models
-
-```rust
-// src/models/user.rs
-#[sea_orm(table_name = "users")]
-pub struct User {
-    pub id: i64,
-    pub email: String,
-    pub username: String,
-    pub status: String,
-    pub created_at: NaiveDateTime,
-}
-
-pub enum UserRelation {
-    #[sea_orm(has_many = "super::post::Entity")]
-    Posts,
-}
-// src/models/post.rs
-#[sea_orm(table_name = "posts")]
-pub struct Post {
-    pub id: i64,
-    pub user_id: i64,
-    pub title: String,
-    pub content: String,
-    pub status: String,
-    pub created_at: NaiveDateTime,
-}
-
-pub enum PostRelation {
-    #[sea_orm(belongs_to = "super::user::Entity")]
-    User,
-}
-```
-
-### Repositories
-
-```rust
-// src/repositories/user_repository.rs
-#[derive(GritAdmin)]
-#[repository(
-    searchable = ["email", "username", "status"],
-    grid_columns = ["id", "username", "email", "status", "created_at"],
-    read_only = ["id", "created_at"], // By default id is not editable
-)]
-pub struct UserRepository {
-    pub db: sea_orm::DatabaseConnection,
-}
-// src/repositories/post_repository.rs
-#[derive(GritAdmin)]
-#[repository(
-    searchable = ["title", "content", "status"],
-    grid_columns = ["id", "user_id", "content", "created_at"],
-    read_only = ["created_at"],
-)]
-pub struct PostRepository {
-    pub db: sea_orm::DatabaseConnection,
-}
-```
 ---
 
 ## Running the Admin Panel

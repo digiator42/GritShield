@@ -35,7 +35,7 @@ async fn get_user_post(ctx: RequestContext) -> String {
 Capture multiple path segments:
 
 ```rust
-#[get("/docs/*path")]
+#[get("/docs/:*path")]
 async fn documentation(ctx: RequestContext) -> String {
     let path = ctx.params.get("*path").unwrap().as_str();
     format!("Documentation path: {}", path)
@@ -67,6 +67,11 @@ register_page!(HttpMethod::GET, |_| async { "Hello from file route" });
 
 GritShield automatically discovers `.rs` files under `src/pages` and mounts them.
 
+```rust
+let router = Router::new()
+    .mount_file_routes("src/pages")
+```
+
 ## Parameter Validation
 
 ```rust
@@ -81,7 +86,7 @@ async fn get_user(ctx: RequestContext) -> Result<Response, ShieldError> {
 }
 ```
 
-## Optional Parameters
+## Optional/Query Parameters
 
 For optional parameters, define separate routes or use wildcards:
 
@@ -92,5 +97,3 @@ async fn search(ctx: RequestContext) -> String {
     format!("Searching for: {}", query)
 }
 ```
-
-This uses query strings instead of path parameters for optional values.
