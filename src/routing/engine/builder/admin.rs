@@ -20,13 +20,11 @@ use {
         handle_login_auth, handle_logout, render_login_page, AdminAuthMiddleware,
     },
     crate::gritadmin::dashboard::handlers::{
-        handle_custom_action, handle_dashboard,
-        handle_search_palette,
+        handle_custom_action, handle_dashboard, handle_search_palette, handle_rbac_dashboard,
     },
     crate::gritadmin::{
-        dashboard::handle_create_table_dynamic,
-        dashboard::responses::*,
         admin_metrics_api_handler, admin_metrics_html_handler, admin_security_matrix_view_handler,
+        dashboard::handle_create_table_dynamic, dashboard::responses::*,
     },
     crate::log_route,
     crate::prelude::*,
@@ -352,6 +350,17 @@ impl Router {
 
         log_route!("/admin/api/logout", max_len, "GET");
         self.add_route(HttpMethod::GET, "/admin/api/logout", handle_logout, None);
+
+        // RBAC Security Graph Dashboard Integration
+        let rbac_graph_handler: AdminHandlerFn =
+            Arc::new(|ctx| Box::pin(handle_rbac_dashboard(ctx)));
+        log_route!("/admin/rbac-matrix", max_len, "GET");
+        self.add_route(
+            HttpMethod::GET,
+            "/admin/rbac-matrix",
+            rbac_graph_handler,
+            None,
+        );
 
         // Admin auth middleware
         self.middlewares.push(Box::new(AdminAuthMiddleware::new()));

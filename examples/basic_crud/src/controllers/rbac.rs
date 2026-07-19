@@ -1,6 +1,7 @@
 use gritshield::security::rbac::{Admin, Auditor, DeleteUser, ManageBilling, Manager, ViewLogs};
 use gritshield::security::session::SessionStore;
 use gritshield::{controller, declare_security_caps, prelude::*};
+
 pub struct BillingController;
 
 #[controller("/api/billing")]
@@ -14,7 +15,7 @@ impl BillingController {
     }
 
     #[get("/audit-logs")]
-    #[cap(ViewLogs)] // Works flawlessly for Admin, Manager, and Auditor!
+    #[cap(Admin, ViewLogs, ManageBilling)] // Works flawlessly for Admin, Manager, and Auditor!
     pub async fn get_logs(ctx: RequestContext) -> Response {
         Response::ok("Logs rendered")
     }

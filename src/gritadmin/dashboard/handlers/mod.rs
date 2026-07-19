@@ -6,6 +6,7 @@ pub mod create_table;
 pub mod alter_table;
 pub mod metrics;
 pub mod crud_ops;
+pub mod rbac_graph;
 pub mod record_details;
 
 // Re-export all handlers
@@ -13,6 +14,7 @@ pub use list::handle_list;
 pub use search::handle_search;
 pub use crud_ops::{handle_delete, handle_patch, handle_bulk_delete, handle_bulk_create, handle_bulk_create_modal};
 pub use record_details::handle_detail;
+pub use rbac_graph::handle_rbac_dashboard;
 pub use export_csv::handle_export;
 pub use custom_action::handle_custom_action;
 pub use search::handle_custom_search_viewer;

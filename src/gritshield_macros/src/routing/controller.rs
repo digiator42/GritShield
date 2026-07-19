@@ -190,41 +190,59 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
             // ------------------------------------------------------------------
             // 1. FIRST: Scan for Capability Attributes (Moved to the Top of the Loop)
             // ------------------------------------------------------------------
+            // Find the position of the short `#[cap(...)]` attribute
             let cap_attr_idx = method
                 .attrs
                 .iter()
                 .position(|attr| attr.path().is_ident("cap"));
 
             let mut runtime_security_injection = quote! {};
-            let mut static_compile_fence = quote! {};
+            let mut static_compile_fences = vec![];
 
             if let Some(index) = cap_attr_idx {
                 let attr = &method.attrs[index];
                 if let Meta::List(meta_list) = &attr.meta {
-                    let cap_ident = &meta_list.tokens;
-                    detected_capabilities.push(cap_ident.clone());
+                    // Parse the tokens as a comma-separated list of idents: e.g., ViewLogs, ManageBilling
+                    let caps = meta_list.parse_args_with(
+                        syn::punctuated::Punctuated::<syn::Ident, syn::Token![,]>::parse_terminated,
+                    )?;
 
-                    // Compile-time fence lives safely outside the runtime async engine
-                    static_compile_fence = quote! {
-                        const _: () = {
-                            extern crate self as _downstream;
-                            const fn verify_capability<T: _downstream::GritSecurityCheck>() {}
-                            let _ = verify_capability::<#cap_ident>();
-                        };
-                    };
+                    let mut role_checks = vec![];
 
-                    // Runtime Interception Line: Evaluated during active connection request lifecycle
+                    for cap_ident in caps {
+                        detected_capabilities.push(cap_ident.clone());
+
+                        // 1. Generate static compile-time boundaries for each capability in the list
+                        static_compile_fences.push(quote! {
+                            const _: () = {
+                                extern crate self as _downstream;
+                                const fn verify_capability<T: _downstream::GritSecurityCheck>() {}
+                                let _ = verify_capability::<#cap_ident>();
+                            };
+                        });
+
+                        // 2. Build the runtime role union lookup matching <#cap_ident as GritCapabilityRuntime>
+                        role_checks.push(quote! {
+                            for role in <#cap_ident as crate::GritCapabilityRuntime>::allowed_roles() {
+                                if ctx.has_role(role) {
+                                    authorized = true;
+                                    break;
+                                }
+                            }
+                        });
+                    }
+
+                    // 3. Consolidate them into a single runtime security injection block
                     runtime_security_injection = quote! {
                         let mut authorized = false;
-                        for role in <#cap_ident as crate::GritCapabilityRuntime>::allowed_roles() {
-                            if ctx.has_role(role) {
-                                authorized = true;
-                                break;
-                            }
-                        }
+
+                        // Evaluate all allowed roles across all specified capabilities
+                        #(#role_checks)*
 
                         if !authorized {
-                            return gritshield::http::response::Response::forbidden("403 Forbidden - Insufficient capability privileges");
+                            return gritshield::http::response::Response::forbidden(
+                                "403 Forbidden - Insufficient capability privileges"
+                            );
                         }
                     };
                 }
@@ -378,7 +396,7 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
                         use gritshield::futures::future::FutureExt;
 
                         #(#dispatch_checks)*
-                        #static_compile_fence
+                        #(#static_compile_fences)*
 
                         async move {
                             #runtime_security_injection
