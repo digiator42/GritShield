@@ -2,7 +2,8 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::parse::{Parse, ParseStream};
 use syn::{
-    GenericArgument, Ident, ImplItem, ItemFn, ItemImpl, LitStr, PathArguments, Result, Token, Type,
+    GenericArgument, Ident, ImplItem, ItemFn, ItemImpl, LitStr, Meta, PathArguments, Result, Token,
+    Type,
 };
 
 pub struct RouteArgs {
@@ -179,11 +180,60 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
     let mut input_impl: ItemImpl = syn::parse2(item)?;
     let self_ty = &input_impl.self_ty;
 
+    let mut detected_capabilities = vec![];
     let mut inventory_submissions = vec![];
 
     for item in &mut input_impl.items {
         if let ImplItem::Fn(method) = item {
             let fn_name = &method.sig.ident;
+
+            // ------------------------------------------------------------------
+            // 1. FIRST: Scan for Capability Attributes (Moved to the Top of the Loop)
+            // ------------------------------------------------------------------
+            let cap_attr_idx = method
+                .attrs
+                .iter()
+                .position(|attr| attr.path().is_ident("cap"));
+
+            let mut runtime_security_injection = quote! {};
+            let mut static_compile_fence = quote! {};
+
+            if let Some(index) = cap_attr_idx {
+                let attr = &method.attrs[index];
+                if let Meta::List(meta_list) = &attr.meta {
+                    let cap_ident = &meta_list.tokens;
+                    detected_capabilities.push(cap_ident.clone());
+
+                    // Compile-time fence lives safely outside the runtime async engine
+                    static_compile_fence = quote! {
+                        const _: () = {
+                            extern crate self as _downstream;
+                            const fn verify_capability<T: _downstream::GritSecurityCheck>() {}
+                            let _ = verify_capability::<#cap_ident>();
+                        };
+                    };
+
+                    // Runtime Interception Line: Evaluated during active connection request lifecycle
+                    runtime_security_injection = quote! {
+                        let mut authorized = false;
+                        for role in <#cap_ident as crate::GritCapabilityRuntime>::allowed_roles() {
+                            if ctx.has_role(role) {
+                                authorized = true;
+                                break;
+                            }
+                        }
+
+                        if !authorized {
+                            return gritshield::http::response::Response::forbidden("403 Forbidden - Insufficient capability privileges");
+                        }
+                    };
+                }
+                method.attrs.remove(index);
+            }
+
+            // ------------------------------------------------------------------
+            // 2. SECOND: Parse HTTP Route Methods
+            // ------------------------------------------------------------------
             let mut matched_method = None;
             let mut route_args = None;
 
@@ -230,10 +280,8 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
                 let http_method_ident = Ident::new(&http_method, fn_name.span());
                 let wrapper_name = Ident::new(&format!("{}_wrapper", fn_name), fn_name.span());
 
-                // Check if the method is async
                 let is_async = method.sig.asyncness.is_some();
 
-                // Build argument dispatch list dynamically based on handler signatures
                 let mut dispatch_checks = vec![];
                 let mut dispatch_args = vec![];
                 let mut dispatch_dependency_types: Vec<Type> = vec![];
@@ -247,7 +295,6 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
                         } else {
                             let inner_type = extract_inner_arc_type(arg_type).unwrap_or(arg_type);
 
-                            // 1. Push a completely clean, independent statement for the compilation check
                             dispatch_checks.push(quote! {
                                 const _: fn() = || {
                                     fn assert_runtime_injectable<T: ::gritshield::core::ioc::RuntimeInjectable>() {}
@@ -255,7 +302,6 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
                                 };
                             });
 
-                            // 2. Keep dispatch_args as a pure value expression[cite: 3]
                             dispatch_args.push(quote! {
                                 ::gritshield::core::ioc::CONTEXT.resolve::<#inner_type>().expect(
                                     std::concat!(
@@ -267,7 +313,7 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
                                     )
                                 )
                             });
-                            
+
                             dispatch_dependency_types.push(inner_type.clone());
                         }
                     }
@@ -279,16 +325,12 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
                     .iter()
                     .any(|arg| matches!(arg, syn::FnArg::Receiver(_)));
 
-                // Maintain specific error strings to fit user-facing debugging preferences
                 let missing_controller_msg = std::concat!(
                     "GritShield Routing Fault: Structural Controller component '",
                     std::stringify!(#self_ty),
                     "' was not instantiated in the DI container."
                 );
 
-                // Add controller itself as dependency if it has self
-                // as a dependency of this handler so a forgotten #[component]/
-                // #[derive(GritComponent)] on the controller shows up in verify().
                 if has_self {
                     dispatch_dependency_types.push((**self_ty).clone());
                 }
@@ -306,7 +348,6 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
                     }
                 };
 
-                // Generate the handler call based on sync/async
                 let handler_call = if is_async {
                     quote! {
                         #invocation.await.into_response()
@@ -328,15 +369,19 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
                     }
                 });
 
+                // ------------------------------------------------------------------
+                // 3. THIRD: runtime_security_injection Is Fully Defined & Usable Here!
+                // ------------------------------------------------------------------
                 inventory_submissions.push(quote! {
                     fn #wrapper_name(ctx: gritshield::routing::engine::RequestContext) -> gritshield::futures::future::BoxFuture<'static, gritshield::http::response::Response> {
                         use gritshield::routing::engine::IntoResponse;
                         use gritshield::futures::future::FutureExt;
 
-                        // Run the compile-time checks safely as standalone statements
                         #(#dispatch_checks)*
+                        #static_compile_fence
 
                         async move {
+                            #runtime_security_injection
                             #handler_call
                         }.boxed()
                     }
@@ -357,11 +402,23 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
         }
     }
 
+    let security_checks = detected_capabilities.iter().map(|cap| {
+        quote! {
+            const _: () = {
+                extern crate self as _downstream;
+                const fn verify_capability<T: _downstream::GritSecurityCheck>() {}
+                let _ = verify_capability::<#cap>();
+            };
+        }
+    });
+
     Ok(quote! {
         #input_impl
 
         const _: () = {
             #(#inventory_submissions)*
         };
+
+        #(#security_checks)*
     })
 }

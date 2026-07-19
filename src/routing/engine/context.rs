@@ -303,7 +303,16 @@ impl RequestContext {
         None
     }
 
+    /// Fallback for dynamic role checking, if set in session it grants access as SuperAdmin
+    pub fn has_super_admin_role(&self, user_role: &str, target_role: &str) -> bool {
+        match (user_role, target_role) {
+            ("SuperAdmin", _) => true, // Global framework override
+            _ => false,
+        }
+    }
+
     /// Non-blocking check evaluating security roles using hierarchical permissions
+    /// Checks for Admin => Operator => Auditor fixed hierarchy
     pub fn has_fixed_role(&self, target_role: &str) -> bool {
         match self.get_user_role() {
             Some(role) => {
@@ -388,18 +397,26 @@ impl RequestContext {
         false
     }
 
-    /// Evaluates BOTH Dynamic Graph Trees AND Fixed System matrices
+    /// Evaluates BOTH Dynamic Graph Trees AND Fixed SuperAdmin role
     /// Prioritizes runtime user-defined inheritance graphs first, falling back to core system rules.
     pub fn has_role(&self, target_role: &str) -> bool {
-        // Evaluate against user-defined dynamic runtime configurations first
-        if let Some(user_role) = self.get_user_role() {
-            if self.check_inheritance(&user_role, target_role) {
-                return true;
-            }
+        let user_role = match self.get_user_role() {
+            Some(role) => role,
+            None => return false, // No role found in session/JWT -> Denied immediately
+        };
+
+        // Direct Match Check
+        if user_role == target_role {
+            return true;
         }
 
-        // FALLBACK — Check hardcoded framework override rules if dynamic checks yield false
-        if self.has_fixed_role(target_role) {
+        // Dynamic Tree Inheritance Check
+        if self.check_inheritance(&user_role, target_role) {
+            return true;
+        }
+
+        // Strict Fixed Fallback to SuperAdmin role
+        if self.has_super_admin_role(&user_role, target_role) {
             return true;
         }
 

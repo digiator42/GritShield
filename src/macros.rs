@@ -169,3 +169,27 @@ macro_rules! log_route {
         );
     };
 }
+
+#[macro_export]
+macro_rules! declare_security_caps {
+    ($( $cap:ty => [ $( $role:ty ),* ] ),* $(,)?) => {
+        // 1. Keep our compile-time structural guard
+        pub trait GritSecurityCheck {}
+
+        // 2. Add a runtime trait to bridge token mappings to strings
+        pub trait GritCapabilityRuntime {
+            fn allowed_roles() -> &'static [&'static str];
+        }
+
+        $(
+            impl GritSecurityCheck for $cap {}
+            
+            impl GritCapabilityRuntime for $cap {
+                fn allowed_roles() -> &'static [&'static str] {
+                    // Automatically stringifies tokens (e.g., Admin -> "Admin")
+                    &[ $( std::stringify!($role) ),* ]
+                }
+            }
+        )*
+    };
+}

@@ -1,15 +1,24 @@
 use ::gritshield::deps::futures::FutureExt;
+use gritshield::security::rbac::{Admin, Auditor, DeleteUser, ManageBilling, Manager, ViewLogs};
 use gritshield::{
     component,
     core::{ioc::AutoWire, logger::Logger, schema::export_openapi, LogLevel},
     database::db::{DbConfig, DbManager},
+    declare_security_caps,
     http::request::HttpMethod,
+    inject,
     middleware::AuthMiddleware,
     prelude::*,
-    inject,
     routing::engine::BoxedResponse,
     GritComponent, GritWire, WireContainer,
 };
+
+// One single source of truth grouped by capability matching your endpoint attributes!
+declare_security_caps! {
+    ManageBilling => [Admin, Manager],
+    DeleteUser    => [Admin],
+    ViewLogs      => [Admin, Manager, Auditor],
+}
 
 mod controllers;
 mod models;
@@ -34,9 +43,7 @@ fn auto_wire() {
 
     // use provider!,
     inject!(RedisService, redis_service);
-    
 }
-
 
 // 1. Define Dependencies
 pub struct DatabasePool {}
@@ -88,7 +95,7 @@ async fn main() {
     let order_controller = auto_wire_compile_time();
 
     auto_wire();
-    AutoWire::boot_di_container();
+    // AutoWire::boot_di_container();
 
     let router = Router::new()
         .route((
@@ -99,15 +106,18 @@ async fn main() {
                 async move { oc.ps.checkout(ctx).await }.boxed()
             },
         ))
-        // .add_middleware(AuthMiddleware::new_session(
-        //     vec![
-        //         "/auth/login".to_string(),
-        //         "/api/**".to_string(),
-        //         "/admin/**".to_string(),
-        //     ],
-        //     Some("/api/info/sea-orm"),
-        // ))
-        .mount_db(shared_db.clone());
+        .add_middleware(AuthMiddleware::new_session(
+            vec![
+                "/auth/login".to_string(),
+                "/api/**".to_string(),
+                "/admin/**".to_string(),
+            ],
+            Some("/api/info/sea-orm"),
+        ))
+        .mount_db(shared_db.clone())
+        .add_role_inheritance("Admin", vec!["Manager", "Operator", "Auditor"])
+        .add_role_inheritance("Manager", vec!["Editor", "Viewer"])
+        .add_role_inheritance("Editor", vec!["Contributor"]);
 
     export_openapi("target/schema.json").unwrap();
 
