@@ -3,9 +3,10 @@ use gritshield::prelude::*;
 use gritshield::GritComponent;
 use serde_json::json;
 
-use crate::DatabasePool;
-use crate::OrderController;
-use crate::PaymentService;
+#[derive(GritComponent)]
+pub struct TestPaymentService {
+    pub secret: Arc<String>,
+}
 
 pub struct TestController {
     pub key: Arc<String>,
@@ -15,10 +16,9 @@ pub struct TestController {
 impl TestController {
     #[get("/api/orders/checkout/test")]
     pub async fn checkout(
-        ste: Arc<String>,
-        payment: Arc<PaymentService>, // <-- Automatically Injected!
+        payment: Arc<TestPaymentService>, // <-- Automatically Injected!
         //   db: Arc<DatabasePool>,        // <-- Automatically Injected!
-        oc: Arc<OrderController>,
+        // oc: Arc<OrderController>,
     ) -> Response {
         // let order_payload = ctx.json_body().await.unwrap();
 

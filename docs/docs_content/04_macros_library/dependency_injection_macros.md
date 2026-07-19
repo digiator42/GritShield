@@ -104,28 +104,58 @@ impl OrderController {
 }
 ```
 
-### `provide!`
+### Explicit Registration
 
-For explicit registration of dependencies (config values, API keys, etc.):
+When registering components that can not be annotated with `#[derive(GritComponent)]` (such as raw third-party clients, or environment configuration parameters), the runtime injection capability is split into two straightforward parts:
+
+#### 1. `mark_injectable!` (Module Scope)
+
+To comply with Rust's strict local definition traits rules and eliminate compilation warnings, you must authorize a type for dynamic injection at the **module level root scope** (outside of function boundaries):
+
+Rust
 
 ```rust
+// at your file or module root level scope
+mark_injectable!(RedisService);
+mark_injectable!(AppConfig);
+```
 
-provide!(PaymentService, PaymentService::new("sk_live_123".to_string()));
+#### 2. `inject!` (Execution Scope)
 
-provide!(AppConfig, AppConfig {
-    max_connections: 100,
-    timeout_seconds: 30,
-});
+Once a type is explicitly marked, instantiate it and store it directly inside the active global runtime environment using `inject!`. This can safely happen inside initialization blocks or async setup routines:
 
+Rust
+
+```rust
+async fn auto_wire() {
+    let redis_url = "redis://127.0.0.1:6379/";
+    let redis_service = RedisService::new(redis_url).unwrap();
+
+    // Safely submit the constructed instance into the container pool
+    inject!(RedisService, redis_service);
+
+    inject!(AppConfig, AppConfig {
+        max_connections: 100,
+        timeout_seconds: 30,
+    });
+}
 ```
 
 ### Verification at Boot
 
-```rust
+To ensure missing references fail fast before serving traffic, ignite and evaluate the dynamic dependency tree inside your bootstrap sequence:
 
-// At application startup, verify all dependencies are registered,
-// you have to call boot_di_container at bootstrap
-AutoWire::boot_di_container();
+Rust
+
+```rust
+#[tokio::main]
+async fn main() {
+    // 1. Run dynamic container setup
+    auto_wire().await;
+
+    // 2. Validate structural graph completeness
+    AutoWire::boot_di_container();
+}
 ```
 
 ## **Paradigm B:**
