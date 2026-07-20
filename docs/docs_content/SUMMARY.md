@@ -6,6 +6,7 @@
 - [Response](02_response/index.md)
 
 - [Security](02_security/index.md)
+  - [Data Sanitization](02_security/data_sanitization.md)
   - [RBAC](02_security/rbac.md)
   - [CAPS RBAC](02_security/caps.md)
 
