@@ -2,12 +2,22 @@ use crate::{http::request::HttpMethod, routing::engine::Handler};
 use super::handler::IntoHandler;
 use std::collections::HashMap;
 
+#[derive(Debug, Clone)]
+pub struct CapabilityRegistration {
+    pub name: &'static str,
+    pub allowed_roles: &'static [&'static str],
+}
+
+// Enable the inventory tracking wrapper for this structural layout
+inventory::collect!(CapabilityRegistration);
+
 // Globally collected from any file
 pub struct AutoRoute {
     pub path: &'static str,
     pub method: HttpMethod,
     pub handler: Handler,
     pub required_role: Option<&'static str>,
+    pub capabilities: Option<&'static str>,
     pub request_body_schema: Option<&'static str>,
 }
 

@@ -173,11 +173,10 @@ macro_rules! log_route {
 #[macro_export]
 macro_rules! declare_security_caps {
     ($( $cap:ty => [ $( $role:ty ),* ] ),* $(,)?) => {
-        // 1. Keep our compile-time structural guard
         pub trait GritSecurityCheck {}
 
-        // 2. Add a runtime trait to bridge token mappings to strings
         pub trait GritCapabilityRuntime {
+            fn name() -> &'static str;
             fn allowed_roles() -> &'static [&'static str];
         }
 
@@ -185,9 +184,19 @@ macro_rules! declare_security_caps {
             impl GritSecurityCheck for $cap {}
             
             impl GritCapabilityRuntime for $cap {
+                fn name() -> &'static str {
+                    std::stringify!($cap)
+                }
                 fn allowed_roles() -> &'static [&'static str] {
-                    // Automatically stringifies tokens (e.g., Admin -> "Admin")
                     &[ $( std::stringify!($role) ),* ]
+                }
+            }
+
+            // Automatically submit this layout metadata to our dashboard registry!
+            gritshield::inventory::submit! {
+                $crate::routing::engine::route::CapabilityRegistration {
+                    name: std::stringify!($cap),
+                    allowed_roles: &[ $( std::stringify!($role) ),* ],
                 }
             }
         )*

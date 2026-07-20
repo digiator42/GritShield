@@ -1,11 +1,11 @@
+use crate::OrderController;
 use gritshield::http::response::JsonPayload;
 use gritshield::{component, prelude::*};
 use gritshield::{controller, GritComponent};
 use serde_json::json;
-use crate::OrderController;
 
 #[derive(Clone, GritComponent)]
-pub struct PrintService{}
+pub struct PrintService {}
 
 #[derive(Clone, GritComponent)]
 pub struct DatabasePool {}

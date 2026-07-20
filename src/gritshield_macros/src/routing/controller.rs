@@ -198,6 +198,7 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
 
             let mut runtime_security_injection = quote! {};
             let mut static_compile_fences = vec![];
+            let mut route_assigned_capabilities = quote! { None };
 
             if let Some(index) = cap_attr_idx {
                 let attr = &method.attrs[index];
@@ -208,11 +209,13 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
                     )?;
 
                     let mut role_checks = vec![];
+                    let mut cap_names_raw = Vec::new();
 
                     for cap_ident in caps {
                         detected_capabilities.push(cap_ident.clone());
+                        cap_names_raw.push(cap_ident.to_string());
 
-                        // 1. Generate static compile-time boundaries for each capability in the list
+                        // Generate static compile-time boundaries for each capability
                         static_compile_fences.push(quote! {
                             const _: () = {
                                 extern crate self as _downstream;
@@ -221,7 +224,7 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
                             };
                         });
 
-                        // 2. Build the runtime role union lookup matching <#cap_ident as GritCapabilityRuntime>
+                        // Build the runtime role union lookup
                         role_checks.push(quote! {
                             for role in <#cap_ident as crate::GritCapabilityRuntime>::allowed_roles() {
                                 if ctx.has_role(role) {
@@ -232,11 +235,13 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
                         });
                     }
 
-                    // 3. Consolidate them into a single runtime security injection block
+                    // Join the list of capabilities to save into the route metadata (e.g., "ViewLogs, ManageBilling")
+                    let cap_joined_str = cap_names_raw.join(", ");
+                    route_assigned_capabilities = quote! { Some(#cap_joined_str) };
+
+                    // Consolidate into the runtime security injection block
                     runtime_security_injection = quote! {
                         let mut authorized = false;
-
-                        // Evaluate all allowed roles across all specified capabilities
                         #(#role_checks)*
 
                         if !authorized {
@@ -390,6 +395,7 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
                 // ------------------------------------------------------------------
                 // 3. THIRD: runtime_security_injection Is Fully Defined & Usable Here!
                 // ------------------------------------------------------------------
+
                 inventory_submissions.push(quote! {
                     fn #wrapper_name(ctx: gritshield::routing::engine::RequestContext) -> gritshield::futures::future::BoxFuture<'static, gritshield::http::response::Response> {
                         use gritshield::routing::engine::IntoResponse;
@@ -410,6 +416,7 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
                             method: gritshield::http::request::HttpMethod::#http_method_ident,
                             handler: #wrapper_name,
                             required_role: #required_role_opt,
+                            capabilities: #route_assigned_capabilities, // Captures your `Some("ViewLogs, ManageBilling")`
                             request_body_schema: #body_schema,
                         }
                     }

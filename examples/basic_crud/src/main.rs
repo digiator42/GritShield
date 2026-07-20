@@ -15,9 +15,9 @@ use gritshield::{
 
 // One single source of truth grouped by capability matching your endpoint attributes!
 declare_security_caps! {
-    ManageBilling => [Admin, Manager],
+    ManageBilling => [Admin],
     DeleteUser    => [Admin],
-    ViewLogs      => [Admin, Manager, Auditor],
+    ViewLogs      => [Manager, Auditor],
 }
 
 mod controllers;
