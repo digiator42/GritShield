@@ -103,10 +103,19 @@ pub struct AutoRegisterHook {
 // Allow gritshield::inventory to collect these hooks across the entire codebase
 crate::inventory::collect!(AutoRegisterHook);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ComponentKind {
+    Controller,
+    Transient,
+    Singleton,
+    Primitive,
+}
+
 /// Emitted once per registered component (via #[component] or #[derive(GritComponent)],
 /// or manually through `provide!`). Purely metadata — carries no construction logic.
 pub struct ProvidedComponent {
     pub name: &'static str,
+    pub kind: ComponentKind,
 }
 
 crate::inventory::collect!(ProvidedComponent);
@@ -199,15 +208,16 @@ impl AutoWire {
     pub fn export_dot() -> String {
         let mut dot = String::from(
             "digraph SystemTopology {\n\
-             \trankdir=LR;\n\
-             \tnode [shape=component, style=\"filled,rounded\", fillcolor=\"#1e1e2e\", fontcolor=\"#cdd6f4\", fontname=\"Helvetica\"];\n\
-             \tedge [color=\"#89b4fa\", fontcolor=\"#a6adc8\", fontname=\"Helvetica\"];\n\n"
+            \trankdir=LR;\n\
+            \tbgcolor=\"transparent\";\n\
+            \tnode [style=\"filled,rounded\", fontname=\"Helvetica\", penwidth=1.5];\n\
+            \tedge [color=\"#89b4fa\", fontcolor=\"#cdd6f4\", fontname=\"Helvetica\", fontsize=9, arrowsize=0.8];\n\n"
         );
 
         let components: Vec<_> = crate::inventory::iter::<ProvidedComponent>().collect();
         let edges: Vec<_> = crate::inventory::iter::<DependencyEdge>().collect();
 
-        // Identify root handlers/callers (nodes that require things, but are never required by others)
+        // Identify roots/controllers for rank alignment
         let targets: std::collections::HashSet<_> = edges.iter().map(|e| e.requires).collect();
         let roots: Vec<_> = edges
             .iter()
@@ -215,12 +225,47 @@ impl AutoWire {
             .filter(|c| !targets.contains(c))
             .collect();
 
-        // Render components
+        // Render components with high-contrast text colors
         for component in &components {
-            let _ = writeln!(dot, "\t\"{}\" [label=\"{}\"];", component.name, component.name);
+            let (bg_color, border_color, text_color, shape, label_suffix) = match component.kind {
+                ComponentKind::Controller => (
+                    "#2d1f3f", // Deep Purple background
+                    "#cba6f7", // Mauve border
+                    "#f5e0dc", // Bright off-white text
+                    "box",
+                    "",
+                ),
+                ComponentKind::Transient => (
+                    "#112638", // Deep Blue background
+                    "#89dceb", // Cyan border
+                    "#89dceb", // Cyan text (guaranteed visible!)
+                    "box",
+                    " (Transient)",
+                ),
+                ComponentKind::Singleton => (
+                    "#132a1e", // Deep Emerald background
+                    "#a6e3a1", // Green border
+                    "#a6e3a1", // Green text (guaranteed visible!)
+                    "cylinder",
+                    " (Singleton)",
+                ),
+                ComponentKind::Primitive => (
+                    "#1e1e2e", 
+                    "#6c7086", 
+                    "#cdd6f4", // Crisp white/gray text
+                    "ellipse",
+                    "",
+                ),
+            };
+
+            let _ = writeln!(
+                dot,
+                "\t\"{}\" [label=\"{}{}\", style=\"filled,rounded\", fillcolor=\"{}\", color=\"{}\", fontcolor=\"{}\", shape=\"{}\"];",
+                component.name, component.name, label_suffix, bg_color, border_color, text_color, shape
+            );
         }
 
-        // Enforce same rank alignment for all root endpoints/controllers
+        // Align top-level root endpoints on the same rank
         if !roots.is_empty() {
             dot.push_str("\n\t{ rank = same; ");
             for root in roots {
@@ -229,7 +274,7 @@ impl AutoWire {
             dot.push_str("}\n\n");
         }
 
-        // Render edges
+        // Render dependency edges
         for edge in &edges {
             let _ = writeln!(
                 dot,
@@ -272,7 +317,10 @@ macro_rules! mark_injectable {
 macro_rules! inject {
     ($ty:ty, $value:expr) => {
         $crate::inventory::submit! {
-            $crate::core::ioc::ProvidedComponent { name: std::stringify!($ty) }
+            $crate::core::ioc::ProvidedComponent {
+                name: std::stringify!($ty),
+                kind: $crate::core::ioc::ComponentKind::Singleton,
+            }
         }
         $crate::core::ioc::AutoWire::component::<$ty>($value);
     };

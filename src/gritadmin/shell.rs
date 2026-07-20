@@ -19,6 +19,9 @@ pub fn admin_shell(title: &str, content: Markup, is_htmx: bool) -> Response {
                 // GRAPHVIZ 
                 script src="https://cdnjs.cloudflare.com/ajax/libs/viz.js/2.1.2/viz.js" {}
                 script src="https://cdnjs.cloudflare.com/ajax/libs/viz.js/2.1.2/full.render.js" {}
+                script src="https://cdn.jsdelivr.net/npm/viz.js@2.1.2/viz.es5.min.js" {}
+                script src="https://cdn.jsdelivr.net/npm/viz.js@2.1.2/full.render.js" {}
+                script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js" {}
                 style {
                     "
                     /* 1. Hide all indicators by default everywhere */

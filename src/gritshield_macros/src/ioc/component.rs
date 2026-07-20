@@ -103,7 +103,10 @@ pub fn expand_component(input: ItemImpl) -> TokenStream {
         // Declare this type as available in the graph, and record what it needs,
         // so AutoWire::verify() can catch a missing dependency before boot completes.
         ::gritshield::inventory::submit! {
-            ::gritshield::core::ioc::ProvidedComponent { name: std::stringify!(#self_ty) }
+            ::gritshield::core::ioc::ProvidedComponent {
+                name: std::stringify!(#self_ty),
+                kind: ::gritshield::core::ioc::ComponentKind::Transient,
+            }
         }
         #(#edge_submissions)*
     };
@@ -207,7 +210,10 @@ pub fn expand_grit_component(input: DeriveInput) -> TokenStream {
         }
 
         ::gritshield::inventory::submit! {
-            ::gritshield::core::ioc::ProvidedComponent { name: std::stringify!(#name) }
+            ::gritshield::core::ioc::ProvidedComponent {
+                name: std::stringify!(#name),
+                kind: ::gritshield::core::ioc::ComponentKind::Transient,
+            }
         }
         #(#edge_submissions)*
 
