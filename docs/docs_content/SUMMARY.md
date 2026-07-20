@@ -7,6 +7,7 @@
 
 - [Security](02_security/index.md)
   - [RBAC](02_security/rbac.md)
+  - [CAPS RBAC](02_security/caps.md)
 
 - [Routing](03_routing/index.md)
   - [Dynamic Routes](03_routing/dynamic-routes.md)

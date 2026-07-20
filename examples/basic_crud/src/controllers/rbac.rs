@@ -20,3 +20,4 @@ impl BillingController {
         Response::ok("Logs rendered")
     }
 }
+
