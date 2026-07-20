@@ -3,6 +3,7 @@ use once_cell::sync::Lazy;
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
+use std::fmt::Write;
 
 pub trait Injectable: Sized + 'static {
     /// Automatically resolves dependencies from the provided container context and builds the instance
@@ -139,7 +140,7 @@ impl AutoWire {
              Add #[component] / #[derive(GritComponent)] to it, or register it \
              explicitly with provide!({}, ...).",
                     edge.component.green(),
-                    edge.requires.red(),  
+                    edge.requires.red(),
                     edge.requires.yellow(),
                 )
             })
@@ -168,6 +169,77 @@ impl AutoWire {
         for hook in crate::inventory::iter::<AutoRegisterHook> {
             (hook.register_fn)(&CONTEXT);
         }
+    }
+
+    /// Generates a Mermaid markdown diagram string showing component dependency paths.
+    pub fn export_mermaid() -> String {
+        let mut graph = String::from("```mermaid\ngraph TD\n");
+
+        // Render all registered components as nodes
+        for component in crate::inventory::iter::<ProvidedComponent> {
+            let _ = writeln!(graph, "    {}[[\"{}\"]]", component.name, component.name);
+        }
+
+        graph.push_str("\n");
+
+        // Render dependency edges (Component -> Requires)
+        for edge in crate::inventory::iter::<DependencyEdge> {
+            let _ = writeln!(
+                graph,
+                "    {} -->|\"requires\"| {}",
+                edge.component, edge.requires
+            );
+        }
+
+        graph.push_str("```\n");
+        graph
+    }
+
+    /// Generates a Graphviz `.dot` file representation.
+    pub fn export_dot() -> String {
+        let mut dot = String::from(
+            "digraph SystemTopology {\n\
+             \trankdir=LR;\n\
+             \tnode [shape=component, style=\"filled,rounded\", fillcolor=\"#1e1e2e\", fontcolor=\"#cdd6f4\", fontname=\"Helvetica\"];\n\
+             \tedge [color=\"#89b4fa\", fontcolor=\"#a6adc8\", fontname=\"Helvetica\"];\n\n"
+        );
+
+        let components: Vec<_> = crate::inventory::iter::<ProvidedComponent>().collect();
+        let edges: Vec<_> = crate::inventory::iter::<DependencyEdge>().collect();
+
+        // Identify root handlers/callers (nodes that require things, but are never required by others)
+        let targets: std::collections::HashSet<_> = edges.iter().map(|e| e.requires).collect();
+        let roots: Vec<_> = edges
+            .iter()
+            .map(|e| e.component)
+            .filter(|c| !targets.contains(c))
+            .collect();
+
+        // Render components
+        for component in &components {
+            let _ = writeln!(dot, "\t\"{}\" [label=\"{}\"];", component.name, component.name);
+        }
+
+        // Enforce same rank alignment for all root endpoints/controllers
+        if !roots.is_empty() {
+            dot.push_str("\n\t{ rank = same; ");
+            for root in roots {
+                let _ = write!(dot, "\"{}\"; ", root);
+            }
+            dot.push_str("}\n\n");
+        }
+
+        // Render edges
+        for edge in &edges {
+            let _ = writeln!(
+                dot,
+                "\t\"{}\" -> \"{}\" [label=\"requires\"];",
+                edge.component, edge.requires
+            );
+        }
+
+        dot.push_str("}\n");
+        dot
     }
 }
 

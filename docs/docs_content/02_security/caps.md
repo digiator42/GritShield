@@ -9,21 +9,21 @@ By decoupling endpoint security definitions from hardcoded string roles, GritShi
 Plaintext
 
 ```text
-  ┌─────────────────────────────────────────────────────────┐
-  │                 declare_security_caps!                  │
-  │   Maps Capability Tokens -> Allowed System Roles        │
-  └────────────────────────────┬────────────────────────────┘
-                               │
-            ┌──────────────────┴──────────────────┐
-            ▼                                     ▼
-  ┌───────────────────┐                 ┌───────────────────┐
-  │ 1. COMPILE TIME   │                 │  2. RUNTIME       │
-  │    Static Fence   │                 │     Validation    │
-  └─────────┬─────────┘                 └─────────┬─────────┘
-            │                                     │
-            ▼                                     ▼
-Ensures capability tokens             Evaluates incoming session roles
-exist & implement trait               against allowed role set & hierarchy
+            ┌─────────────────────────────────────────────────────────┐
+            │                 declare_security_caps!                  │
+            │   Maps Capability Tokens -> Allowed System Roles        │
+            └────────────────────────────┬────────────────────────────┘
+                                        │
+                        ┌──────────────────┴──────────────────┐
+                        ▼                                     ▼
+            ┌───────────────────┐                 ┌───────────────────┐
+            │ 1. COMPILE TIME   │                 │  2. RUNTIME       │
+            │    Static Fence   │                 │     Validation    │
+            └─────────┬─────────┘                 └─────────┬─────────┘
+                        │                                     │
+                        ▼                                     ▼
+            Ensures capability tokens             Evaluates incoming session roles
+            exist & implement trait               against allowed role set & hierarchy
 ```
 
 

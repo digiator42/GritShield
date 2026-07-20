@@ -202,3 +202,17 @@ macro_rules! declare_security_caps {
         )*
     };
 }
+
+/// Pre-registers a mock instance for type `$ty` into a `GritContainer` or global `CONTEXT`.
+/// Overrides lazy factory instantiation during integration tests.
+#[macro_export]
+macro_rules! mock {
+    // Target a specific container instance
+    ($container:expr, $ty:ty, $mock_instance:expr) => {
+        $container.register::<$ty>($mock_instance);
+    };
+    // Default to global CONTEXT
+    ($ty:ty, $mock_instance:expr) => {
+        $crate::core::ioc::CONTEXT.register::<$ty>($mock_instance);
+    };
+}

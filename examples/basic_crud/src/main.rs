@@ -97,6 +97,8 @@ async fn main() {
     auto_wire();
     // AutoWire::boot_di_container();
 
+    println!("{}", AutoWire::export_dot());
+
     let router = Router::new()
         .route((
             "/api/orders/checkout",

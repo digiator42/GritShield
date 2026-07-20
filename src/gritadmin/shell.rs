@@ -1,5 +1,5 @@
-use crate::prelude::*;
 use crate::database::repository::registry::ADMIN_REGISTRY;
+use crate::prelude::*;
 
 /// The Master Shell Layout that loads HTMX globally.
 pub fn admin_shell(title: &str, content: Markup, is_htmx: bool) -> Response {
@@ -16,6 +16,9 @@ pub fn admin_shell(title: &str, content: Markup, is_htmx: bool) -> Response {
                 title { (title) " | GritAdmin" }
                 script src="https://unpkg.com/htmx.org@1.9.10" {}
                 script src="https://cdn.tailwindcss.com" {}
+                // GRAPHVIZ 
+                script src="https://cdnjs.cloudflare.com/ajax/libs/viz.js/2.1.2/viz.js" {}
+                script src="https://cdnjs.cloudflare.com/ajax/libs/viz.js/2.1.2/full.render.js" {}
                 style {
                     "
                     /* 1. Hide all indicators by default everywhere */
@@ -200,7 +203,14 @@ pub fn admin_shell(title: &str, content: Markup, is_htmx: bool) -> Response {
                                hx-target="#main-content"
                                hx-indicator="body"
                                hx-push-url="true"
-                               class="block p-2 hover:bg-gray-800 rounded transition text-gray-400" { "RBAC Graph" }
+                               class="block p-2 hover:bg-gray-800 rounded transition text-gray-400" { "📊 RBAC Graph" }
+
+                            a href="/admin/topology"
+                               hx-get="/admin/topology"
+                               hx-target="#main-content"
+                               hx-indicator="body"
+                               hx-push-url="true"
+                               class="block p-2 hover:bg-gray-800 rounded transition text-gray-400" { "📊 DI Graph" }
                         }
                         hr class="border-gray-800 my-4";
                         div class="flex items-center justify-between" {

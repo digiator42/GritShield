@@ -40,11 +40,38 @@ impl InvoiceController {
         ctx: RequestContext,
         payment: Arc<PrintService>, // <-- Automatically Injected!
     ) -> Response {
-        // let order_payload = ctx.json_body().await.unwrap();
 
-        // Use services directly with zero manual orchestration!
-        // payment.process_charge(21);
-        // db.execute("INSERT INTO orders ...").await;
+        Response::ok(JsonPayload(json!({ "status": "processed" })))
+    }
+    #[get("/checkout2", role = "Admin")]
+    pub async fn checkout3(
+        ctx: RequestContext,
+        payment: Arc<PrintService>, // <-- Automatically Injected!
+    ) -> Response {
+
+        Response::ok(JsonPayload(json!({ "status": "processed" })))
+    }
+    #[get("/checkout2", role = "Admin")]
+    pub async fn checkout4(
+        ctx: RequestContext,
+        payment: Arc<PrintService>, // <-- Automatically Injected!
+    ) -> Response {
+
+        Response::ok(JsonPayload(json!({ "status": "processed" })))
+    }
+    #[get("/checkout2", role = "Admin")]
+    pub async fn checkout5(
+        ctx: RequestContext,
+        payment: Arc<PrintService>, // <-- Automatically Injected!
+    ) -> Response {
+
+        Response::ok(JsonPayload(json!({ "status": "processed" })))
+    }
+    #[get("/checkout2", role = "Admin")]
+    pub async fn checkout6(
+        ctx: RequestContext,
+        payment: Arc<PrintService>, // <-- Automatically Injected!
+    ) -> Response {
 
         Response::ok(JsonPayload(json!({ "status": "processed" })))
     }
