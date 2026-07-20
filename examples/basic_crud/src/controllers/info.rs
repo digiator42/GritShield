@@ -1,4 +1,5 @@
 use chrono::{Duration, Utc};
+use gritshield::GritSanitizer;
 use gritshield::deps::sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use gritshield::{database::repository::GritRepository, prelude::*};
 use serde_json::Value;
@@ -14,7 +15,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-#[derive(GritSchema, Serialize, Deserialize)]
+#[derive(GritSchema, GritSanitizer, Serialize, Deserialize)]
 pub struct SwaggerTestData {
     pub email: String,
     pub name: String,

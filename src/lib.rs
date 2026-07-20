@@ -26,6 +26,7 @@ pub use gritshield_macros::GritComponent;
 pub use gritshield_macros::GritWire;
 pub use gritshield_macros::GritModel;
 pub use gritshield_macros::GritRelation;
+pub use gritshield_macros::GritSanitizer;
 #[cfg(feature = "swagger")]
 pub use gritshield_macros::GritSchema;
 pub use gritshield_macros::WireContainer;

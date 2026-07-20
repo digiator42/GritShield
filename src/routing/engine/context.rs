@@ -8,6 +8,7 @@ use crate::security::jwt::Claims;
 use crate::security::session::{Session, SessionStore};
 use crate::security::telemetry::SystemTelemetry;
 use crate::security::xss::UntrustedString;
+use crate::security::sanitizer::GritSanitizable;
 use crate::{debug, error, trace, warn};
 use sea_orm::DatabaseConnection;
 use serde_json::Value;
@@ -107,8 +108,11 @@ impl RequestContext {
         serde_json::from_str(body_str).ok()
     }
 
-    /// A helper method allowing handlers to cleanly extract JSON data structures
-    pub async fn json<T: serde::de::DeserializeOwned>(&self) -> Result<T, ShieldError> {
+    /// Deserializes JSON request body and automatically executes in-place payload sanitization.
+    pub async fn json<T>(&self) -> Result<T, ShieldError>
+    where
+        T: serde::de::DeserializeOwned + GritSanitizable,
+    {
         let content_type = self.content_type.as_deref().unwrap_or("");
         if !content_type.starts_with("application/json") {
             return Err(ShieldError::BadRequest(
@@ -116,8 +120,31 @@ impl RequestContext {
             ));
         }
 
-        serde_json::from_slice(&self.raw_body)
-            .map_err(|e| ShieldError::BadRequest(format!("Failed to parse JSON body: {}", e)))
+        // Serde Deserialization
+        let mut payload: T = serde_json::from_slice(&self.raw_body)
+            .map_err(|e| ShieldError::BadRequest(format!("Failed to parse JSON body: {}", e)))?;
+
+        // Active Defense Payload Sanitization
+        payload.sanitize();
+
+        Ok(payload)
+    }
+
+    /// Optional helper for developers using the `validator` crate.
+    /// Deserializes -> Sanitizes in-place -> Validates structural rules.
+    #[cfg(feature = "validator")]
+    pub async fn validated_json<T>(&self) -> Result<T, ShieldError>
+    where
+        T: serde::de::DeserializeOwned + GritSanitizable + validator::Validate,
+    {
+        let mut payload = self.json::<T>().await?;
+
+        // Validator after sanitization
+        payload.validate().map_err(|e| {
+            ShieldError::BadRequest(format!("Payload validation failed: {}", e))
+        })?;
+
+        Ok(payload)
     }
 
     /// Zero-boilerplate helper to read a standard, unsigned cookie

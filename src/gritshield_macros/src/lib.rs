@@ -7,6 +7,7 @@ mod core_parser;
 mod ioc;
 mod repository;
 mod routing;
+mod sanitizer;
 
 #[proc_macro_derive(GritAdmin, attributes(repository))]
 pub fn derive_grit_admin(input: TokenStream) -> TokenStream {
@@ -58,6 +59,12 @@ pub fn derive_grit_wire(input: TokenStream) -> TokenStream {
 pub fn derive_wire_container(input: TokenStream) -> TokenStream {
     let input = syn::parse_macro_input!(input as DeriveInput);
     ioc::component::expand_wire_container(input).into()
+}
+
+#[proc_macro_derive(GritSanitizer, attributes(clean))]
+pub fn derive_grit_sanitizer(input: TokenStream) -> TokenStream {
+    let input = syn::parse_macro_input!(input as DeriveInput);
+    sanitizer::sanitize::expand_grit_sanitizer(input).into()
 }
 
 // ==========================================

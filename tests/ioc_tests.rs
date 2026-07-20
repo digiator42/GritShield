@@ -69,3 +69,43 @@ fn test_strict_compile_time_wiring() {
     // Assert that fields match structural constraints
     assert_eq!(service.db.url, "postgres://localhost");
 }
+
+#[cfg(test)]
+mod tests {
+    use gritshield::{core::CONTEXT, mock};
+
+use super::*;
+
+    #[derive(Clone)]
+    pub struct MockRedisService {
+        pub connection_string: String,
+    }
+
+    impl MockRedisService {
+        pub fn new() -> Self {
+            Self {
+                connection_string: "mock://localhost:6379".to_string(),
+            }
+        }
+    }
+
+    // Mark it injectable so runtime bounds pass
+    gritshield::mark_injectable!(MockRedisService);
+
+    #[test]
+    fn test_mock_injection() {
+        // Inject mock into the global CONTEXT cache before resolving
+        mock!(MockRedisService, MockRedisService::new());
+
+        // Resolve RedisService — hits fast-path in CONTEXT.dependencies
+        let redis = CONTEXT.resolve::<MockRedisService>().unwrap();
+        
+        assert_eq!(redis.connection_string, "mock://localhost:6379");
+    }
+
+    #[test]
+    fn test_export_diagram() {
+        let mermaid_md = AutoWire::export_mermaid();
+        println!("Mermaid Output:\n{}", mermaid_md);
+    }
+}

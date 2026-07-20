@@ -6,3 +6,4 @@ pub mod cookies;
 pub mod errors;
 pub mod telemetry;
 pub mod rbac;
+pub mod sanitizer;
