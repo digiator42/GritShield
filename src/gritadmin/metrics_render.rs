@@ -9,22 +9,19 @@ use std::sync::atomic::Ordering;
 use std::time::Instant;
 use sysinfo::System;
 
-
 #[derive(Serialize, Debug)]
 pub struct HardeningMatrix {
     pub timestamp: DateTime<Utc>,
     pub ssl_active: bool,
     pub active_admin_sessions: usize,
-    pub database_encryption_status: &'static str, // "AES-256-GCM Active" or "Unencrypted"
+    pub database_encryption_status: &'static str,
     pub max_login_attempts: u32,
     pub rate_limiting_degraded: bool,
-    pub environment_mode: String, // "Production", "Staging", "Development"
-    // --- Inbound Request Security Header States ---
+    pub environment_mode: String,
     pub csp_enabled: bool,
     pub nosniff_enabled: bool,
     pub clickjacking_protected: bool,
     pub hsts_enabled: bool,
-    // --- Session Auth Vector State ---
     pub current_request_authenticated: bool,
     pub incoming_cookies: Vec<InboundCookieDetails>,
 }
@@ -33,7 +30,16 @@ pub struct HardeningMatrix {
 pub struct InboundCookieDetails {
     pub name: String,
     pub value_preview: String,
-    pub server_policy_compliance: &'static str, // "Secure Compliant" or "Needs Review"
+    pub server_policy_compliance: &'static str,
+}
+
+#[derive(Serialize, Debug)]
+pub struct EndpointSummary {
+    pub path: String,
+    pub requests: u64,
+    pub avg_latency_ms: f64,
+    pub errors_4xx: u64,
+    pub errors_5xx: u64,
 }
 
 #[derive(Serialize, Debug)]
@@ -48,6 +54,10 @@ pub struct AppMetrics {
     pub total_blocked_ips: u64,
     pub total_rate_limited_reqs: u64,
     pub total_allowed_reqs: u64,
+    pub total_errors_4xx: u64,
+    pub total_errors_5xx: u64,
+    pub avg_latency_ms: f64,
+    pub endpoints: Vec<EndpointSummary>,
 }
 
 #[derive(Serialize, Debug)]
@@ -72,7 +82,6 @@ pub struct ProcessMetrics {
     pub pid: u32,
 }
 
-// Keep track of application startup time globally
 lazy_static::lazy_static! {
     pub static ref START_TIME: Instant = Instant::now();
 }
@@ -83,7 +92,7 @@ pub async fn gather_all_metrics(ctx: &RequestContext) -> AppMetrics {
     sys.refresh_all();
 
     // Compute Memory metrics
-    let total_mem = sys.total_memory() / 1024 / 1024; // Convert bytes to MB
+    let total_mem = sys.total_memory() / 1024 / 1024;
     let used_mem = sys.used_memory() / 1024 / 1024;
     let mem_pct = if total_mem > 0 {
         (used_mem as f32 / total_mem as f32) * 100.0
@@ -121,7 +130,7 @@ pub async fn gather_all_metrics(ctx: &RequestContext) -> AppMetrics {
         response_time_ms: db_latency,
     };
 
-    // Capture Self Process Stats
+    // Capture Process Stats
     let current_pid = std::process::id();
     let uptime = START_TIME.elapsed().as_secs();
 
@@ -130,21 +139,44 @@ pub async fn gather_all_metrics(ctx: &RequestContext) -> AppMetrics {
         pid: current_pid,
     };
 
-    // Extract GritShield Atomic Performance Metrics
+    // Extract Atomic Telemetry
     let active_connections = ctx.telemetry.active_connections.load(Ordering::Relaxed);
     let total_blocked_ips = ctx.telemetry.total_blocked_ips.load(Ordering::Relaxed);
-    let total_rate_limited_reqs = ctx
-        .telemetry
-        .total_rate_limited_reqs
-        .load(Ordering::Relaxed);
+    let total_rate_limited_reqs = ctx.telemetry.total_rate_limited_reqs.load(Ordering::Relaxed);
     let total_allowed_reqs = ctx.telemetry.total_allowed_reqs.load(Ordering::Relaxed);
+    let total_errors_4xx = ctx.telemetry.total_errors_4xx.load(Ordering::Relaxed);
+    let total_errors_5xx = ctx.telemetry.total_errors_5xx.load(Ordering::Relaxed);
+    let total_duration_micros = ctx.telemetry.total_duration_micros.load(Ordering::Relaxed);
+
+    let avg_latency_ms = if total_allowed_reqs > 0 {
+        (total_duration_micros as f64 / total_allowed_reqs as f64) / 1000.0
+    } else {
+        0.0
+    };
+
+    // Extract Endpoint Breakdown
+    let mut endpoints = Vec::new();
+    if let Ok(ep_map) = ctx.telemetry.endpoints.read() {
+        for (path, metric) in ep_map.iter() {
+            let reqs = metric.total_requests.load(Ordering::Relaxed);
+            let dur = metric.total_duration_micros.load(Ordering::Relaxed);
+            let e4 = metric.errors_4xx.load(Ordering::Relaxed);
+            let e5 = metric.errors_5xx.load(Ordering::Relaxed);
+            let ep_avg = if reqs > 0 { (dur as f64 / reqs as f64) / 1000.0 } else { 0.0 };
+
+            endpoints.push(EndpointSummary {
+                path: path.clone(),
+                requests: reqs,
+                avg_latency_ms: ep_avg,
+                errors_4xx: e4,
+                errors_5xx: e5,
+            });
+        }
+    }
+    endpoints.sort_by(|a, b| b.requests.cmp(&a.requests));
 
     AppMetrics {
-        status: if db_status == "healthy" {
-            "operational"
-        } else {
-            "degraded"
-        },
+        status: if db_status == "healthy" { "operational" } else { "degraded" },
         timestamp: Utc::now(),
         system: system_stats,
         database: db_stats,
@@ -153,6 +185,10 @@ pub async fn gather_all_metrics(ctx: &RequestContext) -> AppMetrics {
         total_blocked_ips,
         total_rate_limited_reqs,
         total_allowed_reqs,
+        total_errors_4xx,
+        total_errors_5xx,
+        avg_latency_ms,
+        endpoints,
     }
 }
 
@@ -177,7 +213,7 @@ pub fn render_metrics_dashboard(metrics: &AppMetrics) -> Markup {
                 }
             }
 
-             // --- GRITSHIELD CORE TELEMETRY TRACKER ---
+            // --- GRITSHIELD CORE TELEMETRY TRACKER ---
             div class="bg-gray-950 border border-gray-800 rounded-xl p-4 space-y-3 shadow-md" {
                 div class="flex justify-between items-center" {
                     span class="text-xxs font-mono uppercase text-gray-400 tracking-wider font-semibold" { "GritShield Network Guard Metrics" }
@@ -194,21 +230,75 @@ pub fn render_metrics_dashboard(metrics: &AppMetrics) -> Markup {
                         span class="text-xs font-bold text-red-400" { (metrics.total_blocked_ips) }
                     }
                     div class="p-3 bg-gray-900/40 border border-gray-800 rounded-lg" {
-                        span class="text-gray-500 block mb-1" { "Rate-Limited Requests" }
+                        span class="text-gray-500 block mb-1" { "Rate-Limited Reqs" }
                         span class="text-xs font-bold text-amber-400" { (metrics.total_rate_limited_reqs) }
                     }
                     div class="p-3 bg-gray-900/40 border border-gray-800 rounded-lg" {
-                        span class="text-gray-500 block mb-1" { "Allowed Clean Requests" }
+                        span class="text-gray-500 block mb-1" { "Allowed Clean Reqs" }
                         span class="text-xs font-bold text-emerald-400" { (metrics.total_allowed_reqs) }
                     }
                 }
             }
 
+            // --- NEW: HTTP PIPELINE PERFORMANCE MATRIX ---
+            div class="bg-gray-950 border border-gray-800 rounded-xl p-4 space-y-3 shadow-md" {
+                div class="flex justify-between items-center" {
+                    span class="text-xxs font-mono uppercase text-gray-400 tracking-wider font-semibold" { "HTTP Execution & Latency Telemetry" }
+                    span class="text-xxs font-mono text-cyan-400 font-bold" { (format!("Avg Latency: {:.2} ms", metrics.avg_latency_ms)) }
+                }
+
+                div class="grid grid-cols-1 md:grid-cols-3 gap-4 font-mono text-xxs" {
+                    div class="p-3 bg-gray-900/40 border border-gray-800 rounded-lg flex items-center justify-between" {
+                        span class="text-gray-400" { "Global Avg Latency" }
+                        span class="text-xs font-bold text-cyan-400" { (format!("{:.2} ms", metrics.avg_latency_ms)) }
+                    }
+                    div class="p-3 bg-gray-900/40 border border-gray-800 rounded-lg flex items-center justify-between" {
+                        span class="text-gray-400" { "4xx Client Errors" }
+                        span class="text-xs font-bold text-amber-400" { (metrics.total_errors_4xx) }
+                    }
+                    div class="p-3 bg-gray-900/40 border border-gray-800 rounded-lg flex items-center justify-between" {
+                        span class="text-gray-400" { "5xx Server Errors" }
+                        span class="text-xs font-bold text-rose-400" { (metrics.total_errors_5xx) }
+                    }
+                }
+
+                // Route breakdown table
+                @if !metrics.endpoints.is_empty() {
+                    div class="pt-2" {
+                        div class="overflow-hidden border border-gray-850 rounded-lg" {
+                            table class="w-full text-left font-mono text-xxs m-0 border-collapse" {
+                                thead class="bg-gray-900 text-gray-400 uppercase tracking-wider" {
+                                    tr {
+                                        th class="p-2.5 font-semibold" { "Route Path" }
+                                        th class="p-2.5 font-semibold" { "Requests" }
+                                        th class="p-2.5 font-semibold" { "Avg Latency" }
+                                        th class="p-2.5 font-semibold text-right" { "Errors (4xx / 5xx)" }
+                                    }
+                                }
+                                tbody class="divide-y divide-gray-850" {
+                                    @for ep in &metrics.endpoints {
+                                        tr class="hover:bg-gray-900/40 transition" {
+                                            td class="p-2.5 font-bold text-gray-300" { (ep.path) }
+                                            td class="p-2.5 text-gray-400 font-mono" { (ep.requests) }
+                                            td class="p-2.5 text-emerald-400 font-mono" { (format!("{:.2} ms", ep.avg_latency_ms)) }
+                                            td class="p-2.5 text-right font-mono" {
+                                                span class="text-amber-400" { (ep.errors_4xx) }
+                                                span class="text-gray-600 px-1" { "/" }
+                                                span class="text-rose-400" { (ep.errors_5xx) }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
 
             // Grid Layout Metric Cards
             div class="grid grid-cols-1 md:grid-cols-3 gap-4" {
 
-                // Card 1: Global CPU Usage Core Load
+                // Card 1: CPU
                 div class="p-4 bg-gray-950 border border-gray-800 rounded-xl space-y-3 shadow-sm" {
                     div class="flex justify-between items-center" {
                         span class="text-xxs font-mono uppercase text-gray-500 tracking-wider" { "CPU Capacity Load" }
@@ -220,7 +310,7 @@ pub fn render_metrics_dashboard(metrics: &AppMetrics) -> Markup {
                     p class="text-[10px] font-mono text-gray-400" { (format!("Logical Cores Detected: {} Processing Vectors", metrics.system.core_count)) }
                 }
 
-                // Card 2: Memory/RAM Consumption Tracking Frame
+                // Card 2: Memory
                 div class="p-4 bg-gray-950 border border-gray-800 rounded-xl space-y-3 shadow-sm" {
                     div class="flex justify-between items-center" {
                         span class="text-xxs font-mono uppercase text-gray-500 tracking-wider" { "RAM Memory Footprint" }
@@ -232,7 +322,7 @@ pub fn render_metrics_dashboard(metrics: &AppMetrics) -> Markup {
                     p class="text-[10px] font-mono text-gray-400" { (format!("Allocated: {} MB / Total: {} MB", metrics.system.used_memory_mb, metrics.system.total_memory_mb)) }
                 }
 
-                // Card 3: Database Pool Gateway Ping Latency
+                // Card 3: Database
                 div class="p-4 bg-gray-950 border border-gray-800 rounded-xl space-y-3 shadow-sm" {
                     div class="flex justify-between items-center" {
                         span class="text-xxs font-mono uppercase text-gray-500 tracking-wider" { "Database Pool Latency" }
@@ -246,7 +336,7 @@ pub fn render_metrics_dashboard(metrics: &AppMetrics) -> Markup {
                 }
             }
 
-            // Lower Operational Uptime Metadata Block
+            // Lower Operational Uptime
             div class="p-3 bg-gray-900/40 border border-gray-800/60 rounded-xl flex items-center justify-between text-xxs font-mono text-gray-400" {
                 span { (format!("Server OS Runtime Context PID [ {} ]", metrics.process.pid)) }
                 span { (format!("Continuous Application Uptime: {} seconds", metrics.process.uptime_seconds)) }

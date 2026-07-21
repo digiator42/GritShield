@@ -40,6 +40,8 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
         }
     };
 
+    let req_clone = req.clone();
+
     // Match the route early to extract dynamic params for middleware use, even if the final handler isn't found
     let params = match router.match_route(&req.method, &req.path) {
         RoutingResult::Found(_, _, dynamic_params) => dynamic_params.clone(),
@@ -87,7 +89,10 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
             }
         }
         MiddlewareResult::Error(mut err_res) => {
-            // Securely commit the jar state to intercept redirects with cookies!
+            let duration = start_time.elapsed();
+            ctx.telemetry
+                .record_request(&ctx.req.path, err_res.status, duration);
+
             if let Ok(locked_jar) = jar.lock() {
                 err_res = locked_jar.clone().commit(err_res);
             }
@@ -95,8 +100,8 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
             let (bytes, mime) = err_res.resolve();
             let _ = stream.write_all(&err_res.to_bytes(&bytes, &mime)).await;
 
-            router.log_lifecycle(&ctx, err_res.status, start_time.elapsed());
-            router.run_after_hooks(ctx, err_res.status, start_time.elapsed());
+            router.log_lifecycle(&ctx, err_res.status, duration);
+            router.run_after_hooks(ctx, err_res.status, duration);
             return;
         }
     }
@@ -275,6 +280,11 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
             }
         }
     };
+
+    let duration = start_time.elapsed();
+
+    // --- RECORD TELEMETRY METRICS ---
+    router.telemetry.record_request(&req_clone.path, response.status, duration);
 
     if let Ok(locked_jar) = jar.lock() {
         response = locked_jar.clone().commit(response);

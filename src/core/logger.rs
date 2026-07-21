@@ -3,6 +3,7 @@ use crate::http::request::Request;
 use colored::*;
 use std::fmt;
 use std::sync::OnceLock;
+use crate::security::telemetry::TELEMETRY;
 
 // Log Level
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
@@ -121,17 +122,19 @@ pub fn log_request_summary(
     session_id: Option<String>,
     user_id: Option<String>,
 ) {
+    // 1. Record metrics centrally with zero macro overhead
+    TELEMETRY.record_request(&req.path, status, duration);
+
+    // 2. Original logger output logic
     let method_str = format!("{:?}", req.method);
     let status_str = colorize_status(status);
 
-    // Format duration nicely depending on speed
     let duration_str = if duration.as_millis() > 0 {
         format!("{}ms", duration.as_millis())
     } else {
         format!("{}µs", duration.as_micros())
     };
 
-    // Readable payload weight calc
     let body_size = req.body.len();
     let size_str = if body_size < 1024 {
         format!("{} B", body_size)
@@ -139,14 +142,12 @@ pub fn log_request_summary(
         format!("{:.2} KB", body_size as f64 / 1024.0)
     };
 
-    // Identity marker assembly
     let identity_str = match (user_id, session_id) {
         (Some(uid), _) => format!("🔑 JWT Sub: {}", uid),
-        (_, Some(sid)) => format!("🍪 Session ID: {}", &sid[..8]),
+        (_, Some(sid)) => format!("🍪 Session ID: {}", &sid[..8.min(sid.len())]),
         _ => "👤 Anonymous".to_string(),
     };
 
-    // Info level is good for request summaries as they're important operational metrics
     info!(
         "🗲  [{}] {} {} ➔  Size: {} | Time: {} | Auth: {}",
         status_str, method_str, req.path, size_str, duration_str, identity_str
