@@ -57,10 +57,14 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
     let jar = Arc::new(Mutex::new(CookieJar::new(cookie_header, secret_key)));
 
     let telemetry = router.telemetry.clone();
+    let event_bus = router.event_bus.clone();
+    let job_queue = router.job_queue.clone();
 
     let mut ctx = RequestContext {
         params,
         telemetry,
+        event_bus,
+        job_queue,
         headers: req.headers.clone(),
         peer_addr,
         claims: None,

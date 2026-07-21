@@ -4,6 +4,7 @@ pub mod ioc;
 pub mod schema;
 #[cfg(feature = "swagger")]
 pub mod swagger;
+pub mod event_bus;
 
 // Re-exports
 pub use env::{get_env, initialize_env};

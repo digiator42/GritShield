@@ -1,5 +1,6 @@
 extern crate proc_macro;
 use proc_macro::TokenStream;
+use quote::quote;
 use syn::{parse_macro_input, DeriveInput, ItemImpl};
 
 mod admin;
@@ -8,6 +9,8 @@ mod ioc;
 mod repository;
 mod routing;
 mod sanitizer;
+mod event;
+mod job;
 
 #[proc_macro_derive(GritAdmin, attributes(repository))]
 pub fn derive_grit_admin(input: TokenStream) -> TokenStream {
@@ -65,6 +68,41 @@ pub fn derive_wire_container(input: TokenStream) -> TokenStream {
 pub fn derive_grit_sanitizer(input: TokenStream) -> TokenStream {
     let input = syn::parse_macro_input!(input as DeriveInput);
     sanitizer::sanitize::expand_grit_sanitizer(input).into()
+}
+
+#[proc_macro_attribute]
+pub fn event(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(item as ItemImpl);
+    event::register::expand_event(input).into()
+}
+
+#[proc_macro_attribute]
+pub fn job(attr: TokenStream, item: TokenStream) -> TokenStream {
+    job::register::expand_job(attr, item)
+}
+
+#[proc_macro_derive(GritEvent)]
+pub fn derive_grit_event(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    let name = &input.ident;
+    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+    
+    // String representation of the struct name for compile-time dispatching
+    let event_name_str = name.to_string();
+    let expanded = quote! {
+        impl #impl_generics ::gritshield::core::event_bus::GritEvent for #name #ty_generics #where_clause {
+            fn event_name() -> &'static str {
+                #event_name_str
+            }
+        }
+    };
+    TokenStream::from(expanded)
+}
+
+#[proc_macro_derive(GritJob, attributes(job))]
+pub fn derive_grit_job(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    job::register::expand_derive_grit_job(input).into()
 }
 
 // ==========================================

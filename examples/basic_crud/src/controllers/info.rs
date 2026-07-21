@@ -503,7 +503,7 @@ impl ApiController {
 
     // Use the body parameter in the route macro
     #[post("/swagger-body", body = SwaggerTestData)]
-    pub async fn test_swagger_body(ctx: RequestContext) -> Response {
+    pub async fn test_swagger_body(ctx: RequestContext, redis: Arc<RedisService>) -> Response {
         let _serialized = ctx.json::<SwaggerTestData>().await.expect("msg");
         // Parse the JSON body
         let data: Value = match ctx.json_body().await {

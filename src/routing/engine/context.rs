@@ -1,3 +1,4 @@
+use crate::core::event_bus::{EventBus, JobStorage, MemoryJobQueue};
 use crate::http::form::FormData;
 use crate::http::request::Request;
 use crate::http::response::Cookie;
@@ -5,10 +6,10 @@ use crate::routing::engine::ShieldResult;
 use crate::security::cookies::CookieJar;
 use crate::security::errors::ShieldError;
 use crate::security::jwt::Claims;
+use crate::security::sanitizer::GritSanitizable;
 use crate::security::session::{Session, SessionStore};
 use crate::security::telemetry::SystemTelemetry;
 use crate::security::xss::UntrustedString;
-use crate::security::sanitizer::GritSanitizable;
 use crate::{debug, error, trace, warn};
 use sea_orm::DatabaseConnection;
 use serde_json::Value;
@@ -20,6 +21,8 @@ use std::sync::{Arc, Mutex};
 pub struct RequestContext {
     pub req: Request,
     pub telemetry: SystemTelemetry,
+    pub event_bus: Arc<EventBus>,
+    pub job_queue: Arc<dyn JobStorage>,
     pub params: HashMap<String, UntrustedString>,
     pub peer_addr: SocketAddr,
     pub headers: HashMap<String, String>,
@@ -40,6 +43,8 @@ impl RequestContext {
         Self {
             req: Request::new(),
             telemetry: SystemTelemetry::new(),
+            event_bus: Arc::new(EventBus::init()),
+            job_queue: Arc::new(MemoryJobQueue::new()),
             params: HashMap::new(),
             peer_addr: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080),
             headers: HashMap::new(),
@@ -140,9 +145,9 @@ impl RequestContext {
         let mut payload = self.json::<T>().await?;
 
         // Validator after sanitization
-        payload.validate().map_err(|e| {
-            ShieldError::BadRequest(format!("Payload validation failed: {}", e))
-        })?;
+        payload
+            .validate()
+            .map_err(|e| ShieldError::BadRequest(format!("Payload validation failed: {}", e)))?;
 
         Ok(payload)
     }
