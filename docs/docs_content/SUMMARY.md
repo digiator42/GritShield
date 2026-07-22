@@ -17,13 +17,16 @@
 - [Admin Panel](04_admin_panel/index.md)
 
 - [Dependency Injection](04_dependency_injection/index.md)
+  - [Redis as DI](04_dependency_injection/redis_di.md)
 
 - [Macros Library](04_macros_library/index.md)
   - [Http Macros](04_macros_library/http_macros.md)
   - [Query DSL Macros](04_macros_library/query_dsl_macros.md)
   - [Dependency Injection Macros](04_macros_library/dependency_injection_macros.md)
 
-- [Redis](05_redis/index.md)
+- [Event/Task & Job Queue](05_task_queue/index.md)
+  - [Job queue with Redis](05_task_queue/redis_queue.md)
+  - [Job queue with PG](05_task_queue/pg_queue.md)
 
 - [Database](05_database/index.md)
   - [Migrations](05_database/migrations.md)

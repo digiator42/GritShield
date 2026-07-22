@@ -1,6 +1,6 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, Data, DataStruct, DeriveInput, Fields};
+use syn::{Data, DataStruct, DeriveInput, Fields};
 
 pub fn expand_grit_sanitizer(input: DeriveInput) -> TokenStream {
     let name = input.ident;

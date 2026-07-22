@@ -13,7 +13,7 @@ redis = { version = "1", features = ["tokio-comp", "connection-manager"] }
 
 ### Step 2: Wrap Redis into a GritShield Component
 
-Create a wrapper struct `RedisService` to encapsulate connection pool initialization and keep database commands clean and robust. Since it relies on custom runtime configuration strings (the Redis URL), we will register it manually using `AutoWire::component` or `provider!` macro.
+Create a wrapper struct `RedisService` to encapsulate connection pool initialization and keep database commands clean and robust. Since it relies on custom runtime configuration strings (the Redis URL), we will register it manually using `AutoWire::component` or `inject!` macro.
 
 Create `src/services/redis_service.rs` (or place it in your service directory):
 
@@ -90,7 +90,7 @@ async fn main() {
     let redis_url = "redis://127.0.0.1:6379/";
 
 	// Use provider macro to inject RedisService into DI container
-    provide!(RedisService, RedisService::new(redis_url).unwrap());
+    inject!(RedisService, RedisService::new(redis_url).unwrap());
 
 	// OR
 
@@ -106,7 +106,7 @@ async fn main() {
 
 ### Step 4: Access Redis in Your Controllers
 
-Now that `RedisService` is registered, your structural (`#[scontroller]`) and dynamic functional (`#[controller]`) routing endpoints can request it directly.
+Now that `RedisService` is registered, (`#[controller]`) routing endpoints can request it directly.
 
 #### A. Inside a Structural Controller (`#[derive(GritComponent)]`)
 
