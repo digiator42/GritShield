@@ -20,7 +20,6 @@ pub fn admin_shell(title: &str, content: Markup, is_htmx: bool) -> Response {
                 script src="https://cdnjs.cloudflare.com/ajax/libs/viz.js/2.1.2/viz.js" {}
                 script src="https://cdnjs.cloudflare.com/ajax/libs/viz.js/2.1.2/full.render.js" {}
                 script src="https://cdn.jsdelivr.net/npm/viz.js@2.1.2/viz.es5.min.js" {}
-                script src="https://cdn.jsdelivr.net/npm/viz.js@2.1.2/full.render.js" {}
                 script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js" {}
                 style {
                     "
@@ -208,12 +207,19 @@ pub fn admin_shell(title: &str, content: Markup, is_htmx: bool) -> Response {
                                hx-push-url="true"
                                class="block p-2 hover:bg-gray-800 rounded transition text-gray-400" { "📊 RBAC Graph" }
 
-                            a href="/admin/topology"
-                               hx-get="/admin/topology"
+                            a href="/admin/di/topology"
+                               hx-get="/admin/di/topology"
                                hx-target="#main-content"
                                hx-indicator="body"
                                hx-push-url="true"
                                class="block p-2 hover:bg-gray-800 rounded transition text-gray-400" { "📊 DI Graph" }
+                            
+                            a href="/admin/jobs/topology"
+                               hx-get="/admin/jobs/topology"
+                               hx-target="#main-content"
+                               hx-indicator="body"
+                               hx-push-url="true"
+                               class="block p-2 hover:bg-gray-800 rounded transition text-gray-400" { "📊 Jobs Graph" }
                         }
                         hr class="border-gray-800 my-4";
                         div class="flex items-center justify-between" {

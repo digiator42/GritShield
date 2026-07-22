@@ -31,7 +31,12 @@ pub fn expand_event(input: ItemImpl) -> TokenStream {
         }
     };
 
-    // 2. Expand: Keep original impl + auto-gen GritEventHandler + inventory submission
+    // --- Dynamic String Extraction for Graphviz Metadata ---
+    // quote::quote!(#event_ty).to_string() yields "UserRegistered" or "path::to::UserRegistered"
+    let event_type_str = quote!(#event_ty).to_string();
+    let handler_type_str = quote!(#self_ty).to_string();
+
+    // 2. Expand: Keep original impl + auto-gen GritEventHandler + dynamic inventory submission
     let expanded = quote! {
         // Retain original impl block
         #input
@@ -44,9 +49,11 @@ pub fn expand_event(input: ItemImpl) -> TokenStream {
             }
         }
 
-        // Auto-register into global inventory / DI container at compile-time
+        // Auto-register into global inventory / DI container with dynamic type names
         gritshield::inventory::submit! {
             ::gritshield::core::event_bus::EventRegistration {
+                event_type: #event_type_str,
+                handler_type: #handler_type_str,
                 register: |bus| {
                     bus.register_handler::<#event_ty, #self_ty>(#self_ty);
                 }

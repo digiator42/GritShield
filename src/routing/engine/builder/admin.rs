@@ -21,7 +21,7 @@ use {
     },
     crate::gritadmin::dashboard::handlers::{
         handle_custom_action, handle_dashboard, handle_rbac_dashboard, handle_search_palette,
-        handle_topology_dashboard,
+        handle_topology_dashboard, handle_events_jobs_dashboard
     },
     crate::gritadmin::{
         admin_metrics_api_handler, admin_metrics_html_handler, admin_security_matrix_view_handler,
@@ -367,8 +367,15 @@ impl Router {
         let topology_handler: AdminHandlerFn =
             Arc::new(|ctx| Box::pin(handle_topology_dashboard(ctx)));
 
-        log_route!("/admin/topology", max_len, "GET");
-        self.add_route(HttpMethod::GET, "/admin/topology", topology_handler, None);
+        log_route!("/admin/di/topology", max_len, "GET");
+        self.add_route(HttpMethod::GET, "/admin/di/topology", topology_handler, None);
+        
+        // Register Jobs/tasks Topology Matrix Endpoint
+        let jobs_topology_handler: AdminHandlerFn =
+            Arc::new(|ctx| Box::pin(handle_events_jobs_dashboard(ctx)));
+
+        log_route!("/admin/jobs/topology", max_len, "GET");
+        self.add_route(HttpMethod::GET, "/admin/jobs/topology", jobs_topology_handler, None);
 
         // Admin auth middleware
         self.middlewares.push(Box::new(AdminAuthMiddleware::new()));

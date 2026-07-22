@@ -11,9 +11,39 @@ pub struct GenerateReportJob {
     pub user_id: String,
     pub format: String,
 }
+#[derive(Serialize, Deserialize, GritJob)] // <--- Auto-derives Serialize, Deserialize, and GritJob
+pub struct GenerateReportJob2 {
+    pub user_id: String,
+    pub format: String,
+}
+#[derive(Serialize, Deserialize, GritJob)] // <--- Auto-derives Serialize, Deserialize, and GritJob
+pub struct GenerateReportJob3 {
+    pub user_id: String,
+    pub format: String,
+}
 
 #[job(retries = 5)]
 impl GenerateReportJob {
+    pub async fn perform(&self) -> Result<(), String> {
+        println!(
+            "Generating report template '{}' to {}",
+            self.user_id, self.format
+        );
+        Ok(())
+    }
+}
+#[job(retries = 5)]
+impl GenerateReportJob2 {
+    pub async fn perform(&self) -> Result<(), String> {
+        println!(
+            "Generating report template '{}' to {}",
+            self.user_id, self.format
+        );
+        Ok(())
+    }
+}
+#[job(retries = 5)]
+impl GenerateReportJob3 {
     pub async fn perform(&self) -> Result<(), String> {
         println!(
             "Generating report template '{}' to {}",

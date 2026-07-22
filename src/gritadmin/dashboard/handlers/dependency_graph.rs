@@ -1,8 +1,8 @@
 use crate::core::ioc::AutoWire;
 use crate::http::response::Response;
 use crate::routing::engine::RequestContext;
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use maud::{html, Markup, PreEscaped};
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 
 pub async fn handle_topology_dashboard(_ctx: RequestContext) -> Response {
     let dot_schema = AutoWire::export_dot();
@@ -15,7 +15,7 @@ pub fn render_topology_graph(dot_schema: &str) -> Markup {
 
     // Prepare single JS string with base64 embedded to avoid macro syntax collisions
     let js_code = format!(
-        "const B64_DOT = '{}';\n{}",
+        "(() => {{\nconst B64_DOT = '{}';\n{}\n}})();",
         base64_dot,
         r#"
 let panZoomInstance = null;
@@ -75,22 +75,23 @@ function renderGritGraph() {
     }
 }
 
-function zoomInGritGraph() {
+// Attach control handlers safely to button IDs or keep them local to the IIFE
+window.zoomInGritGraph = function() {
     if (panZoomInstance) panZoomInstance.zoomIn();
-}
+};
 
-function zoomOutGritGraph() {
+window.zoomOutGritGraph = function() {
     if (panZoomInstance) panZoomInstance.zoomOut();
-}
+};
 
-function resetGritGraph() {
+window.resetGritGraph = function() {
     if (panZoomInstance) {
         panZoomInstance.resetZoom();
         panZoomInstance.center();
     }
-}
+};
 
-function toggleFullScreenGritGraph() {
+window.toggleFullScreenGritGraph = function() {
     const viewport = document.getElementById("graph-viewport");
     if (!viewport) return;
 
@@ -111,7 +112,9 @@ function toggleFullScreenGritGraph() {
             }
         });
     }
-}
+};
+
+window.renderGritGraph = renderGritGraph;
 
 renderGritGraph();
 "#

@@ -1,16 +1,18 @@
 use sea_orm_migration::async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::any::Any;
+use std::fmt::Debug;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::broadcast;
+use tokio::sync::mpsc;
 use tokio::sync::Semaphore;
 use tokio::time::sleep;
-use tokio::sync::mpsc;
-use std::fmt::Debug;
 pub struct EventRegistration {
+    pub event_type: &'static str,   // e.g., "UserRegistered"
+    pub handler_type: &'static str, // e.g., "WelcomeEmailHandler"
     pub register: fn(&EventBus),
 }
 
@@ -101,6 +103,8 @@ pub type JobFuture = Pin<Box<dyn Future<Output = Result<(), String>> + Send>>;
 
 pub struct JobRegistration {
     pub job_type: &'static str,
+    pub handler_type: &'static str,
+    pub max_retries: u32,
     pub execute: fn(payload: &[u8]) -> JobFuture,
 }
 
@@ -346,5 +350,95 @@ impl JobStorage for MemoryJobQueue {
         eprintln!("[JOB FAILED] ID: {} | Error: {}", job.id, error);
         // Re-enqueue the job for backoff retry execution
         self.enqueue(job).await
+    }
+}
+
+pub struct EventBusGraph;
+impl EventBusGraph {
+    pub fn export_dot() -> String {
+        let mut dot = String::new();
+
+        dot.push_str("digraph GritshieldEventsJobs {\n");
+        // Reduced rank separation and added global graph padding
+        dot.push_str("  graph [rankdir=LR, bgcolor=\"#030712\", fontname=\"monospace\", fontsize=10, pad=\"0.3\", nodesep=\"0.4\", ranksep=\"0.5\"];\n");
+        // CRITICAL FIX: Set explicit fontsize=10 and margin on nodes so text doesn't overflow shapes
+        dot.push_str("  node [fontname=\"monospace\", fontsize=9, shape=box, style=\"filled,rounded\", penwidth=1.2, margin=\"0.15,0.1\"];\n");
+        // Edge styling and label size
+        dot.push_str("  edge [fontname=\"monospace\", fontsize=8, arrowsize=0.7];\n\n");
+
+        // --- Subgraph 1: Background Jobs ---
+        dot.push_str("  subgraph cluster_jobs {\n");
+        dot.push_str("    label = \"Background Job Queue\";\n");
+        dot.push_str("    fontsize = 10;\n");
+        dot.push_str("    fontcolor = \"#c084fc\";\n");
+        dot.push_str("    color = \"#581c87\";\n");
+        dot.push_str("    style = \"dashed,rounded\";\n");
+        dot.push_str("    margin = 12;\n");
+        dot.push_str("    node [fillcolor=\"#1e1b4b\", color=\"#818cf8\", fontcolor=\"#e0e7ff\"];\n\n");
+
+        for job in inventory::iter::<JobRegistration> {
+            let clean_name = job.job_type.replace("::", "_");
+            let job_node = format!("job_{}", clean_name);
+            let worker_node = format!("worker_{}", clean_name);
+
+            dot.push_str(&format!(
+                "    {} [label=\"J: {}\\n(Retry Strategy)\", fillcolor=\"#31104b\", color=\"#a855f7\", fontcolor=\"#f3e8ff\"];\n",
+                job_node, job.job_type
+            ));
+
+            dot.push_str(&format!(
+                "    {} [label=\"{}\", fillcolor=\"#064e3b\", color=\"#34d399\", fontcolor=\"#ecfdf5\"];\n",
+                worker_node, job.job_type
+            ));
+
+            dot.push_str(&format!(
+                "    {} -> {} [label=\"executes\", color=\"#a855f7\", fontcolor=\"#c084fc\"];\n",
+                job_node, worker_node
+            ));
+        }
+        dot.push_str("  }\n\n");
+
+        // --- Subgraph 2: Pub/Sub Event Bus ---
+        dot.push_str("  subgraph cluster_events {\n");
+        dot.push_str("    label = \"Event Bus System\";\n");
+        dot.push_str("    fontsize = 11;\n");
+        dot.push_str("    fontcolor = \"#38bdf8\";\n");
+        dot.push_str("    color = \"#0369a1\";\n");
+        dot.push_str("    style = \"dashed,rounded\";\n");
+        dot.push_str("    margin = 12;\n");
+        dot.push_str("    node [fillcolor=\"#0c4a6e\", color=\"#38bdf8\", fontcolor=\"#f0f9ff\"];\n\n");
+
+        let mut has_events = false;
+        for reg in inventory::iter::<EventRegistration> {
+            has_events = true;
+            let event_node = format!("evt_{}", reg.event_type.replace("::", "_"));
+            let handler_node = format!("hnd_{}", reg.handler_type.replace("::", "_"));
+
+            // Event Node
+            dot.push_str(&format!(
+                "    {} [label=\"E: {}\", fillcolor=\"#075985\", color=\"#0284c7\", fontcolor=\"#e0f2fe\"];\n",
+                event_node, reg.event_type
+            ));
+
+            // Handler Node
+            dot.push_str(&format!(
+                "    {} [label=\"H: {}\", fillcolor=\"#14532d\", color=\"#22c55e\", fontcolor=\"#f0fdf4\"];\n",
+                handler_node, reg.handler_type
+            ));
+
+            // Edge
+            dot.push_str(&format!(
+                "    {} -> {} [label=\"dispatches\", color=\"#38bdf8\", fontcolor=\"#7dd3fc\"];\n",
+                event_node, handler_node
+            ));
+        }
+
+        if !has_events {
+            dot.push_str("    no_events [label=\"No Events Registered\", fillcolor=\"#1f2937\", color=\"#4b5563\", fontcolor=\"#9ca3af\"];\n");
+        }
+
+        dot.push_str("  }\n");
+        dot.push_str("}\n");
+        dot
     }
 }

@@ -37,14 +37,13 @@ impl Parse for JobArgs {
     }
 }
 
-// grit_macros/src/job.rs
-
 pub fn expand_job(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = parse_macro_input!(attr as JobArgs);
     let input = parse_macro_input!(item as ItemImpl);
     let self_ty = &input.self_ty;
 
     let job_name = args.name.unwrap_or_else(|| quote!(#self_ty).to_string());
+    let handler_type_str = quote!(#self_ty).to_string();
     let max_retries = args.retries;
 
     let expanded = quote! {
@@ -65,12 +64,13 @@ pub fn expand_job(attr: TokenStream, item: TokenStream) -> TokenStream {
             }
         }
 
-        // 3. Compile-time registration into global inventory
+        // 3. Compile-time registration with full metadata
         ::gritshield::inventory::submit! {
             ::gritshield::core::event_bus::JobRegistration {
                 job_type: #job_name,
+                handler_type: #handler_type_str,
+                max_retries: #max_retries,
                 execute: |payload: &[u8]| {
-                    // Convert slice to an owned Vec<u8> BEFORE async move to satisfy 'static
                     let bytes = payload.to_vec();
                     Box::pin(async move {
                         let job: #self_ty = ::serde_json::from_slice(&bytes)

@@ -13,9 +13,23 @@ pub struct UserRegistered {
 }
 
 pub struct WelcomeEmailHandler;
+pub struct WelcomeEmailHandler2;
+pub struct WelcomeEmailHandler3;
 
 #[event]
 impl WelcomeEmailHandler {
+    pub async fn handle(&self, event: Arc<UserRegistered>) {
+        println!("Sending email to: {}", event.email);
+    }
+}
+#[event]
+impl WelcomeEmailHandler2 {
+    pub async fn handle(&self, event: Arc<UserRegistered>) {
+        println!("Sending email to: {}", event.email);
+    }
+}
+#[event]
+impl WelcomeEmailHandler3 {
     pub async fn handle(&self, event: Arc<UserRegistered>) {
         println!("Sending email to: {}", event.email);
     }
