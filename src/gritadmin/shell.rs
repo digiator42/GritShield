@@ -158,7 +158,8 @@ pub fn admin_shell(title: &str, content: Markup, is_htmx: bool) -> Response {
                                         .map(|c| c.to_uppercase().to_string())
                                         .unwrap_or_default()
                                         + &table_name[1..]
-                                ).replace("_", "");
+                                ).replace("_", "")
+                                .replace("-", "");
                                 a href=(meta.route_path)
                                    hx-get=(meta.route_path)
                                    hx-target="#main-content"
@@ -189,6 +190,8 @@ pub fn admin_shell(title: &str, content: Markup, is_htmx: bool) -> Response {
                                hx-indicator="body"
                                hx-push-url="true"
                                class="block p-2 hover:bg-gray-800 rounded transition text-gray-400" { "🔒 Security Settings" }
+                            
+                            hr class="border-gray-800 my-4";
 
                             // swagger-ui route, open in new tab
                             a href="/admin/docs"
@@ -200,26 +203,28 @@ pub fn admin_shell(title: &str, content: Markup, is_htmx: bool) -> Response {
                                target="_blank" rel="noopener noreferrer"
                                class="block p-2 hover:bg-gray-800 rounded transition text-gray-400" { "📄 API JSON" }
 
+                            hr class="border-gray-800 my-4";
+
                             a href="/admin/rbac-matrix"
                                hx-get="/admin/rbac-matrix"
                                hx-target="#main-content"
                                hx-indicator="body"
                                hx-push-url="true"
-                               class="block p-2 hover:bg-gray-800 rounded transition text-gray-400" { "📊 RBAC Graph" }
+                               class="block p-2 hover:bg-gray-800 rounded transition text-gray-400" { "👥 RBAC Graph" }
 
                             a href="/admin/di/topology"
                                hx-get="/admin/di/topology"
                                hx-target="#main-content"
                                hx-indicator="body"
                                hx-push-url="true"
-                               class="block p-2 hover:bg-gray-800 rounded transition text-gray-400" { "📊 DI Graph" }
+                               class="block p-2 hover:bg-gray-800 rounded transition text-gray-400" { "🕸️ DI Graph" }
                             
                             a href="/admin/jobs/topology"
                                hx-get="/admin/jobs/topology"
                                hx-target="#main-content"
                                hx-indicator="body"
                                hx-push-url="true"
-                               class="block p-2 hover:bg-gray-800 rounded transition text-gray-400" { "📊 Jobs Graph" }
+                               class="block p-2 hover:bg-gray-800 rounded transition text-gray-400" { "🗺️ Jobs Graph" }
                         }
                         hr class="border-gray-800 my-4";
                         div class="flex items-center justify-between" {

@@ -48,6 +48,43 @@ impl Cookie {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u16)]
+pub enum HttpStatus {
+    // --- 2xx Success ---
+    Ok = 200,
+    Created = 201,
+    Accepted = 202,
+    NoContent = 204,
+
+    // --- 3xx Redirection ---
+    MovedPermanently = 301,
+    Found = 302,
+    SeeOther = 303,
+    NotModified = 304,
+
+    // --- 4xx Client Errors ---
+    BadRequest = 400,
+    Unauthorized = 401,
+    Forbidden = 403,
+    NotFound = 404,
+    Conflict = 409,
+    UnprocessableEntity = 422,
+    TooManyRequests = 429,
+
+    // --- 5xx Server Errors ---
+    InternalServerError = 500,
+    NotImplemented = 501,
+    BadGateway = 502,
+    ServiceUnavailable = 503,
+}
+
+impl HttpStatus {
+    pub fn code(self) -> u16 {
+        self as u16
+    }
+}
+
 #[derive(Clone)]
 pub enum ResponseBody {
     Html(SafeHtml),
@@ -102,10 +139,10 @@ impl IntoResponseBody for &'static str {
 }
 
 // Create a wrapper struct specifically for explicit JSON data structures
-#[derive(Serialize)] 
+#[derive(Serialize)]
 pub struct JsonPayload<T>(pub T);
 
-#[derive(Serialize)] 
+#[derive(Serialize)]
 pub struct HtmlPayload<T>(pub T);
 
 impl<T: serde::Serialize> IntoResponseBody for JsonPayload<T> {
@@ -171,8 +208,6 @@ pub struct Response {
     pub cookies: Vec<Cookie>,
     pub body: ResponseBody,
 }
-
-
 
 impl Response {
     pub fn new(status: u16, body: SafeHtml) -> Self {
@@ -348,12 +383,24 @@ impl Response {
         }
     }
 
+    /// Attach a custom header dynamically to the response (Builder pattern)
+    pub fn with_header(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.headers.push((key.into(), value.into()));
+        self
+    }
+
+    /// Attach multiple custom headers at once
+    pub fn with_headers(mut self, headers: Vec<(String, String)>) -> Self {
+        self.headers.extend(headers);
+        self
+    }
+
     /// Core polymorphic base constructor utilizing the IntoResponseBody converter pipeline
-    pub fn build<B: IntoResponseBody>(status: u16, payload: B) -> Self {
+    pub fn build<B: IntoResponseBody>(status: HttpStatus, payload: B) -> Self {
         let (body, content_type) = payload.convert();
 
         Response {
-            status,
+            status: status.code(),
             headers: vec![
                 ("Content-Type".to_string(), content_type),
                 ("X-Content-Type-Options".to_string(), "nosniff".to_string()),
@@ -368,50 +415,50 @@ impl Response {
 
     /// 200 OK — Standard success response
     pub fn ok<B: IntoResponseBody>(payload: B) -> Self {
-        Self::build(200, payload)
+        Self::build(HttpStatus::Ok, payload)
     }
 
     /// 201 Created — Resource successfully created
     pub fn created<B: IntoResponseBody>(payload: B) -> Self {
-        Self::build(201, payload)
+        Self::build(HttpStatus::Created, payload)
     }
 
     // --- 4xx CLIENT ERRORS ---
 
-    /// 400 Bad Request — Malformed syntax or missing validation constraints
+    /// 400 Bad Request
     pub fn bad_request<B: IntoResponseBody>(payload: B) -> Self {
-        Self::build(400, payload)
+        Self::build(HttpStatus::BadRequest, payload)
     }
 
-    /// 401 Unauthorized — Authentication is missing or invalid
+    /// 401 Unauthorized
     pub fn unauthorized<B: IntoResponseBody>(payload: B) -> Self {
-        Self::build(401, payload)
+        Self::build(HttpStatus::Unauthorized, payload)
     }
 
-    /// 403 Forbidden — lacks permissions
+    /// 403 Forbidden
     pub fn forbidden<B: IntoResponseBody>(payload: B) -> Self {
-        Self::build(403, payload)
+        Self::build(HttpStatus::Forbidden, payload)
     }
 
-    /// 404 Not Found — Resource or path cannot be resolved
+    /// 404 Not Found
     pub fn not_found<B: IntoResponseBody>(payload: B) -> Self {
-        Self::build(404, payload)
+        Self::build(HttpStatus::NotFound, payload)
     }
 
-    /// 409 Conflict — Request conflict with the current state of the target resource.
+    /// 409 Conflict
     pub fn conflict<B: IntoResponseBody>(payload: B) -> Self {
-        Self::build(409, payload)
+        Self::build(HttpStatus::Conflict, payload)
     }
 
-    /// 429 Too Many Requests — client has sent too many requests in a given amount of time
+    /// 429 Too Many Requests
     pub fn too_many_requests<B: IntoResponseBody>(payload: B) -> Self {
-        Self::build(429, payload)
+        Self::build(HttpStatus::TooManyRequests, payload)
     }
 
     // --- 5xx SERVER ERRORS ---
 
-    /// 500 Internal Server Error — Generic catch-all for database faults or crypto crashes
+    /// 500 Internal Server Error
     pub fn internal_error<B: IntoResponseBody>(payload: B) -> Self {
-        Self::build(500, payload)
+        Self::build(HttpStatus::InternalServerError, payload)
     }
 }

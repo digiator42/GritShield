@@ -397,6 +397,7 @@ impl Router {
             })
         });
         self.add_route(HttpMethod::GET, "/admin/docs", swagger_handler, None);
+        log_route!("/admin/docs", 25, "GET");
 
         let openapi_handler: AdminHandlerFn = Arc::new(|_ctx| {
             Box::pin(async move {
@@ -410,5 +411,6 @@ impl Router {
             openapi_handler,
             None,
         );
+        log_route!("/admin/docs/openapi.json", 25, "GET");
     }
 }

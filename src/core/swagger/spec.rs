@@ -186,7 +186,7 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
                 let mut res = HashMap::new();
                 res.insert(
                     "200".to_string(),
-                    Response {
+                    SwaggerResponse {
                         description: "Success".to_string(),
                         content: Some({
                             let mut content = HashMap::new();
@@ -209,7 +209,7 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
                 );
                 res.insert(
                     "404".to_string(),
-                    Response {
+                    SwaggerResponse {
                         description: "Not Found".to_string(),
                         content: None,
                     },
@@ -403,7 +403,7 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
                 let mut res = HashMap::new();
                 res.insert(
                     "200".to_string(),
-                    Response {
+                    SwaggerResponse {
                         description: "Success".to_string(),
                         content: Some({
                             let mut content = HashMap::new();
@@ -464,7 +464,7 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
                 let mut res = HashMap::new();
                 res.insert(
                     "200".to_string(),
-                    Response {
+                    SwaggerResponse {
                         description: "Success".to_string(),
                         content: Some({
                             let mut content = HashMap::new();
@@ -487,7 +487,7 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
                 );
                 res.insert(
                     "404".to_string(),
-                    Response {
+                    SwaggerResponse {
                         description: "Not Found".to_string(),
                         content: None,
                     },
@@ -521,14 +521,14 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
                 let mut res = HashMap::new();
                 res.insert(
                     "200".to_string(),
-                    Response {
+                    SwaggerResponse {
                         description: "Record successfully deleted".to_string(),
                         content: None,
                     },
                 );
                 res.insert(
                     "404".to_string(),
-                    Response {
+                    SwaggerResponse {
                         description: "Record not found".to_string(),
                         content: None,
                     },
@@ -557,7 +557,7 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
                 let mut res = HashMap::new();
                 res.insert(
                     "200".to_string(),
-                    Response {
+                    SwaggerResponse {
                         description: "Success".to_string(),
                         content: None,
                     },
@@ -622,7 +622,7 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
                 let mut res = HashMap::new();
                 res.insert(
                     "200".to_string(),
-                    Response {
+                    SwaggerResponse {
                         description: "Success".to_string(),
                         content: Some({
                             let mut content = HashMap::new();
@@ -645,7 +645,7 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
                 );
                 res.insert(
                     "400".to_string(),
-                    Response {
+                    SwaggerResponse {
                         description: "Bad Request".to_string(),
                         content: None,
                     },
@@ -759,7 +759,7 @@ pub fn generate_openapi_spec() -> OpenApiSpec {
                     let mut res = HashMap::new();
                     res.insert(
                         "200".to_string(),
-                        Response {
+                        SwaggerResponse {
                             description: "Success".to_string(),
                             content: Some({
                                 let mut content = HashMap::new();

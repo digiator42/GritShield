@@ -70,17 +70,6 @@ pub fn derive_grit_sanitizer(input: TokenStream) -> TokenStream {
     sanitizer::sanitize::expand_grit_sanitizer(input).into()
 }
 
-#[proc_macro_attribute]
-pub fn event(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(item as ItemImpl);
-    event::register::expand_event(input).into()
-}
-
-#[proc_macro_attribute]
-pub fn job(attr: TokenStream, item: TokenStream) -> TokenStream {
-    job::register::expand_job(attr, item)
-}
-
 #[proc_macro_derive(GritEvent)]
 pub fn derive_grit_event(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -106,12 +95,34 @@ pub fn derive_grit_job(input: TokenStream) -> TokenStream {
 }
 
 // ==========================================
-// ATTRIBUTE MACROS (Controllers & Endpoints)
+// ATTRIBUTE MACROS (Event/Job Queue & DI)
 // ==========================================
+
+#[proc_macro_attribute]
+pub fn event(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(item as ItemImpl);
+    event::register::expand_event(input).into()
+}
+
+#[proc_macro_attribute]
+pub fn job(attr: TokenStream, item: TokenStream) -> TokenStream {
+    job::register::expand_job(attr, item)
+}
+
 #[proc_macro_attribute]
 pub fn action(attr: TokenStream, item: TokenStream) -> TokenStream {
     admin::action::expand_action(attr, item)
 }
+
+#[proc_macro_attribute]
+pub fn component(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    let input_impl = parse_macro_input!(item as ItemImpl);
+    ioc::component::expand_component(input_impl)
+}
+
+// ==========================================
+// ATTRIBUTE MACROS (Controllers & Endpoints)
+// ==========================================
 
 #[proc_macro_attribute]
 pub fn controller(attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -120,11 +131,6 @@ pub fn controller(attr: TokenStream, item: TokenStream) -> TokenStream {
         .into()
 }
 
-#[proc_macro_attribute]
-pub fn component(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    let input_impl = parse_macro_input!(item as ItemImpl);
-    ioc::component::expand_component(input_impl)
-}
 
 #[proc_macro_attribute]
 pub fn get(attr: TokenStream, item: TokenStream) -> TokenStream {

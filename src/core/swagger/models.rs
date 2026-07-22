@@ -39,7 +39,7 @@ pub struct Operation {
     pub operation_id: String,
     pub tags: Vec<String>,
     pub parameters: Vec<Parameter>,
-    pub responses: HashMap<String, Response>,
+    pub responses: HashMap<String, SwaggerResponse>,
     #[serde(rename = "requestBody", skip_serializing_if = "Option::is_none")] // OpenAPI requires camelCase
     pub request_body: Option<RequestBody>,
 }
@@ -67,7 +67,7 @@ pub struct MediaType {
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
-pub struct Response {
+pub struct SwaggerResponse {
     pub description: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<HashMap<String, MediaType>>,
