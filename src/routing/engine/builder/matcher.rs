@@ -5,87 +5,52 @@ use std::collections::HashMap;
 
 impl Router {
     pub fn match_route<'a>(&'a self, method: &HttpMethod, path: &str) -> RoutingResult<'a> {
-        println!("===> {:?} > {path}", method);
-        let mut current = &self.root;
-        let mut params = HashMap::new();
+    let mut current = &self.root;
+    let mut captured_values = Vec::new();
 
-        // normalize the string boundaries without altering mid-path structures
-        let mut trimmed_path = path;
-        if trimmed_path.starts_with('/') {
-            trimmed_path = &trimmed_path[1..];
-        }
-        if trimmed_path.ends_with('/') && !trimmed_path.is_empty() {
-            trimmed_path = &trimmed_path[..trimmed_path.len() - 1];
-        }
+    let trimmed_path = path.trim_matches('/');
+    let segments: Vec<&str> = if trimmed_path.is_empty() {
+        Vec::new()
+    } else {
+        trimmed_path.split('/').collect()
+    };
 
-        // Parse segments strictly, reject path if intermediate empty elements exist
-        let segments: Vec<&str> = if trimmed_path.is_empty() {
-            Vec::new() // Handles the base root "/" path cleanly
+    for segment in segments {
+        if let Some(next_node) = current.children.get(segment) {
+            current = next_node;
         } else {
-            let parts: Vec<&str> = trimmed_path.split('/').collect();
-            if parts.iter().any(|s| s.is_empty()) {
-                // Catches invalid sequences "/admin/////users" or "///"
-                return RoutingResult::NotFound;
-            }
-            parts
-        };
+            let param_match = current
+                .children
+                .iter()
+                .find(|(key, _)| key.starts_with(':'));
 
-        // Process the cleanly generated routing segments
-        for (i, segment) in segments.iter().enumerate() {
-            if let Some(next_node) = current.children.get(*segment) {
-                current = next_node;
+            if let Some((_, param_node)) = param_match {
+                // Collect the actual path parameter value (e.g. "2", "1")
+                captured_values.push(segment.to_string());
+                current = param_node;
             } else {
-                // Find any child key that signals a dynamic parameter
-                let param_match = current
-                    .children
-                    .iter()
-                    .find(|(key, _)| key.starts_with(':'));
-
-                if let Some((key, param_node)) = param_match {
-                    // Check if either the map key OR the internal name contains the '*' wildcard flag
-                    let is_wildcard = key.contains('*')
-                        || param_node
-                            .parameter_name
-                            .as_ref()
-                            .map_or(false, |name| name.contains('*'));
-
-                    if is_wildcard {
-                        // Grab everything remaining, join it with slashes, and clean the parameter key
-                        let remainder = segments[i..].join("/");
-                        let clean_key = key.trim_start_matches(':').to_string(); // drops ':' to leave '*path'
-
-                        params.insert(clean_key, UntrustedString::new(remainder));
-                        current = param_node;
-                        break;
-                    } else {
-                        // Try the node's explicit property first; if None, fall back to the child map key string!
-                        let clean_key = if let Some(ref name) = param_node.parameter_name {
-                            name.trim_start_matches(':').to_string()
-                        } else {
-                            key.trim_start_matches(':').to_string()
-                        };
-
-                        // Insert the dynamic slug value safely into our parameters dictionary
-                        params.insert(clean_key, UntrustedString::new(segment.to_string()));
-
-                        // Advance the tracker node downward to continue evaluating subsequent segments
-                        current = param_node;
-                    }
-                } else {
-                    return RoutingResult::NotFound;
-                }
-            }
-        }
-
-        match current.methods.get(method) {
-            Some(target) => RoutingResult::Found(&*target.handler, target.required_role, params),
-            None => {
-                if !current.methods.is_empty() {
-                    RoutingResult::MethodNotAllowed
-                } else {
-                    RoutingResult::NotFound
-                }
+                return RoutingResult::NotFound;
             }
         }
     }
+
+    match current.methods.get(method) {
+        Some(target) => {
+            // Zip route parameter names with captured URL values
+            let mut params = HashMap::new();
+            for (name, val) in target.param_names.iter().zip(captured_values.into_iter()) {
+                params.insert(name.clone(), UntrustedString::new(val));
+            }
+
+            RoutingResult::Found(&*target.handler, target.required_role, params)
+        }
+        None => {
+            if !current.methods.is_empty() {
+                RoutingResult::MethodNotAllowed
+            } else {
+                RoutingResult::NotFound
+            }
+        }
+    }
+}
 }

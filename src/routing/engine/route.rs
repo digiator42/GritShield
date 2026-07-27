@@ -1,5 +1,5 @@
-use crate::{http::request::HttpMethod, routing::engine::Handler};
 use super::handler::IntoHandler;
+use crate::{http::request::HttpMethod, routing::engine::Handler};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
@@ -28,6 +28,18 @@ inventory::collect!(AutoRoute);
 pub struct RouteTarget {
     pub handler: Box<dyn IntoHandler>,
     pub required_role: Option<&'static str>,
+    pub param_names: Vec<String>,
+}
+
+impl Default for Node {
+    fn default() -> Self {
+        Self {
+            children: HashMap::new(),
+            is_end: true,
+            methods: HashMap::new(),
+            parameter_name: None,
+        }
+    }
 }
 
 pub struct Node {
@@ -44,6 +56,22 @@ impl Node {
             is_end: false,
             methods: HashMap::new(),
             parameter_name: None,
+        }
+    }
+
+    pub fn dump_node(&self, depth: usize) {
+        let indent = "  ".repeat(depth);
+        let methods: Vec<String> = self.methods.keys().map(|m| format!("{:?}", m)).collect();
+        let param = self.parameter_name.as_deref().unwrap_or("none");
+
+        println!(
+            "{}- [Node] Methods: {:?} | param_name: {}",
+            indent, methods, param
+        );
+
+        for (key, child) in &self.children {
+            println!("{}  └─ Segment: '{}'", indent, key);
+            child.dump_node(depth + 2);
         }
     }
 }

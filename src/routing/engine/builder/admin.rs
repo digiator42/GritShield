@@ -20,8 +20,8 @@ use {
         handle_login_auth, handle_logout, render_login_page, AdminAuthMiddleware,
     },
     crate::gritadmin::dashboard::handlers::{
-        handle_custom_action, handle_dashboard, handle_rbac_dashboard, handle_search_palette,
-        handle_topology_dashboard, handle_events_jobs_dashboard
+        handle_custom_action, handle_dashboard, handle_events_jobs_dashboard,
+        handle_rbac_dashboard, handle_search_palette, handle_topology_dashboard,
     },
     crate::gritadmin::{
         admin_metrics_api_handler, admin_metrics_html_handler, admin_security_matrix_view_handler,
@@ -74,8 +74,16 @@ impl Router {
                 self.role_registry.insert(route.path.to_string(), role);
             }
 
-            self.add_route(route.method, route.path, route.handler, route.required_role);
+            // Wrap route.handler in Box::new() here!
+            self.add_route(
+                route.method,
+                route.path,
+                Box::new(route.handler),
+                route.required_role,
+            );
         }
+
+        self.debug_dump_tree()
     }
 
     #[cfg(feature = "admin")]
@@ -368,14 +376,24 @@ impl Router {
             Arc::new(|ctx| Box::pin(handle_topology_dashboard(ctx)));
 
         log_route!("/admin/di/topology", max_len, "GET");
-        self.add_route(HttpMethod::GET, "/admin/di/topology", topology_handler, None);
-        
+        self.add_route(
+            HttpMethod::GET,
+            "/admin/di/topology",
+            topology_handler,
+            None,
+        );
+
         // Register Jobs/tasks Topology Matrix Endpoint
         let jobs_topology_handler: AdminHandlerFn =
             Arc::new(|ctx| Box::pin(handle_events_jobs_dashboard(ctx)));
 
         log_route!("/admin/jobs/topology", max_len, "GET");
-        self.add_route(HttpMethod::GET, "/admin/jobs/topology", jobs_topology_handler, None);
+        self.add_route(
+            HttpMethod::GET,
+            "/admin/jobs/topology",
+            jobs_topology_handler,
+            None,
+        );
 
         // Admin auth middleware
         self.middlewares.push(Box::new(AdminAuthMiddleware::new()));

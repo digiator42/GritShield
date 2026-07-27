@@ -80,4 +80,10 @@ impl Router {
 
         router
     }
+
+    pub fn debug_dump_tree(&self) {
+        println!("\n========= [ROUTER TRIE DUMP] =========");
+        self.root.dump_node(0);
+        println!("=====================================\n");
+    }
 }

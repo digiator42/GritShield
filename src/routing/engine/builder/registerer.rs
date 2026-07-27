@@ -1,11 +1,10 @@
+use crate::database::repository::registry::AdminHandlerFn;
 use crate::http::request::HttpMethod;
 use crate::routing::engine::route::RouteTarget;
 use crate::routing::engine::{Node, Router};
 use crate::routing::IntoHandler;
 
-
 impl Router {
-
     /// Register routes using tuples for a clean, declarative style.
     ///
     /// ### Example
@@ -22,15 +21,15 @@ impl Router {
     /// ```rust,no_run,ignore
     /// app_routes.into_iter().for_each(|r| router.route(r));
     /// ```
-    pub fn route<H>(mut self, route_info: (&str, HttpMethod, H)) -> Self
+    pub fn route<S, H>(mut self, route_info: (S, HttpMethod, H)) -> Self
     where
-        H: IntoHandler,
+        S: AsRef<str>,
+        H: IntoHandler + 'static,
     {
-        self.add_route(route_info.1, route_info.0, route_info.2, None);
+        self.add_route(route_info.1, route_info.0.as_ref(), route_info.2, None);
         self
     }
 
-    
     // Update the basic registration engine signature
     pub fn add_route<H>(
         &mut self,
@@ -39,24 +38,50 @@ impl Router {
         handler: H,
         required_role: Option<&'static str>,
     ) where
-        H: IntoHandler,
+        H: IntoHandler + 'static,
     {
-        let mut current = &mut self.root;
+        let path_trimmed = path.trim_matches('/');
+        let segments: Vec<&str> = if path_trimmed.is_empty() {
+            Vec::new()
+        } else {
+            path_trimmed.split('/').collect()
+        };
 
-        for segment in path.split('/').filter(|s| !s.is_empty()) {
-            current = current
-                .children
-                .entry(segment.to_string())
-                .or_insert(Node::new());
+        let mut current = &mut self.root;
+        let mut param_names = Vec::new();
+
+        for segment in segments {
+            if segment.starts_with(':') {
+                // Collect the exact parameter name declared in this route's path macro
+                let clean_param = segment.trim_start_matches(':').to_string();
+                param_names.push(clean_param);
+
+                // Reuse any existing dynamic key branch (e.g. ':id') to keep the tree merged
+                let existing_param_key = current
+                    .children
+                    .keys()
+                    .find(|k| k.starts_with(':'))
+                    .cloned();
+
+                let node_key = match existing_param_key {
+                    Some(key) => key,
+                    None => segment.to_string(),
+                };
+
+                current = current.children.entry(node_key).or_default();
+            } else {
+                // Traverse static path segments
+                current = current.children.entry(segment.to_string()).or_default();
+            }
         }
 
-        current.is_end = true;
-        // Inject both operational layers into the target method bucket
+        // Store the handler along with its specific parameter names list
         current.methods.insert(
             method,
             RouteTarget {
                 handler: Box::new(handler),
                 required_role,
+                param_names,
             },
         );
     }
