@@ -21,7 +21,6 @@ use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 
 pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, router: Arc<Router>) {
-    let start_time = std::time::Instant::now();
 
     router
         .telemetry
@@ -40,6 +39,7 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
         }
     };
 
+    let start_time = std::time::Instant::now();
     let req_clone = req.clone();
 
     // Match the route early to extract dynamic params for middleware use, even if the final handler isn't found
@@ -288,7 +288,9 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
     let duration = start_time.elapsed();
 
     // --- RECORD TELEMETRY METRICS ---
-    router.telemetry.record_request(&req_clone.path, response.status, duration);
+    router
+        .telemetry
+        .record_request(&req_clone.path, response.status, duration);
 
     if let Ok(locked_jar) = jar.lock() {
         response = locked_jar.clone().commit(response);

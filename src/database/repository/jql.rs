@@ -1,6 +1,6 @@
-use crate::deps::sea_orm::sea_query::{Alias, Condition, Expr, JoinType, Query};
+use crate::deps::sea_orm::sea_query::{Alias, Asterisk, Condition, Expr, JoinType, Query, SimpleExpr};
 use crate::security::xss::Sanitizer;
-use sea_orm::{ DbBackend, Statement};
+use sea_orm::{DbBackend, Statement};
 
 /// Simplified internal data structural representation of our custom search query
 #[derive(Debug, Clone)]
@@ -39,9 +39,11 @@ impl JqlCompiler {
     pub fn compile(spec: &CustomQuerySpec, backend: DbBackend) -> Statement {
         let mut select = Query::select();
 
-        // Process explicit select targets or fallback safely to wildcard definitions
-        if spec.select_columns.is_empty() {
-            select.column((Alias::new(&spec.base_table), Alias::new("*")));
+        let is_wildcard = spec.select_columns.is_empty() 
+            || spec.select_columns.iter().any(|(_, col)| col == "*");
+
+        if is_wildcard {
+            select.column(Asterisk);
         } else {
             for (table_opt, col) in &spec.select_columns {
                 if let Some(tbl) = table_opt {
@@ -52,16 +54,12 @@ impl JqlCompiler {
             }
         }
 
-        // Define root origin table target matrix
         select.from(Alias::new(&spec.base_table));
 
-        // Append relational joins dynamically
         for join in &spec.joins {
             let left_expr = Expr::col((Alias::new(&join.left_on.0), Alias::new(&join.left_on.1)));
-            let right_expr =
-                Expr::col((Alias::new(&join.right_on.0), Alias::new(&join.right_on.1)));
+            let right_expr = Expr::col((Alias::new(&join.right_on.0), Alias::new(&join.right_on.1)));
 
-            // Cleanly link the two column expression definitions together
             select.join(
                 JoinType::InnerJoin,
                 Alias::new(&join.target_table),
@@ -69,7 +67,6 @@ impl JqlCompiler {
             );
         }
 
-        // Inject runtime query condition filters safely
         let mut conditions = Condition::all();
         for cond in &spec.r#where {
             let col_ref = if let Some(tbl) = &cond.table {
@@ -78,20 +75,27 @@ impl JqlCompiler {
                 Expr::col((Alias::new(&spec.base_table), Alias::new(&cond.column)))
             };
 
-            // Fix: Wrap raw strings inside Expr::val to yield structural parameters
+            // Parse numeric / integer values vs string literals safely
+            let val_expr: SimpleExpr = if let Ok(int_val) = cond.value.parse::<i64>() {
+                Expr::val(int_val).into()
+            } else if let Ok(bool_val) = cond.value.parse::<bool>() {
+                Expr::val(bool_val).into()
+            } else {
+                Expr::val(cond.value.clone()).into()
+            };
+
             let clause = match cond.operator.as_str() {
-                "=" => col_ref.eq(Expr::val(cond.value.clone())),
+                "=" => col_ref.eq(val_expr),
                 "LIKE" => col_ref.like(format!("%{}%", cond.value)),
-                ">" => col_ref.gt(Expr::val(cond.value.clone())),
-                "<" => col_ref.lt(Expr::val(cond.value.clone())),
-                _ => col_ref.eq(Expr::val(cond.value.clone())),
+                ">" => col_ref.gt(val_expr),
+                "<" => col_ref.lt(val_expr),
+                _ => col_ref.eq(val_expr),
             };
             conditions = conditions.add(clause);
         }
 
         select.cond_where(conditions);
 
-        // Generate target-compiled SQL variant safely
         backend.build(&select)
     }
 }

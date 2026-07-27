@@ -141,21 +141,39 @@ pub fn expand_grit_component(input: DeriveInput) -> TokenStream {
             for f in fields.named {
                 let field_name = f.ident.unwrap();
                 let field_type = f.ty;
+
+                // Check if the struct field itself is Arc<T> or just T
+                let is_arc = extract_inner_arc_type(&field_type).is_some();
                 let inner_type = extract_inner_arc_type(&field_type)
                     .cloned()
                     .unwrap_or_else(|| field_type.clone());
 
-                // PATH A: Dynamic Resolution (The Magical Spring Boot Way)
-                dynamic_resolutions.push(quote! {
-                    #field_name: container.resolve::<#inner_type>().expect(
-                        std::concat!("Critical DI Fault: Dependency mapping initialization failed for component: '", std::stringify!(#inner_type), "'")
-                    )
-                });
+                // PATH A: Dynamic Resolution
+                if is_arc {
+                    dynamic_resolutions.push(quote! {
+                        #field_name: container.resolve::<#inner_type>().expect(
+                            std::concat!("Critical DI Fault: Dependency mapping initialization failed for component: '", std::stringify!(#inner_type), "'")
+                        )
+                    });
+                } else {
+                    // Dereference and clone out of Arc<T> for plain types like DatabaseConnection
+                    dynamic_resolutions.push(quote! {
+                        #field_name: (*container.resolve::<#inner_type>().expect(
+                            std::concat!("Critical DI Fault: Dependency mapping initialization failed for component: '", std::stringify!(#inner_type), "'")
+                        )).clone()
+                    });
+                }
 
-                // PATH B: Strict Resolution (The Compile-Time Way)
-                static_resolutions.push(quote! {
-                    #field_name: container.get_component()
+                // PATH B: Strict Resolution
+                if is_arc {
+                    static_resolutions.push(quote! {
+                    #field_name: ::gritshield::core::ioc::HasComponent::<#inner_type>::get_component(container)
                 });
+                            } else {
+                                static_resolutions.push(quote! {
+                    #field_name: (*::gritshield::core::ioc::HasComponent::<#inner_type>::get_component(container)).clone()
+                });
+                }
 
                 dependency_inner_types.push(inner_type);
             }
@@ -186,7 +204,7 @@ pub fn expand_grit_component(input: DeriveInput) -> TokenStream {
         // ---------------------------------------------------------
         // PATH A: Dynamic / Inventory Magic
         // ---------------------------------------------------------
-        
+
         // Only mark it if the dynamic registration hook actually runs!
         impl ::gritshield::core::ioc::RuntimeInjectable for #name {}
 

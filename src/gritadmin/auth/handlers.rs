@@ -1,4 +1,4 @@
-use crate::http::response::Cookie;
+use crate::http::response::{Cookie, HttpStatus};
 use crate::http::response::{JsonPayload, SameSite};
 use crate::routing::engine::RequestContext;
 use crate::middleware::{
@@ -108,7 +108,7 @@ pub async fn handle_login_auth(ctx: RequestContext) -> Response {
 
     if input_user != env_admin_user || input_pass != env_admin_pass {
         return Response::json(
-            200,
+            HttpStatus::Ok,
             &json!({
                 "status": "error",
                 "message": "Access Denied: Invalid security signature identifiers provided"
@@ -147,7 +147,7 @@ pub async fn handle_login_auth(ctx: RequestContext) -> Response {
         .set_same_site(SameSite::Lax);
 
     let response = Response::json(
-        200,
+        crate::http::response::HttpStatus::Accepted,
         &json!({
             "status": "success",
             "message": "Subsystem authorization handshake completed successfully"

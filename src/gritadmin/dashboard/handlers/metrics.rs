@@ -9,6 +9,7 @@ use crate::deps::sea_orm::{
     ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait, PaginatorTrait, QueryOrder,
     Statement, TransactionTrait,
 };
+use crate::http::response::HttpStatus;
 use crate::prelude::*;
 use maud::html;
 use std::collections::HashMap;
@@ -209,7 +210,7 @@ pub async fn admin_metrics_api_handler(ctx: RequestContext) -> Response {
     let metrics_payload = gather_all_metrics(&ctx).await;
 
     // Serialize back out into a structured standard JSON text layout
-    Response::json(200, &metrics_payload)
+    Response::json(HttpStatus::Ok, &metrics_payload)
 }
 
 // GET /admin/metrics html

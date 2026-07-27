@@ -1,7 +1,7 @@
 [package]
 name = "gritshield"
 version = "0.1.2"
-authors = ["Ahmed Hassan digiator2020@gmail.com"]
+authors = ["Ahmed Hassan <digiator2020@gmail.com>"]
 edition = "2021"
 description = "A security-first, high-performance micro-framework."
 license = "Apache-2.0"
@@ -12,13 +12,16 @@ keywords = ["web", "framework", "orm", "micro", "async"]
 categories = ["web-programming::http-server"]
 
 [features]
+# By default, we provide a clean engine. Users opt-in to their database of choice.
 default = []
 admin = []
 swagger = []
 validator = []
-sqlite = ["sea-orm/sqlx-sqlite"]
-postgres = ["sea-orm/sqlx-postgres"]
-mysql = ["sea-orm/sqlx-mysql"]
+
+# Database driver features mapping to both SeaORM core and migration crates
+sqlite = ["sea-orm/sqlx-sqlite", "sea-orm-migration/sqlx-sqlite"]
+postgres = ["sea-orm/sqlx-postgres", "sea-orm-migration/sqlx-postgres"]
+mysql = ["sea-orm/sqlx-mysql", "sea-orm-migration/sqlx-mysql"]
 
 [dependencies]
 colored = "2.1"
@@ -34,14 +37,20 @@ maud = "0.25"
 gritshield_macros = { version = "0.1.0", path = "./src/gritshield_macros" }
 inventory = "0.3"
 notify = "4.0"
+
+# Core ORM without heavy backend engines attached by default
 sea-orm = { version = "1.1", default-features = false, features = [
     "runtime-tokio-native-tls",
     "macros",
-    "sqlx-sqlite",
     "with-chrono",
     "with-json",
 ] }
-sea-orm-migration = "1.1.20"
+
+# Migration management without heavy backend engines attached by default
+sea-orm-migration = { version = "1.1.20", default-features = false, features = [
+    "runtime-tokio-native-tls",
+] }
+
 tokio = { version = "1.0", features = ["full"] }
 futures = "0.3"
 tokio-tungstenite = "0.21"

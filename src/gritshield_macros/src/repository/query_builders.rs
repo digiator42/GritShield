@@ -92,197 +92,315 @@ pub fn generate_builders(
         .collect();
 
     quote! {
-        #[derive(::std::clone::Clone, ::std::fmt::Debug, ::serde::Deserialize)]
-        pub struct #extended_ident {
-            #[serde(flatten)]
-            pub core: #entity_module::Model,
-            #(
-                pub #has_many_fields: ::std::option::Option<::std::vec::Vec<<#relation_many_variants as ::gritshield::deps::sea_orm::EntityTrait>::Model>>,
-            )*
-            #(
-                pub #has_one_fields: ::std::option::Option<<#relation_one_variants as ::gritshield::deps::sea_orm::EntityTrait>::Model>,
-            )*
-            #(
-                pub #belongs_to_fields: ::std::option::Option<<#relation_belongs_variants as ::gritshield::deps::sea_orm::EntityTrait>::Model>,
-            )*
+            #[derive(::std::clone::Clone, ::std::fmt::Debug, ::serde::Deserialize)]
+            pub struct #extended_ident {
+                #[serde(flatten)]
+                pub core: #entity_module::Model,
+                #(
+                    pub #has_many_fields: ::std::option::Option<::std::vec::Vec<<#relation_many_variants as ::gritshield::deps::sea_orm::EntityTrait>::Model>>,
+                )*
+                #(
+                    pub #has_one_fields: ::std::option::Option<<#relation_one_variants as ::gritshield::deps::sea_orm::EntityTrait>::Model>,
+                )*
+                #(
+                    pub #belongs_to_fields: ::std::option::Option<<#relation_belongs_variants as ::gritshield::deps::sea_orm::EntityTrait>::Model>,
+                )*
 
-            // Keep this purely as an internal processing bucket during query building execution stages
-            pub nested_relations: ::std::collections::HashMap<::std::string::String, ::gritshield::deps::serde_json::Value>,
-        }
-
-        // Custom Serialization Engine that flattens relations back into predictable root paths
-        impl ::serde::Serialize for #extended_ident {
-            fn serialize<S>(&self, serializer: S) -> ::std::result::Result<S::Ok, S::Error>
-            where
-                S: ::serde::Serializer,
-            {
-                // Serialize the inner core Model structure into a flexible json value object map
-                let mut core_value = ::gritshield::deps::serde_json::to_value(&self.core)
-                    .map_err(::serde::ser::Error::custom)?;
-
-                if let ::gritshield::deps::serde_json::Value::Object(mut map) = core_value {
-                    
-                    // Process HasMany fields: serialize flat data only if a nested version hasn't overridden it
-                    #(
-                        if !self.nested_relations.contains_key(stringify!(#has_many_fields)) {
-                            if let ::std::option::Option::Some(ref val) = self.#has_many_fields {
-                                if let ::std::result::Result::Ok(json_val) = ::gritshield::deps::serde_json::to_value(val) {
-                                    map.insert(::std::string::String::from(stringify!(#has_many_fields)), json_val);
-                                }
-                            }
-                        }
-                    )*
-
-                    // Process HasOne fields
-                    #(
-                        if !self.nested_relations.contains_key(stringify!(#has_one_fields)) {
-                            if let ::std::option::Option::Some(ref val) = self.#has_one_fields {
-                                if let ::std::result::Result::Ok(json_val) = ::gritshield::deps::serde_json::to_value(val) {
-                                    map.insert(::std::string::String::from(stringify!(#has_one_fields)), json_val);
-                                }
-                            }
-                        }
-                    )*
-
-                    // Process BelongsTo fields
-                    #(
-                        if !self.nested_relations.contains_key(stringify!(#belongs_to_fields)) {
-                            if let ::std::option::Option::Some(ref val) = self.#belongs_to_fields {
-                                if let ::std::result::Result::Ok(json_val) = ::gritshield::deps::serde_json::to_value(val) {
-                                    map.insert(::std::string::String::from(stringify!(#belongs_to_fields)), json_val);
-                                }
-                            }
-                        }
-                    )*
-
-                    // Overwrite/Inject all fully hydrated nested structures cleanly directly into the root map.
-                    // This naturally avoids double comments lists and masks the internal 'nested_relations' key name.
-                    for (key, value) in &self.nested_relations {
-                        map.insert(key.clone(), value.clone());
-                    }
-
-                    map.serialize(serializer)
-                } else {
-                    core_value.serialize(serializer)
-                }
-            }
-        }
-
-        impl ::std::ops::Deref for #extended_ident {
-            type Target = #entity_module::Model;
-            fn deref(&self) -> &Self::Target { &self.core }
-        }
-
-        impl ::std::ops::DerefMut for #extended_ident {
-            fn deref_mut(&mut self) -> &mut Self::Target { &mut self.core }
-        }
-
-        // RAQB (Relation All Query Builder)
-        pub struct #all_builder_name<'a> {
-            db: &'a ::gritshield::deps::sea_orm::DatabaseConnection,
-            query: ::gritshield::deps::sea_orm::Select<#entity_module::Entity>,
-            #( #has_many_idents: bool, )*
-            #( #has_one_idents: bool, )*
-            #( #belongs_to_idents: bool, )*
-
-            // Allocation storage for luxury chaining functions
-            #( #nested_many_closure_fields: ::std::option::Option<::std::boxed::Box<dyn Fn(#target_builders<'a>) -> #target_builders<'a> + ::std::marker::Send + ::std::marker::Sync + 'a>>, )*
-        }
-
-        impl<'a> #all_builder_name<'a> {
-            pub fn new(db: &'a ::gritshield::deps::sea_orm::DatabaseConnection, query: ::gritshield::deps::sea_orm::Select<#entity_module::Entity>) -> Self {
-                Self {
-                    db,
-                    query,
-                    #( #has_many_idents: false, )*
-                    #( #has_one_idents: false, )*
-                    #( #belongs_to_idents: false, )*
-                    #( #nested_many_closure_fields: ::std::option::Option::None, )*
-                }
+                // Keep this purely as an internal processing bucket during query building execution stages
+                pub nested_relations: ::std::collections::HashMap<::std::string::String, ::gritshield::deps::serde_json::Value>,
             }
 
-            #( pub fn #with_many_idents(mut self) -> Self { self.#has_many_idents = true; self } )*
-            #( pub fn #with_one_idents(mut self) -> Self { self.#has_one_idents = true; self } )*
-            #( pub fn #with_belongs_idents(mut self) -> Self { self.#belongs_to_idents = true; self } )*
-
-            // Zero-boilerplate nesting injection function
-            #(
-                pub fn #with_nested_many_idents<F>(mut self, loader_logic: F) -> Self
+            // Custom Serialization Engine that flattens relations back into predictable root paths
+            impl ::serde::Serialize for #extended_ident {
+                fn serialize<S>(&self, serializer: S) -> ::std::result::Result<S::Ok, S::Error>
                 where
-                    F: Fn(#target_builders<'a>) -> #target_builders<'a> + ::std::marker::Send + ::std::marker::Sync + 'a
+                    S: ::serde::Serializer,
                 {
-                    self.#has_many_idents = true;
-                    self.#nested_many_closure_fields = ::std::option::Option::Some(::std::boxed::Box::new(loader_logic));
-                    self
+                    // Serialize the inner core Model structure into a flexible json value object map
+                    let mut core_value = ::gritshield::deps::serde_json::to_value(&self.core)
+                        .map_err(::serde::ser::Error::custom)?;
+
+                    if let ::gritshield::deps::serde_json::Value::Object(mut map) = core_value {
+
+                        // Process HasMany fields: serialize flat data only if a nested version hasn't overridden it
+                        #(
+                            if !self.nested_relations.contains_key(stringify!(#has_many_fields)) {
+                                if let ::std::option::Option::Some(ref val) = self.#has_many_fields {
+                                    if let ::std::result::Result::Ok(json_val) = ::gritshield::deps::serde_json::to_value(val) {
+                                        map.insert(::std::string::String::from(stringify!(#has_many_fields)), json_val);
+                                    }
+                                }
+                            }
+                        )*
+
+                        // Process HasOne fields
+                        #(
+                            if !self.nested_relations.contains_key(stringify!(#has_one_fields)) {
+                                if let ::std::option::Option::Some(ref val) = self.#has_one_fields {
+                                    if let ::std::result::Result::Ok(json_val) = ::gritshield::deps::serde_json::to_value(val) {
+                                        map.insert(::std::string::String::from(stringify!(#has_one_fields)), json_val);
+                                    }
+                                }
+                            }
+                        )*
+
+                        // Process BelongsTo fields
+                        #(
+                            if !self.nested_relations.contains_key(stringify!(#belongs_to_fields)) {
+                                if let ::std::option::Option::Some(ref val) = self.#belongs_to_fields {
+                                    if let ::std::result::Result::Ok(json_val) = ::gritshield::deps::serde_json::to_value(val) {
+                                        map.insert(::std::string::String::from(stringify!(#belongs_to_fields)), json_val);
+                                    }
+                                }
+                            }
+                        )*
+
+                        // Overwrite/Inject all fully hydrated nested structures cleanly directly into the root map.
+                        // This naturally avoids double comments lists and masks the internal 'nested_relations' key name.
+                        for (key, value) in &self.nested_relations {
+                            map.insert(key.clone(), value.clone());
+                        }
+
+                        map.serialize(serializer)
+                    } else {
+                        core_value.serialize(serializer)
+                    }
                 }
-            )*
+            }
 
-            pub async fn execute(mut self) -> ::std::result::Result<::std::vec::Vec<#extended_ident>, ::gritshield::deps::sea_orm::DbErr> {
-                use ::gritshield::deps::sea_orm::{EntityTrait, QuerySelect};
-                let core_models = self.query.clone().all(self.db).await?;
-                let mut ids = ::std::vec::Vec::new();
-                let mut records_map = ::std::collections::HashMap::new();
+            impl ::std::ops::Deref for #extended_ident {
+                type Target = #entity_module::Model;
+                fn deref(&self) -> &Self::Target { &self.core }
+            }
 
-                for m in core_models {
-                    let id = m.id;
-                    ids.push(id);
-                    records_map.insert(id, #extended_ident { core: m, nested_relations: ::std::collections::HashMap::new(), #none_initializers });
+            impl ::std::ops::DerefMut for #extended_ident {
+                fn deref_mut(&mut self) -> &mut Self::Target { &mut self.core }
+            }
+
+            impl ::std::convert::From<#extended_ident> for #entity_module::Model {
+                fn from(record: #extended_ident) -> Self {
+                    record.core
+                }
+            }
+
+            impl ::std::convert::From<&#extended_ident> for #entity_module::Model {
+                fn from(record: &#extended_ident) -> Self {
+                    record.core.clone()
+                }
+            }
+
+            // RAQB (Relation All Query Builder)
+            pub struct #all_builder_name<'a> {
+                db: &'a ::gritshield::deps::sea_orm::DatabaseConnection,
+                query: ::gritshield::deps::sea_orm::Select<#entity_module::Entity>,
+                #( #has_many_idents: bool, )*
+                #( #has_one_idents: bool, )*
+                #( #belongs_to_idents: bool, )*
+
+                // Allocation storage for luxury chaining functions
+                #( #nested_many_closure_fields: ::std::option::Option<::std::boxed::Box<dyn Fn(#target_builders<'a>) -> #target_builders<'a> + ::std::marker::Send + ::std::marker::Sync + 'a>>, )*
+            }
+
+            impl<'a> #all_builder_name<'a> {
+                pub fn new(db: &'a ::gritshield::deps::sea_orm::DatabaseConnection, query: ::gritshield::deps::sea_orm::Select<#entity_module::Entity>) -> Self {
+                    Self {
+                        db,
+                        query,
+                        #( #has_many_idents: false, )*
+                        #( #has_one_idents: false, )*
+                        #( #belongs_to_idents: false, )*
+                        #( #nested_many_closure_fields: ::std::option::Option::None, )*
+                    }
                 }
 
+                #( pub fn #with_many_idents(mut self) -> Self { self.#has_many_idents = true; self } )*
+                #( pub fn #with_one_idents(mut self) -> Self { self.#has_one_idents = true; self } )*
+                #( pub fn #with_belongs_idents(mut self) -> Self { self.#belongs_to_idents = true; self } )*
+
+                // Zero-boilerplate nesting injection function
                 #(
-                    if self.#has_many_idents {
-                        let pairs = self.query.clone().find_with_related(<#relation_many_variants>::default()).all(self.db).await?;
-                        for (core_model, related) in pairs {
-                            if let Some(rec) = records_map.get_mut(&core_model.id) { rec.#has_many_fields = ::std::option::Option::Some(related); }
-                        }
+                    pub fn #with_nested_many_idents<F>(mut self, loader_logic: F) -> Self
+                    where
+                        F: Fn(#target_builders<'a>) -> #target_builders<'a> + ::std::marker::Send + ::std::marker::Sync + 'a
+                    {
+                        self.#has_many_idents = true;
+                        self.#nested_many_closure_fields = ::std::option::Option::Some(::std::boxed::Box::new(loader_logic));
+                        self
                     }
                 )*
 
-                #(
-                    if self.#has_one_idents {
-                        let pairs = self.query.clone().find_also_related(<#relation_one_variants>::default()).all(self.db).await?;
-                        for (core_model, opt_related) in pairs {
-                            if let Some(rec) = records_map.get_mut(&core_model.id) { rec.#has_one_fields = opt_related; }
-                        }
-                    }
-                )*
-                #(
-                    if self.#belongs_to_idents {
-                        let pairs = self.query.clone().find_also_related(<#relation_belongs_variants>::default()).all(self.db).await?;
-                        for (core_model, opt_related) in pairs {
-                            if let Some(rec) = records_map.get_mut(&core_model.id) { rec.#belongs_to_fields = opt_related; }
-                        }
-                    }
-                )*
+                pub async fn execute(mut self) -> ::std::result::Result<::std::vec::Vec<#extended_ident>, ::gritshield::deps::sea_orm::DbErr> {
+                    use ::gritshield::deps::sea_orm::{EntityTrait, QuerySelect};
+                    let core_models = self.query.clone().all(self.db).await?;
+                    let mut ids = ::std::vec::Vec::new();
+                    let mut records_map = ::std::collections::HashMap::new();
 
-                // Automated Sub-tree Batch Loading Processing Strategy
-                #(
-                    if let ::std::option::Option::Some(closure) = self.#nested_many_closure_fields {
-                        let mut all_child_ids = ::std::vec::Vec::new();
-                        for rec in records_map.values() {
-                            if let ::std::option::Option::Some(children) = &rec.#has_many_fields {
-                                for child in children {
-                                    all_child_ids.push(child.id);
+                    for m in core_models {
+                        let id = m.id;
+                        ids.push(id);
+                        records_map.insert(id, #extended_ident { core: m, nested_relations: ::std::collections::HashMap::new(), #none_initializers });
+                    }
+
+                    #(
+                        if self.#has_many_idents {
+                            let pairs = self.query.clone().find_with_related(<#relation_many_variants>::default()).all(self.db).await?;
+                            for (core_model, related) in pairs {
+                                if let Some(rec) = records_map.get_mut(&core_model.id) { rec.#has_many_fields = ::std::option::Option::Some(related); }
+                            }
+                        }
+                    )*
+
+                    #(
+                        if self.#has_one_idents {
+                            let pairs = self.query.clone().find_also_related(<#relation_one_variants>::default()).all(self.db).await?;
+                            for (core_model, opt_related) in pairs {
+                                if let Some(rec) = records_map.get_mut(&core_model.id) { rec.#has_one_fields = opt_related; }
+                            }
+                        }
+                    )*
+                    #(
+                        if self.#belongs_to_idents {
+                            let pairs = self.query.clone().find_also_related(<#relation_belongs_variants>::default()).all(self.db).await?;
+                            for (core_model, opt_related) in pairs {
+                                if let Some(rec) = records_map.get_mut(&core_model.id) { rec.#belongs_to_fields = opt_related; }
+                            }
+                        }
+                    )*
+
+                    // Automated Sub-tree Batch Loading Processing Strategy
+                    #(
+                        if let ::std::option::Option::Some(closure) = self.#nested_many_closure_fields {
+                            let mut all_child_ids = ::std::vec::Vec::new();
+                            for rec in records_map.values() {
+                                if let ::std::option::Option::Some(children) = &rec.#has_many_fields {
+                                    for child in children {
+                                        all_child_ids.push(child.id);
+                                    }
+                                }
+                            }
+
+                            if !all_child_ids.is_empty() {
+                                use ::gritshield::deps::sea_orm::{QueryFilter, ColumnTrait};
+                                let target_query = <#relation_many_variants as EntityTrait>::find()
+                                    .filter(<#relation_many_variants as EntityTrait>::Column::Id.is_in(all_child_ids));
+
+                                let target_builder = #target_builders::new(self.db, target_query);
+                                let configured_builder = (closure)(target_builder);
+                                let extended_children = configured_builder.execute().await?;
+
+                                let mut children_map = ::std::collections::HashMap::new();
+                                for ext_child in extended_children {
+                                    children_map.insert(ext_child.core.id, ext_child);
+                                }
+
+                                for rec in records_map.values_mut() {
+                                    if let ::std::option::Option::Some(children) = &rec.#has_many_fields {
+                                        let mut back_mapped = ::std::vec::Vec::new();
+                                        for child in children {
+                                            if let Some(ext_child) = children_map.get(&child.id) {
+                                                back_mapped.push(ext_child.clone());
+                                            }
+                                        }
+                                        let json_blob = ::gritshield::deps::serde_json::to_value(back_mapped).unwrap();
+                                        rec.nested_relations.insert(::std::string::String::from(stringify!(#has_many_fields)), json_blob);
+                                    }
                                 }
                             }
                         }
+                    )*
 
-                        if !all_child_ids.is_empty() {
-                            use ::gritshield::deps::sea_orm::{QueryFilter, ColumnTrait};
-                            let target_query = <#relation_many_variants as EntityTrait>::find()
-                                .filter(<#relation_many_variants as EntityTrait>::Column::Id.is_in(all_child_ids));
+                    let mut results = ::std::vec::Vec::new();
+                    for id in ids {
+                        if let Some(rec) = records_map.remove(&id) { results.push(rec); }
+                    }
+                    ::std::result::Result::Ok(results)
+                }
+            }
 
-                            let target_builder = #target_builders::new(self.db, target_query);
-                            let configured_builder = (closure)(target_builder);
-                            let extended_children = configured_builder.execute().await?;
+            impl<'a> ::std::future::IntoFuture for #all_builder_name<'a> {
+                type Output = ::std::result::Result<::std::vec::Vec<#extended_ident>, ::gritshield::deps::sea_orm::DbErr>;
+                type IntoFuture = ::gritshield::futures::future::BoxFuture<'a, Self::Output>;
+                fn into_future(self) -> Self::IntoFuture { ::std::boxed::Box::pin(self.execute()) }
+            }
 
-                            let mut children_map = ::std::collections::HashMap::new();
-                            for ext_child in extended_children {
-                                children_map.insert(ext_child.core.id, ext_child);
-                            }
+            // ROQB (Relation One Query Builder)
+            pub struct #one_builder_name<'a> {
+                db: &'a ::gritshield::deps::sea_orm::DatabaseConnection,
+                query: ::gritshield::deps::sea_orm::Select<#entity_module::Entity>,
+                #( #has_many_idents: bool, )*
+                #( #has_one_idents: bool, )*
+                #( #belongs_to_idents: bool, )*
+                #( #nested_many_closure_fields: ::std::option::Option<::std::boxed::Box<dyn Fn(#target_builders<'a>) -> #target_builders<'a> + ::std::marker::Send + ::std::marker::Sync + 'a>>, )*
+            }
 
-                            for rec in records_map.values_mut() {
-                                if let ::std::option::Option::Some(children) = &rec.#has_many_fields {
+            impl<'a> #one_builder_name<'a> {
+                pub fn new(db: &'a ::gritshield::deps::sea_orm::DatabaseConnection, query: ::gritshield::deps::sea_orm::Select<#entity_module::Entity>) -> Self {
+                    Self {
+                        db,
+                        query,
+                        #( #has_many_idents: false, )*
+                        #( #has_one_idents: false, )*
+                        #( #belongs_to_idents: false, )*
+                        #( #nested_many_closure_fields: ::std::option::Option::None, )*
+                    }
+                }
+
+                #( pub fn #with_many_idents(mut self) -> Self { self.#has_many_idents = true; self } )*
+                #( pub fn #with_one_idents(mut self) -> Self { self.#has_one_idents = true; self } )*
+                #( pub fn #with_belongs_idents(mut self) -> Self { self.#belongs_to_idents = true; self } )*
+
+                #(
+                    pub fn #with_nested_many_idents<F>(mut self, loader_logic: F) -> Self
+                    where
+                        F: Fn(#target_builders<'a>) -> #target_builders<'a> + ::std::marker::Send + ::std::marker::Sync + 'a
+                    {
+                        self.#has_many_idents = true;
+                        self.#nested_many_closure_fields = ::std::option::Option::Some(::std::boxed::Box::new(loader_logic));
+                        self
+                    }
+                )*
+
+                pub async fn execute(self) -> ::std::result::Result<::std::option::Option<#extended_ident>, ::gritshield::deps::sea_orm::DbErr> {
+                    use ::gritshield::deps::sea_orm::{EntityTrait, QuerySelect};
+                    let opt_model = self.query.clone().one(self.db).await?;
+                    let core_model = match opt_model {
+                        ::std::option::Option::Some(m) => m,
+                        ::std::option::Option::None => return ::std::result::Result::Ok(::std::option::Option::None),
+                    };
+
+                    let mut rec = #extended_ident { core: core_model, nested_relations: ::std::collections::HashMap::new(), #none_initializers };
+
+                    #(
+                        if self.#has_many_idents {
+                            let pairs = self.query.clone().find_with_related(<#relation_many_variants>::default()).all(self.db).await?;
+                            if let ::std::option::Option::Some((_, related)) = pairs.into_iter().next() { rec.#has_many_fields = ::std::option::Option::Some(related); }
+                        }
+                    )*
+
+                    #(
+                        if self.#has_one_idents {
+                            let pairs = self.query.clone().find_also_related(<#relation_one_variants>::default()).all(self.db).await?;
+                            if let ::std::option::Option::Some((_, opt_related)) = pairs.into_iter().next() { rec.#has_one_fields = opt_related; }
+                        }
+                    )*
+
+                    #(
+                        if let ::std::option::Option::Some(closure) = self.#nested_many_closure_fields {
+                            if let ::std::option::Option::Some(children) = &rec.#has_many_fields {
+                                let all_child_ids: ::std::vec::Vec<_> = children.iter().map(|c| c.id).collect();
+                                if !all_child_ids.is_empty() {
+                                    use ::gritshield::deps::sea_orm::{QueryFilter, ColumnTrait};
+                                    let target_query = <#relation_many_variants as EntityTrait>::find()
+                                        .filter(<#relation_many_variants as EntityTrait>::Column::Id.is_in(all_child_ids));
+                                    let target_builder = #target_builders::new(self.db, target_query);
+                                    let configured_builder = (closure)(target_builder);
+                                    let extended_children = configured_builder.execute().await?;
+
+                                    let mut children_map = ::std::collections::HashMap::new();
+                                    for ext_child in extended_children {
+                                        children_map.insert(ext_child.core.id, ext_child);
+                                    }
+
                                     let mut back_mapped = ::std::vec::Vec::new();
                                     for child in children {
                                         if let Some(ext_child) = children_map.get(&child.id) {
@@ -294,122 +412,16 @@ pub fn generate_builders(
                                 }
                             }
                         }
-                    }
-                )*
+                    )*
 
-                let mut results = ::std::vec::Vec::new();
-                for id in ids {
-                    if let Some(rec) = records_map.remove(&id) { results.push(rec); }
-                }
-                ::std::result::Result::Ok(results)
-            }
-        }
-
-        impl<'a> ::std::future::IntoFuture for #all_builder_name<'a> {
-            type Output = ::std::result::Result<::std::vec::Vec<#extended_ident>, ::gritshield::deps::sea_orm::DbErr>;
-            type IntoFuture = ::gritshield::futures::future::BoxFuture<'a, Self::Output>;
-            fn into_future(self) -> Self::IntoFuture { ::std::boxed::Box::pin(self.execute()) }
-        }
-
-        // ROQB (Relation One Query Builder)
-        pub struct #one_builder_name<'a> {
-            db: &'a ::gritshield::deps::sea_orm::DatabaseConnection,
-            query: ::gritshield::deps::sea_orm::Select<#entity_module::Entity>,
-            #( #has_many_idents: bool, )*
-            #( #has_one_idents: bool, )*
-            #( #belongs_to_idents: bool, )*
-            #( #nested_many_closure_fields: ::std::option::Option<::std::boxed::Box<dyn Fn(#target_builders<'a>) -> #target_builders<'a> + ::std::marker::Send + ::std::marker::Sync + 'a>>, )*
-        }
-
-        impl<'a> #one_builder_name<'a> {
-            pub fn new(db: &'a ::gritshield::deps::sea_orm::DatabaseConnection, query: ::gritshield::deps::sea_orm::Select<#entity_module::Entity>) -> Self {
-                Self {
-                    db,
-                    query,
-                    #( #has_many_idents: false, )*
-                    #( #has_one_idents: false, )*
-                    #( #belongs_to_idents: false, )*
-                    #( #nested_many_closure_fields: ::std::option::Option::None, )*
+                    ::std::result::Result::Ok(::std::option::Option::Some(rec))
                 }
             }
 
-            #( pub fn #with_many_idents(mut self) -> Self { self.#has_many_idents = true; self } )*
-            #( pub fn #with_one_idents(mut self) -> Self { self.#has_one_idents = true; self } )*
-            #( pub fn #with_belongs_idents(mut self) -> Self { self.#belongs_to_idents = true; self } )*
-
-            #(
-                pub fn #with_nested_many_idents<F>(mut self, loader_logic: F) -> Self
-                where
-                    F: Fn(#target_builders<'a>) -> #target_builders<'a> + ::std::marker::Send + ::std::marker::Sync + 'a
-                {
-                    self.#has_many_idents = true;
-                    self.#nested_many_closure_fields = ::std::option::Option::Some(::std::boxed::Box::new(loader_logic));
-                    self
-                }
-            )*
-
-            pub async fn execute(self) -> ::std::result::Result<::std::option::Option<#extended_ident>, ::gritshield::deps::sea_orm::DbErr> {
-                use ::gritshield::deps::sea_orm::{EntityTrait, QuerySelect};
-                let opt_model = self.query.clone().one(self.db).await?;
-                let core_model = match opt_model {
-                    ::std::option::Option::Some(m) => m,
-                    ::std::option::Option::None => return ::std::result::Result::Ok(::std::option::Option::None),
-                };
-
-                let mut rec = #extended_ident { core: core_model, nested_relations: ::std::collections::HashMap::new(), #none_initializers };
-
-                #(
-                    if self.#has_many_idents {
-                        let pairs = self.query.clone().find_with_related(<#relation_many_variants>::default()).all(self.db).await?;
-                        if let ::std::option::Option::Some((_, related)) = pairs.into_iter().next() { rec.#has_many_fields = ::std::option::Option::Some(related); }
-                    }
-                )*
-
-                #(
-                    if self.#has_one_idents {
-                        let pairs = self.query.clone().find_also_related(<#relation_one_variants>::default()).all(self.db).await?;
-                        if let ::std::option::Option::Some((_, opt_related)) = pairs.into_iter().next() { rec.#has_one_fields = opt_related; }
-                    }
-                )*
-
-                #(
-                    if let ::std::option::Option::Some(closure) = self.#nested_many_closure_fields {
-                        if let ::std::option::Option::Some(children) = &rec.#has_many_fields {
-                            let all_child_ids: ::std::vec::Vec<_> = children.iter().map(|c| c.id).collect();
-                            if !all_child_ids.is_empty() {
-                                use ::gritshield::deps::sea_orm::{QueryFilter, ColumnTrait};
-                                let target_query = <#relation_many_variants as EntityTrait>::find()
-                                    .filter(<#relation_many_variants as EntityTrait>::Column::Id.is_in(all_child_ids));
-                                let target_builder = #target_builders::new(self.db, target_query);
-                                let configured_builder = (closure)(target_builder);
-                                let extended_children = configured_builder.execute().await?;
-
-                                let mut children_map = ::std::collections::HashMap::new();
-                                for ext_child in extended_children {
-                                    children_map.insert(ext_child.core.id, ext_child);
-                                }
-
-                                let mut back_mapped = ::std::vec::Vec::new();
-                                for child in children {
-                                    if let Some(ext_child) = children_map.get(&child.id) {
-                                        back_mapped.push(ext_child.clone());
-                                    }
-                                }
-                                let json_blob = ::gritshield::deps::serde_json::to_value(back_mapped).unwrap();
-                                rec.nested_relations.insert(::std::string::String::from(stringify!(#has_many_fields)), json_blob);
-                            }
-                        }
-                    }
-                )*
-
-                ::std::result::Result::Ok(::std::option::Option::Some(rec))
+            impl<'a> ::std::future::IntoFuture for #one_builder_name<'a> {
+                type Output = ::std::result::Result<::std::option::Option<#extended_ident>, ::gritshield::deps::sea_orm::DbErr>;
+                type IntoFuture = ::gritshield::futures::future::BoxFuture<'a, Self::Output>;
+                fn into_future(self) -> Self::IntoFuture { ::std::boxed::Box::pin(self.execute()) }
             }
         }
-
-        impl<'a> ::std::future::IntoFuture for #one_builder_name<'a> {
-            type Output = ::std::result::Result<::std::option::Option<#extended_ident>, ::gritshield::deps::sea_orm::DbErr>;
-            type IntoFuture = ::gritshield::futures::future::BoxFuture<'a, Self::Output>;
-            fn into_future(self) -> Self::IntoFuture { ::std::boxed::Box::pin(self.execute()) }
-        }
-    }
 }

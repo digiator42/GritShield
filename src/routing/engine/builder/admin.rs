@@ -401,8 +401,10 @@ impl Router {
 
         let openapi_handler: AdminHandlerFn = Arc::new(|_ctx| {
             Box::pin(async move {
+                use crate::http::response::HttpStatus;
+
                 let spec = generate_openapi_spec();
-                Response::json(200, &spec)
+                Response::json(HttpStatus::Ok, &spec)
             })
         });
         self.add_route(

@@ -34,7 +34,7 @@ impl AuthMiddleware {
             store: session_store,
             jwt_handler: None,
             public_paths,
-            enable_csrf: true,
+            enable_csrf: false,
             redirect: redirect.map(|s| s.to_string()).or(None),
         }
     }

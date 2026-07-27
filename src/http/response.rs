@@ -297,12 +297,12 @@ impl Response {
     }
 
     /// A premium API helper that serializes data structure payloads automatically
-    pub fn json<T: serde::Serialize>(status: u16, data: &T) -> Self {
+    pub fn json<T: serde::Serialize>(status: HttpStatus, data: &T) -> Self {
         let json_string = serde_json::to_string(data)
             .unwrap_or_else(|_| r#"{"error": "Internal Server Serialization Error"}"#.to_string());
 
         Response {
-            status,
+            status: status.code(),
             headers: vec![
                 (
                     "Content-Type".to_string(),
@@ -395,7 +395,132 @@ impl Response {
         self
     }
 
-    /// Core polymorphic base constructor utilizing the IntoResponseBody converter pipeline
+    /// Build a JSON response with a specific status code and data (returns the response)
+    pub fn json_with<T: serde::Serialize>(status: HttpStatus, data: &T) -> Self {
+        Self::json(status, data)
+    }
+
+    // ─── 2xx JSON SUCCESS RESPONSES ───
+
+    /// 200 OK — JSON success
+    pub fn json_ok<T: serde::Serialize>(data: &T) -> Self {
+        Self::json(HttpStatus::Ok, data)
+    }
+
+    /// 201 Created — JSON success
+    pub fn json_created<T: serde::Serialize>(data: &T) -> Self {
+        Self::json(HttpStatus::Created, data)
+    }
+
+    /// 202 Accepted — JSON success
+    pub fn json_accepted<T: serde::Serialize>(data: &T) -> Self {
+        Self::json(HttpStatus::Accepted, data)
+    }
+
+    /// 204 No Content — Empty JSON response (no body)
+    pub fn json_no_content() -> Self {
+        Self::json(HttpStatus::NoContent, &serde_json::json!({}))
+    }
+
+    // ─── 4xx JSON ERROR RESPONSES ───
+
+    /// 400 Bad Request — JSON error
+    pub fn json_bad_request<T: serde::Serialize>(data: &T) -> Self {
+        Self::json(HttpStatus::BadRequest, data)
+    }
+
+    /// 401 Unauthorized — JSON error
+    pub fn json_unauthorized<T: serde::Serialize>(data: &T) -> Self {
+        Self::json(HttpStatus::Unauthorized, data)
+    }
+
+    /// 403 Forbidden — JSON error
+    pub fn json_forbidden<T: serde::Serialize>(data: &T) -> Self {
+        Self::json(HttpStatus::Forbidden, data)
+    }
+
+    /// 404 Not Found — JSON error
+    pub fn json_not_found<T: serde::Serialize>(data: &T) -> Self {
+        Self::json(HttpStatus::NotFound, data)
+    }
+
+    /// 409 Conflict — JSON error
+    pub fn json_conflict<T: serde::Serialize>(data: &T) -> Self {
+        Self::json(HttpStatus::Conflict, data)
+    }
+
+    /// 422 Unprocessable Entity — JSON validation error
+    pub fn json_unprocessable<T: serde::Serialize>(data: &T) -> Self {
+        Self::json(HttpStatus::UnprocessableEntity, data)
+    }
+
+    /// 429 Too Many Requests — JSON error
+    pub fn json_too_many_requests<T: serde::Serialize>(data: &T) -> Self {
+        Self::json(HttpStatus::TooManyRequests, data)
+    }
+
+    // ─── 5xx JSON ERROR RESPONSES ───
+
+    /// 500 Internal Server Error — JSON error
+    pub fn json_internal_error<T: serde::Serialize>(data: &T) -> Self {
+        Self::json(HttpStatus::InternalServerError, data)
+    }
+
+    /// 501 Not Implemented — JSON error
+    pub fn json_not_implemented<T: serde::Serialize>(data: &T) -> Self {
+        Self::json(HttpStatus::NotImplemented, data)
+    }
+
+    /// 503 Service Unavailable — JSON error
+    pub fn json_service_unavailable<T: serde::Serialize>(data: &T) -> Self {
+        Self::json(HttpStatus::ServiceUnavailable, data)
+    }
+
+    // ─── CONVENIENCE: Quick JSON Errors (Common Patterns) ───
+
+    /// 400 Bad Request — Quick error message
+    pub fn json_error(message: impl Into<String>) -> Self {
+        Self::json_bad_request(&serde_json::json!({
+            "error": message.into()
+        }))
+    }
+
+    /// 404 Not Found — Quick not found response
+    pub fn json_not_found_msg(message: impl Into<String>) -> Self {
+        Self::json_not_found(&serde_json::json!({
+            "error": message.into()
+        }))
+    }
+
+    /// 401 Unauthorized — Quick unauthorized response
+    pub fn json_unauthorized_msg(message: impl Into<String>) -> Self {
+        Self::json_unauthorized(&serde_json::json!({
+            "error": message.into()
+        }))
+    }
+
+    /// 403 Forbidden — Quick forbidden response
+    pub fn json_forbidden_msg(message: impl Into<String>) -> Self {
+        Self::json_forbidden(&serde_json::json!({
+            "error": message.into()
+        }))
+    }
+
+    /// 422 Validation Error — Quick validation error
+    pub fn json_validation_error(errors: HashMap<String, Vec<String>>) -> Self {
+        Self::json_unprocessable(&serde_json::json!({
+            "errors": errors
+        }))
+    }
+
+    /// 500 Internal Error — Quick internal error
+    pub fn json_internal_error_msg(message: impl Into<String>) -> Self {
+        Self::json_internal_error(&serde_json::json!({
+            "error": message.into()
+        }))
+    }
+
+    // ─── Core polymorphic base constructor ───
     pub fn build<B: IntoResponseBody>(status: HttpStatus, payload: B) -> Self {
         let (body, content_type) = payload.convert();
 
@@ -411,53 +536,41 @@ impl Response {
         }
     }
 
-    // --- 2xx SUCCESS RESPONSES ---
-
-    /// 200 OK — Standard success response
+    // --- 2xx SUCCESS RESPONSES (HTML/General) ---
     pub fn ok<B: IntoResponseBody>(payload: B) -> Self {
         Self::build(HttpStatus::Ok, payload)
     }
 
-    /// 201 Created — Resource successfully created
     pub fn created<B: IntoResponseBody>(payload: B) -> Self {
         Self::build(HttpStatus::Created, payload)
     }
 
-    // --- 4xx CLIENT ERRORS ---
-
-    /// 400 Bad Request
+    // --- 4xx CLIENT ERRORS (HTML/General) ---
     pub fn bad_request<B: IntoResponseBody>(payload: B) -> Self {
         Self::build(HttpStatus::BadRequest, payload)
     }
 
-    /// 401 Unauthorized
     pub fn unauthorized<B: IntoResponseBody>(payload: B) -> Self {
         Self::build(HttpStatus::Unauthorized, payload)
     }
 
-    /// 403 Forbidden
     pub fn forbidden<B: IntoResponseBody>(payload: B) -> Self {
         Self::build(HttpStatus::Forbidden, payload)
     }
 
-    /// 404 Not Found
     pub fn not_found<B: IntoResponseBody>(payload: B) -> Self {
         Self::build(HttpStatus::NotFound, payload)
     }
 
-    /// 409 Conflict
     pub fn conflict<B: IntoResponseBody>(payload: B) -> Self {
         Self::build(HttpStatus::Conflict, payload)
     }
 
-    /// 429 Too Many Requests
     pub fn too_many_requests<B: IntoResponseBody>(payload: B) -> Self {
         Self::build(HttpStatus::TooManyRequests, payload)
     }
 
-    // --- 5xx SERVER ERRORS ---
-
-    /// 500 Internal Server Error
+    // --- 5xx SERVER ERRORS (HTML/General) ---
     pub fn internal_error<B: IntoResponseBody>(payload: B) -> Self {
         Self::build(HttpStatus::InternalServerError, payload)
     }
