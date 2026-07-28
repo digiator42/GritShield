@@ -21,24 +21,23 @@ impl Session {
 }
 
 pub struct SessionStore {
-    pub sessions: Arc<Mutex<DashMap<String, Arc<Mutex<Session>>>>>,
+    pub sessions: Arc<DashMap<String, Arc<Mutex<Session>>>>,
 }
 
 impl SessionStore {
     pub fn new() -> Self {
         Self {
-            sessions: Arc::new(Mutex::new(DashMap::new())),
+            sessions: Arc::new(DashMap::new()),
         }
     }
 
     pub fn get_or_create(&self, id: Option<String>) -> (Arc<Mutex<Session>>, bool) {
-        let sessions = self.sessions.lock().unwrap();
-
         if let Some(sid) = id {
-            if let Some(session) = sessions.get(&sid) {
+            if let Some(session_ref) = self.sessions.get(&sid) {
                 // Update last_accessed so the reaper doesn't kill an active user
+                let session = session_ref.value().clone();
                 session.lock().unwrap().last_accessed = Instant::now();
-                return (Arc::clone(&session), false);
+                return (session, false);
             }
         }
 
@@ -50,7 +49,7 @@ impl SessionStore {
             last_accessed: Instant::now(),
         }));
 
-        sessions.insert(new_id, Arc::clone(&new_session));
+        self.sessions.insert(new_id, Arc::clone(&new_session));
         (new_session, true)
     }
 
@@ -60,15 +59,16 @@ impl SessionStore {
                 // Sleep first to avoid high CPU usage
                 thread::sleep(Duration::from_secs(60));
 
-                let sessions = store.sessions.lock().unwrap();
                 let now = Instant::now();
 
-                // Retain only the sessions that haven't expired
-                sessions.retain(|id, session_ptr| {
+                // DashMap's own retain() takes only a short-lived shard lock per
+                // bucket as it walks the map — it no longer holds one global lock
+                // for the whole scan, so live requests aren't blocked behind it.
+                store.sessions.retain(|id, session_ptr| {
                     let last = session_ptr.lock().unwrap().last_accessed;
                     if now.duration_since(last) > timeout {
                         println!("[REAPER] Cleaning up expired session: {}", id);
-                        false // Remove from HashMap
+                        false // Remove from map
                     } else {
                         true // Keep it
                     }

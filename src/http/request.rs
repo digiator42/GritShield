@@ -59,20 +59,47 @@ impl Request {
         }
     }
 
-    pub async fn parse(stream: &mut TcpStream) -> Result<Self, String> {
-        const MAX_REQUEST_SIZE: usize = 1024 * 1024; // 1MB
+    pub async fn parse(stream: &mut TcpStream, buffer: &mut Vec<u8>) -> Result<Self, String> {
+        const MAX_REQUEST_SIZE: usize = 1024 * 1024; // 1MB hard cap
+        const GROWTH_STEP: usize = 64 * 1024;
 
-        let mut buffer = vec![0; MAX_REQUEST_SIZE];
+        let mut total_read = 0usize;
 
-        let bytes_read = match timeout(Duration::from_secs(10), stream.read(&mut buffer)).await {
-            Ok(Ok(n)) => n,
-            Ok(Err(e)) => return Err(format!("I/O Error: {}", e)),
-            Err(_) => return Err("Request timeout exceeded".to_string()),
-        };
+        loop {
+            if total_read == buffer.len() {
+                if buffer.len() >= MAX_REQUEST_SIZE {
+                    return Err("Request too large".to_string());
+                }
+                let new_len = (buffer.len() + GROWTH_STEP).min(MAX_REQUEST_SIZE);
+                buffer.resize(new_len, 0);
+            }
 
-        if bytes_read == 0 {
-            return Err("Empty request".to_string());
+            let n = match timeout(Duration::from_secs(10), stream.read(&mut buffer[total_read..]))
+                .await
+            {
+                Ok(Ok(n)) => n,
+                Ok(Err(e)) => return Err(format!("I/O Error: {}", e)),
+                Err(_) => return Err("Request timeout exceeded".to_string()),
+            };
+
+            if n == 0 {
+                if total_read == 0 {
+                    return Err("Empty request".to_string());
+                }
+                break; // peer closed after sending a (possibly complete) request
+            }
+
+            total_read += n;
+
+            // Most requests (esp. header-only GETs) arrive in one read and we can
+            // stop as soon as we can see the end of the header block, instead of
+            // always assuming a single read() captured the whole thing.
+            if buffer[..total_read].windows(4).any(|w| w == b"\r\n\r\n") {
+                break;
+            }
         }
+
+        let bytes_read = total_read;
 
         let request_raw = String::from_utf8_lossy(&buffer[..bytes_read]);
 

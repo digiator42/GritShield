@@ -226,7 +226,8 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
 
                         // Build the runtime role union lookup
                         role_checks.push(quote! {
-                            for role in <#cap_ident as crate::GritCapabilityRuntime>::allowed_roles() {
+                            extern crate self as _downstream;
+                            for role in <#cap_ident as _downstream::GritCapabilityRuntime>::allowed_roles() {
                                 if ctx.has_role(role) {
                                     authorized = true;
                                     break;

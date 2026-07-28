@@ -246,23 +246,28 @@ impl Response {
 
     /// Serializes the response into raw bytes for the TCP stream safely
     pub fn to_bytes(&self, body_bytes: &[u8], content_type: &str) -> Vec<u8> {
-        let mut response = format!("HTTP/1.1 {} OK\r\n", self.status);
+        use std::io::Write;
 
-        response.push_str(&format!("Content-Type: {}\r\n", content_type));
+        // Write straight into the final buffer instead of building an intermediate
+        // `String` through a chain of `format!`/`push_str` calls — each `format!`
+        // was its own heap allocation, on top of `response` itself reallocating as
+        // it grew past its starting capacity.
+        let mut raw = Vec::with_capacity(256 + body_bytes.len());
 
-        // Write the real byte count directly from the byte slice buffer!
-        response.push_str(&format!("Content-Length: {}\r\n", body_bytes.len()));
+        let _ = write!(raw, "HTTP/1.1 {} OK\r\n", self.status);
+        let _ = write!(raw, "Content-Type: {}\r\n", content_type);
+        let _ = write!(raw, "Content-Length: {}\r\n", body_bytes.len());
 
         // Add standard headers, skipping keys we've already written explicitly (case-insensitive)
         for (key, value) in &self.headers {
-            let normalized_key = key.to_lowercase();
-
             // Skip duplicates to prevent splitting the browser frame pipeline
-            if normalized_key == "content-type" || normalized_key == "content-length" {
+            if key.eq_ignore_ascii_case("content-type")
+                || key.eq_ignore_ascii_case("content-length")
+            {
                 continue;
             }
 
-            response.push_str(&format!("{}: {}\r\n", key, value));
+            let _ = write!(raw, "{}: {}\r\n", key, value);
         }
 
         for cookie in &self.cookies {
@@ -272,25 +277,24 @@ impl Response {
                 SameSite::None => "None",
             };
 
-            let mut cookie_str = format!(
+            let _ = write!(
+                raw,
                 "Set-Cookie: {}={}; Max-Age={}; SameSite={}; Path=/",
                 cookie.name, cookie.value, cookie.max_age, same_site_str
             );
 
             if cookie.http_only {
-                cookie_str.push_str("; HttpOnly");
+                let _ = raw.write_all(b"; HttpOnly");
             }
             if cookie.secure {
-                cookie_str.push_str("; Secure");
+                let _ = raw.write_all(b"; Secure");
             }
 
-            response.push_str(&format!("{}\r\n", cookie_str));
+            let _ = raw.write_all(b"\r\n");
         }
 
         // Terminate header parsing sequence cleanly
-        response.push_str("\r\n");
-
-        let mut raw = response.into_bytes();
+        let _ = raw.write_all(b"\r\n");
         raw.extend_from_slice(body_bytes);
 
         raw

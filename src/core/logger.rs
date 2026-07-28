@@ -1,11 +1,15 @@
-use crate::info;
+use crate::core::env::get_env;
+use crate::core::initialize_env;
 use crate::http::request::Request;
+use crate::info;
+use crate::security::telemetry::TELEMETRY;
 use colored::*;
 use std::fmt;
+use std::sync::mpsc::{self, Sender};
 use std::sync::OnceLock;
-use crate::security::telemetry::TELEMETRY;
+use std::thread;
 
-// Log Level
+// --- Log Level ---
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub enum LogLevel {
     Off = 0,
@@ -20,7 +24,7 @@ impl LogLevel {
     /// Parse from string (case‑insensitive). Returns `None` for unknown.
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
-            "off" => Some(Self::Off),
+            "off" | "false" | "0" | "disabled" => Some(Self::Off),
             "error" => Some(Self::Error),
             "warn" => Some(Self::Warn),
             "info" => Some(Self::Info),
@@ -32,9 +36,8 @@ impl LogLevel {
 
     /// Get the default log level from environment or .env file
     pub fn from_env_or_default() -> Self {
-        // This automatically initializes dotenvy via initialize_env()
-        let log_level = crate::core::env::get_env("GRIT_LOG", "");
-
+        let log_level = get_env("GRIT_LOG", "");
+        println!("===> {}", log_level);
         if let Some(level) = Self::from_str(&log_level) {
             return level;
         }
@@ -47,24 +50,34 @@ impl LogLevel {
             }
         }
 
-        // Default to Info if nothing is set
-        Self::Info
+        // Default to Off if nothing or unknown string is set
+        Self::Off
     }
 }
 
-// Logger
+// --- Asynchronous Non-Blocking Logger ---
 pub struct Logger {
     pub level: LogLevel,
+    sender: Sender<String>,
 }
 
 impl Logger {
     pub fn new(level: LogLevel) -> Self {
-        Self { level }
+        let (tx, rx) = mpsc::channel::<String>();
+
+        // Spawn a dedicated background OS thread to write to stderr without blocking Tokio workers
+        thread::spawn(move || {
+            while let Ok(msg) = rx.recv() {
+                eprintln!("{}", msg);
+            }
+        });
+
+        Self { level, sender: tx }
     }
 
-    /// Log a message at the given level, but only if that level is enabled.
+    /// Log a message at the given level asynchronously
     pub fn log(&self, level: LogLevel, args: fmt::Arguments<'_>) {
-        if level <= self.level {
+        if self.level != LogLevel::Off && level <= self.level {
             let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
             let level_str = format!("{:?}", level);
             let colored_level = match level {
@@ -75,8 +88,9 @@ impl Logger {
                 LogLevel::Trace => level_str.magenta(),
                 LogLevel::Off => level_str.white(),
             };
-            // Use stderr so stdout remains clean for e.g. raw HTTP responses.
-            eprintln!("[{}] {}: {}", timestamp, colored_level, args);
+
+            let formatted_msg = format!("[{}] {}: {}", timestamp, colored_level, args);
+            let _ = self.sender.send(formatted_msg);
         }
     }
 }
@@ -84,35 +98,37 @@ impl Logger {
 // Global singleton
 static GLOBAL_LOGGER: OnceLock<Logger> = OnceLock::new();
 
-/// Initialize the global logger. Call this once early in `main`.
-/// If the logger is already set, this does nothing.
 pub fn init(level: LogLevel) {
     GLOBAL_LOGGER.get_or_init(|| Logger::new(level));
 }
 
-/// Get a reference to the global logger. If not initialized, creates one with default level.
 pub fn get_logger() -> &'static Logger {
     GLOBAL_LOGGER.get_or_init(|| {
-        // When creating a default logger, also try to read from environment
         let level = LogLevel::from_env_or_default();
         Logger::new(level)
     })
 }
 
 /// Initialize the global logger from environment variables.
-/// This is the recommended way to initialize the logger.
-pub fn init_from_env() {
+/// Returns `true` if logging is enabled, or `false` if set to `Off`/`false`.
+pub fn init_from_env() -> bool {
+    initialize_env();
     let level = LogLevel::from_env_or_default();
-    // Initialize the logger FIRST
     init(level);
-    // THEN log the message (now the logger is properly initialized)
-    // Use eprintln directly to avoid any potential recursion issues
-    eprintln!(
-        "[{}] {}: [KERNEL-LOGGER] init logger with level '{:?}'",
-        chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
-        format!("{:?}", level).blue(),
-        level
-    );
+
+    let is_enabled = level != LogLevel::Off;
+
+    if is_enabled {
+        get_logger().log(
+            LogLevel::Info,
+            format_args!(
+                "[KERNEL-LOGGER] Initialized logger with level '{:?}'",
+                level
+            ),
+        );
+    }
+
+    is_enabled
 }
 
 pub fn log_request_summary(
@@ -125,7 +141,7 @@ pub fn log_request_summary(
     // 1. Record metrics centrally with zero macro overhead
     TELEMETRY.record_request(&req.path, status, duration);
 
-    // 2. Original logger output logic
+    // 2. Format logger output payload
     let method_str = format!("{:?}", req.method);
     let status_str = colorize_status(status);
 

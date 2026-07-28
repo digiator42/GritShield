@@ -1,4 +1,5 @@
 use crate::core::event_bus::{EventBus, JobStorage, JobWorkerEngine, MemoryJobQueue};
+use crate::core::{get_env, init_from_env};
 use crate::middleware::{AfterRequestHook, Middleware};
 use crate::routing::engine::fallback::PageHandlerFn;
 use crate::routing::engine::{Node, GLOBAL_FALLBACK};
@@ -9,6 +10,7 @@ use crate::security::xss::UntrustedString;
 use sea_orm::DatabaseConnection;
 use std::collections::HashMap;
 use std::sync::Arc;
+use uuid::Uuid;
 
 pub enum RoutingResult<'a> {
     Found(
@@ -31,12 +33,16 @@ pub struct Router {
     pub job_queue: Arc<dyn JobStorage>,
     pub fallback_handler: Option<PageHandlerFn>,
     pub role_registry: HashMap<String, &'static str>,
-    pub role_inheritance: HashMap<String, Vec<String>>,
+    pub role_inheritance: Arc<HashMap<String, Vec<String>>>,
+    pub enable_lifecycle_logs: bool,
+    pub secret_key: String,
 }
 
 impl Router {
     pub fn new() -> Self {
-        crate::core::logger::init_from_env();
+        let enable_lifecycle_logs = init_from_env();
+
+        let secret_key = get_env("JWT_SECRET", &Uuid::new_v4().to_string());
 
         let fallback = if let Ok(guard) = GLOBAL_FALLBACK.lock() {
             guard.clone()
@@ -57,7 +63,9 @@ impl Router {
             job_queue: Arc::new(MemoryJobQueue::new()),
             fallback_handler: fallback,
             role_registry: HashMap::new(),
-            role_inheritance: HashMap::new(),
+            role_inheritance: Arc::new(HashMap::new()),
+            enable_lifecycle_logs,
+            secret_key,
         };
 
         let worker_engine = JobWorkerEngine::new(router.job_queue.clone(), 10); // 10 concurrent worker slots

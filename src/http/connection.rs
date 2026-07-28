@@ -1,6 +1,5 @@
 use crate::{
-    core::env::get_env,
-    debug, error,
+    error,
     http::{request::Request, response::Response},
     middleware::MiddlewareResult,
     routing::{
@@ -21,22 +20,23 @@ use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 
 pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, router: Arc<Router>) {
-    // Increment active connections once per TCP lifecycle
     router
         .telemetry
         .active_connections
         .fetch_add(1, Ordering::Relaxed);
 
-    // Fetch secret key once per connection rather than every single request
-    let secret_key = get_env("JWT_SECRET", "fallback_secure_key_string");
+    // One reusable buffer per connection, not per request
+    let mut read_buf = vec![0u8; 16 * 1024];
 
-    // Keep TCP connection open across multiple HTTP requests (HTTP Keep-Alive)
+    // Nagle's algorithm batches small writes waiting for an ACK, which is exactly
+    // what produces the occasional multi-hundred-ms tail latency spike under
+    // concurrent load on a raw-socket server like this one.
+    let _ = stream.set_nodelay(true);
+
     loop {
-        // Parse raw request wire components
-        let req = match Request::parse(&mut stream).await {
+        let req = match Request::parse(&mut stream, &mut read_buf).await {
             Ok(parsed_req) => parsed_req,
             Err(e) => {
-                // If the stream closed cleanly or hit EOF, terminate connection loop
                 let err_msg = e.to_string();
                 if err_msg.contains("EOF")
                     || err_msg.contains("Closed")
@@ -54,17 +54,16 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
 
         let start_time = std::time::Instant::now();
 
-        // Determine if connection should stay open after response
         let keep_alive = req
             .headers
             .get("connection")
             .or_else(|| req.headers.get("Connection"))
             .map_or(true, |v| v.to_lowercase() != "close");
 
-        let req_clone = req.clone();
+        // Single route match pass
+        let routing_result = router.match_route(&req.method, &req.path);
 
-        // Match the route early to extract dynamic params for middleware use
-        let params = match router.match_route(&req.method, &req.path) {
+        let params = match &routing_result {
             RoutingResult::Found(_, _, dynamic_params) => dynamic_params.clone(),
             _ => HashMap::new(),
         };
@@ -77,18 +76,15 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
 
         let jar = Arc::new(Mutex::new(CookieJar::new(
             cookie_header,
-            secret_key.clone(),
+            router.secret_key.clone(),
         )));
 
-        let telemetry = router.telemetry.clone();
-        let event_bus = router.event_bus.clone();
-        let job_queue = router.job_queue.clone();
-
+        // Construct RequestContext without duplicating req inner fields
         let mut ctx = RequestContext {
             params,
-            telemetry,
-            event_bus,
-            job_queue,
+            telemetry: router.telemetry.clone(),
+            event_bus: router.event_bus.clone(),
+            job_queue: router.job_queue.clone(),
             headers: req.headers.clone(),
             peer_addr,
             claims: None,
@@ -101,10 +97,10 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
             req,
             cookies: jar.clone(),
             start_time,
-            role_inheritance: Arc::new(router.role_inheritance.clone()),
+            role_inheritance: router.role_inheritance.clone(),
         };
 
-        // Process Middleware Stack sequentially
+        // Process Middleware Stack
         match router.run_middlewares(&mut ctx) {
             MiddlewareResult::Next(maybe_state) => {
                 if let Some(state) = maybe_state {
@@ -134,7 +130,6 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
                     break;
                 }
 
-                // router.log_lifecycle(&ctx, err_res.status, duration);
                 router.run_after_hooks(ctx, err_res.status, duration);
 
                 if !keep_alive {
@@ -144,21 +139,19 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
             }
         }
 
-        let is_ws_request = ctx
+        // WebSocket handling check
+        if ctx
             .req
             .headers
             .get("upgrade")
-            .map_or(false, |v| v == "websocket");
-
-        if is_ws_request {
+            .map_or(false, |v| v == "websocket")
+        {
             let target_ws_handler = {
                 let ws_routes = WS_REGISTRY.lock().unwrap();
                 ws_routes.get(&ctx.req.path).cloned()
             };
 
             if let Some(ws_handler) = target_ws_handler {
-                debug!("[CORE ENGINE] Upgrading socket connection path to WebSocket stream.");
-
                 if let Some(key) = ctx.req.headers.get("sec-websocket-key") {
                     let accept_hash = tokio_tungstenite::tungstenite::handshake::derive_accept_key(
                         key.as_bytes(),
@@ -172,8 +165,11 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
                         accept_hash
                     );
 
-                    if let Err(e) = stream.write_all(handshake_response.as_bytes()).await {
-                        error!("[WS ERROR] Failed to send handshake response: {:?}", e);
+                    if stream
+                        .write_all(handshake_response.as_bytes())
+                        .await
+                        .is_err()
+                    {
                         break;
                     }
 
@@ -185,43 +181,30 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
                     .await;
 
                     tokio::spawn(async move {
-                        debug!("[ACC TELEMETRY] Live Monitoring Operator Connected!");
                         ws_handler(ws_stream, ctx).await;
                     });
 
-                    // WS takes over socket ownership
                     router
                         .telemetry
                         .active_connections
                         .fetch_sub(1, Ordering::Relaxed);
                     return;
-                } else {
-                    error!("[WS ERROR] Missing Sec-WebSocket-Key header.");
                 }
             }
-            warn!(
-                "[WS WARN] WebSocket upgrade requested for unregistered path: {}",
-                ctx.req.path
-            );
         }
 
         let error_handler_ptr = router.global_error_handler.handler;
         let router_clone = router.clone();
-        let ctx_clone = ctx.clone();
 
-        // Route Execution Future
+        // Save request path reference before passing ctx into async task
+        let req_path = ctx.req.path.clone();
+
+        // Route Execution
         let response_future = async move {
-            match router_clone.match_route(&ctx.req.method, &ctx.req.path) {
+            match routing_result {
                 RoutingResult::Found(handler, required_role, _) => {
-                    // AUTOMATED ACCESS CONTROL MATRIX (RBAC Guard)
-                    // Look up if this matching URL route path has an explicit role requirement attached
                     if let Some(required_role) = required_role {
                         if !ctx.has_role(required_role) {
-                            error!(
-                                "[RBAC SHIELD] Blocked Unauthorized Access attempt to {} | Missing operational clearance: {}",
-                                ctx.req.path, required_role
-                            );
-
                             return Response::forbidden(&HashMap::from([(
                                 "error",
                                 format!(
@@ -246,20 +229,14 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
                     response
                 }
                 RoutingResult::NotFound => {
-                    let fallback_opt = if let Ok(guard) = GLOBAL_FALLBACK.lock() {
-                        guard.clone()
-                    } else {
-                        None
-                    };
+                    let fallback_opt = GLOBAL_FALLBACK.lock().ok().and_then(|g| g.clone());
 
                     if let Some(custom_fallback) = fallback_opt {
                         custom_fallback(ctx).await
+                    } else if let Some(err_handler) = error_handler_ptr {
+                        err_handler(ctx, ShieldError::NotFound).await
                     } else {
-                        if let Some(err_handler) = error_handler_ptr {
-                            err_handler(ctx, ShieldError::NotFound).await
-                        } else {
-                            Response::new(404, Sanitizer::trust("<h1>404 Not Found</h1>"))
-                        }
+                        Response::new(404, Sanitizer::trust("<h1>404 Not Found</h1>"))
                     }
                 }
                 RoutingResult::MethodNotAllowed => {
@@ -278,28 +255,19 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
         {
             Ok(normal_response) => normal_response,
             Err(panic_payload) => {
-                let panic_msg = if let Some(s) = panic_payload.downcast_ref::<&str>() {
-                    s.to_string()
-                } else if let Some(s) = panic_payload.downcast_ref::<String>() {
-                    s.clone()
-                } else {
-                    "Unknown framework thread panic occurred.".to_string()
-                };
+                let panic_msg = panic_payload
+                    .downcast_ref::<&str>()
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| {
+                        panic_payload
+                            .downcast_ref::<String>()
+                            .cloned()
+                            .unwrap_or_else(|| "Unknown framework panic occurred.".to_string())
+                    });
 
                 error!("[PANIC INFRASTRUCTURE SHIELD] Caught: {}", panic_msg);
 
-                if let Some(custom_err_hook) = error_handler_ptr {
-                    custom_err_hook(
-                        ctx_clone,
-                        ShieldError::Panic {
-                            message: panic_msg,
-                            backtrace: std::backtrace::Backtrace::capture(),
-                        },
-                    )
-                    .await
-                } else {
-                    Response::new(500, Sanitizer::trust("<h1>500 Internal Server Error</h1>"))
-                }
+                Response::new(500, Sanitizer::trust("<h1>500 Internal Server Error</h1>"))
             }
         };
 
@@ -307,7 +275,7 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
 
         router
             .telemetry
-            .record_request(&req_clone.path, response.status, duration);
+            .record_request(&req_path, response.status, duration);
 
         if let Ok(locked_jar) = jar.lock() {
             response = locked_jar.clone().commit(response);
@@ -315,7 +283,6 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
 
         let (bytes, mime) = response.resolve();
 
-        // Write back to stream; break loop if write fails (client disconnected)
         if stream
             .write_all(&response.to_bytes(&bytes, &mime))
             .await
@@ -329,7 +296,6 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
         }
     }
 
-    // Decrement active connections upon socket termination
     router
         .telemetry
         .active_connections

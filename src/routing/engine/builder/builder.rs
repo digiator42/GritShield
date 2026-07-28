@@ -1,10 +1,10 @@
-use crate::JobStorage;
 use crate::core::event_bus::{EventRegistration, GritEvent, GritEventHandler, JobWorkerEngine};
 use crate::core::logger::{self, log_request_summary, LogLevel};
 use crate::middleware::{AfterRequestHook, Middleware};
 use crate::routing::engine::fallback::PageHandlerFn;
 use crate::routing::engine::Router;
 use crate::routing::RequestContext;
+use crate::JobStorage;
 use sea_orm::DatabaseConnection;
 use std::sync::Arc;
 
@@ -41,13 +41,18 @@ impl Router {
     /// Builder method to dynamically define role hierarchies at startup
     pub fn add_role_inheritance(mut self, parent: &str, children: Vec<&str>) -> Self {
         let child_strings = children.into_iter().map(|s| s.to_string()).collect();
-        self.role_inheritance
-            .insert(parent.to_string(), child_strings);
+        let map = Arc::make_mut(&mut self.role_inheritance);
+        map.insert(parent.to_string(), child_strings);
         self
     }
 
     /// A framework-level diagnostic utility that prints highly optimized operational logs.
     pub fn log_lifecycle(&self, ctx: &RequestContext, status: u16, duration: std::time::Duration) {
+        // Zero-cost check: skip allocation and logging overhead entirely
+        if !self.enable_lifecycle_logs {
+            return;
+        }
+
         let session_id_log = ctx.session.as_ref().map(|s| s.lock().unwrap().id.clone());
         let jwt_sub_log = ctx.claims.as_ref().map(|c| c.sub.clone());
 
@@ -72,18 +77,17 @@ impl Router {
     }
 
     /// Registers a job queue storage engine and automatically boots the background worker pool.
-    pub fn with_job_queue(
-        mut self,
-        storage: Arc<dyn JobStorage>,
-        max_workers: usize,
-    ) -> Self {
+    pub fn with_job_queue(mut self, storage: Arc<dyn JobStorage>, max_workers: usize) -> Self {
         // 1. Store storage reference for RequestContext injection
         self.job_queue = storage.clone();
 
         // 2. Automatically instantiate and spawn worker engine in background Tokio task
         let worker_engine = JobWorkerEngine::new(storage, max_workers);
         tokio::spawn(async move {
-            println!(" [ENGINE] Background JobWorkerEngine spawned with {} workers...", max_workers);
+            println!(
+                " [ENGINE] Background JobWorkerEngine spawned with {} workers...",
+                max_workers
+            );
             worker_engine.start().await;
         });
 

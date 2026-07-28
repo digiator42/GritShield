@@ -1,13 +1,13 @@
-use std::sync::{Arc, Mutex, OnceLock};
 use crate::core::env::get_env;
 use crate::http::request::HttpMethod;
-use crate::http::response::{Response, Cookie, SameSite};
+use crate::http::response::{Cookie, Response, SameSite};
+use crate::middleware::{Middleware, MiddlewareResult, MiddlewareState};
 use crate::routing::engine::RequestContext;
-use crate::security::jwt::{JwtHandler};
+use crate::security::jwt::JwtHandler;
 use crate::security::session::{Session, SessionStore};
 use crate::security::xss::Sanitizer;
-use crate::middleware::{Middleware, MiddlewareResult, MiddlewareState};
 use crate::{debug, info};
+use std::sync::{Arc, Mutex, OnceLock};
 
 // global accessible, thread-safe cell for administrative/user auth session store
 pub static SESSION_STORE: OnceLock<Arc<SessionStore>> = OnceLock::new();
@@ -89,7 +89,8 @@ impl AuthMiddleware {
             }
 
             // Check for ":*" wildcard catch-all
-            if rule_segments.len() >= 1 && rule_segments[rule_segments.len() - 1].starts_with(":*") {
+            if rule_segments.len() >= 1 && rule_segments[rule_segments.len() - 1].starts_with(":*")
+            {
                 let rule_prefix_len = rule_segments.len() - 1;
 
                 if incoming_segments.len() >= rule_prefix_len {
@@ -153,16 +154,14 @@ impl Middleware for AuthMiddleware {
 
             // Try to find an existing session from the browser's cookie jar
             if let Some(sid) = ctx.get_signed_cookie("GSESSION_ID") {
-                if let Ok(store_guard) = self.store.sessions.lock() {
-                    if let Some(session_ptr) = store_guard.get(&sid) {
-                        debug!("[AUTH MIDDLEWARE] ✓ Found session in store: {}", sid);
-                        associated_session = Some(Arc::clone(&session_ptr));
-                    } else {
-                        debug!(
-                            "[AUTH MIDDLEWARE] ✗ Session ID in cookie but NOT in store: {}",
-                            sid
-                        );
-                    }
+                if let Some(session_ptr) = self.store.sessions.get(&sid) {
+                    debug!("[AUTH MIDDLEWARE] ✓ Found session in store: {}", sid);
+                    associated_session = Some(Arc::clone(&session_ptr));
+                } else {
+                    debug!(
+                        "[AUTH MIDDLEWARE] ✗ Session ID in cookie but NOT in store: {}",
+                        sid
+                    );
                 }
             } else {
                 debug!("[AUTH MIDDLEWARE] No GSESSION_ID cookie found");
@@ -171,30 +170,30 @@ impl Middleware for AuthMiddleware {
             // If no session exists, mint one on-the-fly right here
             if associated_session.is_none() && self.jwt_handler.is_none() {
                 debug!("[AUTH MIDDLEWARE] Creating NEW session (no existing session found)");
-                if let Ok(store_guard) = self.store.sessions.lock() {
-                    let new_sid = uuid::Uuid::new_v4().to_string();
-                    debug!("[AUTH MIDDLEWARE] Generated session ID: {}", new_sid);
-                    let new_session = Arc::new(Mutex::new(Session {
-                        id: new_sid.clone(),
-                        data: std::collections::HashMap::new(),
-                        user_id: None,
-                        last_accessed: std::time::Instant::now(),
-                    }));
+                let new_sid = uuid::Uuid::new_v4().to_string();
+                debug!("[AUTH MIDDLEWARE] Generated session ID: {}", new_sid);
+                let new_session = Arc::new(Mutex::new(Session {
+                    id: new_sid.clone(),
+                    data: std::collections::HashMap::new(),
+                    user_id: None,
+                    last_accessed: std::time::Instant::now(),
+                }));
 
-                    store_guard.insert(new_sid.clone(), Arc::clone(&new_session));
+                self.store
+                    .sessions
+                    .insert(new_sid.clone(), Arc::clone(&new_session));
 
-                    let is_production = get_env("APP_ENV", "development") == "production";
-                    let session_cookie = Cookie::new("GSESSION_ID", &new_sid)
-                        .set_secure(is_production)
-                        .set_same_site(SameSite::Lax);
+                let is_production = get_env("APP_ENV", "development") == "production";
+                let session_cookie = Cookie::new("GSESSION_ID", &new_sid)
+                    .set_secure(is_production)
+                    .set_same_site(SameSite::Lax);
 
-                    ctx.set_signed_cookie(session_cookie);
-                    debug!(
-                        "[AUTH MIDDLEWARE] ✓ Set GSESSION_ID cookie & into store: {}",
-                        new_sid
-                    );
-                    associated_session = Some(new_session);
-                }
+                ctx.set_signed_cookie(session_cookie);
+                debug!(
+                    "[AUTH MIDDLEWARE] ✓ Set GSESSION_ID cookie & into store: {}",
+                    new_sid
+                );
+                associated_session = Some(new_session);
             } else if associated_session.is_some() {
                 debug!("[AUTH MIDDLEWARE] ✓ Using existing session");
             }
@@ -216,13 +215,11 @@ impl Middleware for AuthMiddleware {
             debug!("[AUTH KERNEL] Intercepted explicit /logout pathway trigger.");
 
             if let Some(session_id) = ctx.get_signed_cookie("GSESSION_ID") {
-                if let Ok(store_guard) = self.store.sessions.lock() {
-                    store_guard.remove(&session_id);
-                    debug!(
-                        "[AUTH KERNEL] Successfully removed session ID {} from memory pool.",
-                        session_id
-                    );
-                }
+                self.store.sessions.remove(&session_id);
+                debug!(
+                    "[AUTH KERNEL] Successfully removed session ID {} from memory pool.",
+                    session_id
+                );
             }
 
             let mut delete_cookie = Cookie::new("GSESSION_ID", "");
@@ -252,22 +249,11 @@ impl Middleware for AuthMiddleware {
         if running_sessions {
             let session_id: Option<String> = ctx.get_signed_cookie("GSESSION_ID");
 
-            let store_guard = match self.store.sessions.lock() {
-                Ok(guard) => guard,
-                Err(_) => {
-                    return MiddlewareResult::Error(Response::new(
-                        500,
-                        Sanitizer::trust(
-                            "<h1>500 Internal Server Error: Session Pool Poisoned</h1>",
-                        ),
-                    ));
-                }
-            };
-
             if let Some(ref sid) = session_id {
-                if let Some(session_ptr) = store_guard.get(sid) {
+                if let Some(session_ref) = self.store.sessions.get(sid) {
+                    let session_ptr = session_ref.value().clone();
                     ctx.session = Some(Arc::clone(&session_ptr));
-                    active_session = Some(Arc::clone(&session_ptr));
+                    active_session = Some(session_ptr);
                 } else {
                     cookie_was_stale = true;
                 }
@@ -282,7 +268,9 @@ impl Middleware for AuthMiddleware {
                     last_accessed: std::time::Instant::now(),
                 }));
 
-                store_guard.insert(new_sid.clone(), Arc::clone(&new_session));
+                self.store
+                    .sessions
+                    .insert(new_sid.clone(), Arc::clone(&new_session));
 
                 let is_production = get_env("APP_ENV", "development") == "production";
                 let session_cookie = Cookie::new("GSESSION_ID", &new_sid)
@@ -299,8 +287,6 @@ impl Middleware for AuthMiddleware {
                 delete_cookie.max_age = 0;
                 ctx.set_signed_cookie(delete_cookie);
             }
-
-            drop(store_guard); // Release lock cleanly
 
             if let Some(ref session_arc) = active_session {
                 let mut session = session_arc.lock().unwrap();

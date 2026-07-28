@@ -6,8 +6,7 @@ use crate::middleware::{
 };
 use crate::middleware::auth::get_session_store;
 use crate::security::session::{Session, SessionStore};
-use crate::security::xss::Sanitizer;
-use crate::{debug, warn, error, prelude::*};
+use crate::{debug, warn, prelude::*};
 use serde_json::json;
 use std::sync::{Arc, Mutex};
 
@@ -129,16 +128,10 @@ pub async fn handle_login_auth(ctx: RequestContext) -> Response {
         last_accessed: std::time::Instant::now(),
     }));
 
-    // Fetch the shared global store reference and lock it to insert the session
+    // Fetch the shared global store reference and insert the session directly —
+    // DashMap handles its own concurrency, no lock needed.
     let store = get_session_store();
-    if let Ok(store_guard) = store.sessions.lock() {
-        store_guard.insert(new_sid.clone(), new_session);
-    } else {
-        return Response::new(
-            500,
-            Sanitizer::trust("<h1>500 Internal Server Error: Lock Poisoned</h1>"),
-        );
-    }
+    store.sessions.insert(new_sid.clone(), new_session);
 
     // Drop a secure signed cookie into the context jar matching the middleware identifier key
     let is_production = crate::core::env::get_env("APP_ENV", "development") == "production";
@@ -163,13 +156,11 @@ pub async fn handle_logout(ctx: RequestContext) -> Response {
     // If an active tracking cookie exists, clean it out of the shared global memory pool
     if let Some(sid) = ctx.get_signed_cookie("GASESSION_ID") {
         let store = get_session_store();
-        if let Ok(store_guard) = store.sessions.lock() {
-            store_guard.remove(&sid);
-            debug!(
-                "[ADMIN LOGOUT] ✓ Session evicted securely from memory store: {}",
-                sid
-            );
-        }
+        store.sessions.remove(&sid);
+        debug!(
+            "[ADMIN LOGOUT] ✓ Session evicted securely from memory store: {}",
+            sid
+        );
     }
 
     // Create an explicitly expired tombstone cookie to instruct the client to purge it
@@ -187,32 +178,27 @@ pub fn verify_and_get_admin_id(ctx: &RequestContext) -> Option<String> {
             admin_sid
         );
 
-        // Fetch and lock the global memory master store
+        // Fetch the global memory master store and search it directly — no lock step
         let store = get_session_store();
-        if let Ok(store_guard) = store.sessions.lock() {
-            // Search the master hash map for this session ID
-            if let Some(session_arc) = store_guard.get(&admin_sid) {
-                // Lock the individual session instance to inspect its inner variables
-                if let Ok(session) = session_arc.lock() {
-                    debug!(
-                        "[STORE SEARCH] ✓ Match found in global store! Session state: id={}, user_id={:?}, data={:?}",
-                        session.id, session.user_id, session.data
-                    );
+        if let Some(session_ref) = store.sessions.get(&admin_sid) {
+            // Lock the individual session instance to inspect its inner variables
+            if let Ok(session) = session_ref.value().lock() {
+                debug!(
+                    "[STORE SEARCH] ✓ Match found in global store! Session state: id={}, user_id={:?}, data={:?}",
+                    session.id, session.user_id, session.data
+                );
 
-                    // Explicitly pull out the admin authorization key
-                    if let Some(admin_user_id) = session.data.get("admin_user_id") {
-                        return Some(admin_user_id.clone());
-                    } else {
-                        warn!(
-                            "[STORE SEARCH] ✗ Session found, but it lacks the 'admin_user_id' key."
-                        );
-                    }
+                // Explicitly pull out the admin authorization key
+                if let Some(admin_user_id) = session.data.get("admin_user_id") {
+                    return Some(admin_user_id.clone());
+                } else {
+                    warn!(
+                        "[STORE SEARCH] ✗ Session found, but it lacks the 'admin_user_id' key."
+                    );
                 }
-            } else {
-                warn!("[STORE SEARCH] ✗ Cookie token exists, but no matching session is registered in memory pool.");
             }
         } else {
-            error!("[STORE SEARCH] CRITICAL: Master session store lock is poisoned!");
+            warn!("[STORE SEARCH] ✗ Cookie token exists, but no matching session is registered in memory pool.");
         }
     } else {
         debug!("[STORE SEARCH] No GASESSION_ID cookie found on incoming request context.");
@@ -250,12 +236,10 @@ impl Middleware for AdminAuthMiddleware {
         let mut is_authorized_admin = false;
 
         if let Some(sid) = ctx.get_signed_cookie("GASESSION_ID") {
-            if let Ok(store_guard) = self.store.sessions.lock() {
-                if let Some(session_ptr) = store_guard.get(&sid) {
-                    if let Ok(session) = session_ptr.lock() {
-                        if session.data.contains_key("admin_user_id") {
-                            is_authorized_admin = true;
-                        }
+            if let Some(session_ptr) = self.store.sessions.get(&sid) {
+                if let Ok(session) = session_ptr.value().lock() {
+                    if session.data.contains_key("admin_user_id") {
+                        is_authorized_admin = true;
                     }
                 }
             }

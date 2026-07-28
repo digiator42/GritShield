@@ -10,6 +10,7 @@ static INIT_ENV: Once = Once::new();
 pub fn initialize_env() {
     INIT_ENV.call_once(|| {
         if dotenvy::dotenv().is_ok() {
+            println!("-===?>???");
             info!(
                 "{}",
                 "[CONFIG] Successfully loaded .env configurations into memory."
@@ -17,6 +18,7 @@ pub fn initialize_env() {
                     .green()
             );
         } else {
+            println!("-===?>???");
             warn!(
                 "{}",
                 "[CONFIG] No .env file detected. Falling back to system environment variables."
