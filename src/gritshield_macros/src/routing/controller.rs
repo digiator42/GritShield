@@ -1,3 +1,4 @@
+use crate::core_parser::unwrap_arc_type;
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::parse::{Parse, ParseStream};
@@ -5,7 +6,6 @@ use syn::{
     GenericArgument, Ident, ImplItem, ItemFn, ItemImpl, LitStr, Meta, PathArguments, Result, Token,
     Type,
 };
-use crate::core_parser::unwrap_arc_type;
 
 pub struct RouteArgs {
     pub path: LitStr,
@@ -47,7 +47,7 @@ pub fn expand_http_method(
     item: TokenStream,
 ) -> Result<TokenStream> {
     let args: RouteArgs = syn::parse2(attr)?;
-    let input_fn: ItemFn = syn::parse2(item)?;
+    let mut input_fn: ItemFn = syn::parse2(item)?;
 
     let path = args.path;
     let required_role_opt = match args.required_role {
@@ -72,16 +72,100 @@ pub fn expand_http_method(
     let wrapper_name = Ident::new(&format!("{}_wrapper", fn_name), fn_name.span());
     let http_method_ident = Ident::new(method_name, fn_name.span());
 
-    // Check if the function is async
     let is_async = input_fn.sig.asyncness.is_some();
 
+    // ─── CAPABILITY ATTRIBUTES ───
+    let mut detected_capabilities = vec![];
+    let mut runtime_security_injection = quote! {};
+    let mut static_compile_fences = vec![];
+    let mut route_assigned_capabilities = quote! { None };
+
+    let cap_attr_idx = input_fn
+        .attrs
+        .iter()
+        .position(|attr| attr.path().is_ident("cap"));
+
+    if let Some(index) = cap_attr_idx {
+        let attr = &input_fn.attrs[index];
+        if let Meta::List(meta_list) = &attr.meta {
+            let caps = meta_list.parse_args_with(
+                syn::punctuated::Punctuated::<syn::Ident, syn::Token![,]>::parse_terminated,
+            )?;
+
+            let mut role_checks = vec![];
+            let mut cap_names_raw = Vec::new();
+
+            for cap_ident in caps {
+                detected_capabilities.push(cap_ident.clone());
+                cap_names_raw.push(cap_ident.to_string());
+
+                static_compile_fences.push(quote! {
+                    const _: () = {
+                        extern crate self as _downstream;
+                        const fn verify_capability<T: _downstream::GritSecurityCheck>() {}
+                        let _ = verify_capability::<#cap_ident>();
+                    };
+                });
+
+                role_checks.push(quote! {
+                    extern crate self as _downstream;
+                    for role in <#cap_ident as _downstream::GritCapabilityRuntime>::allowed_roles() {
+                        if ctx.has_role(role) {
+                            authorized = true;
+                            break;
+                        }
+                    }
+                });
+            }
+
+            let cap_joined_str = cap_names_raw.join(", ");
+            route_assigned_capabilities = quote! { Some(#cap_joined_str) };
+
+            runtime_security_injection = quote! {
+                let mut authorized = false;
+                #(#role_checks)*
+
+                if !authorized {
+                    return gritshield::http::response::Response::forbidden(
+                        "403 Forbidden - Insufficient capability privileges"
+                    );
+                }
+            };
+        }
+        input_fn.attrs.remove(index);
+    }
+
+    // ─── DETECT IF FIRST PARAMETER IS RequestContext ───
     let mut dependency_resolutions = vec![];
-    let mut invocation_args = vec![quote! { ctx }];
+    let mut invocation_args = vec![];
     let mut dependency_inner_types: Vec<Type> = vec![];
 
+    // Check if the first parameter is RequestContext
+    let first_arg_is_ctx = input_fn
+        .sig
+        .inputs
+        .first()
+        .and_then(|arg| {
+            if let syn::FnArg::Typed(pat_type) = arg {
+                if let Type::Path(type_path) = &*pat_type.ty {
+                    if let Some(segment) = type_path.path.segments.last() {
+                        return Some(segment.ident == "RequestContext");
+                    }
+                }
+            }
+            None
+        })
+        .unwrap_or(false);
+
+    // Inject ctx as the first argument if the handler expects it
+    if first_arg_is_ctx {
+        invocation_args.push(quote! { ctx });
+    }
+
+    // ─── PROCESS REMAINING ARGUMENTS ───
     for (i, arg) in input_fn.sig.inputs.iter().enumerate() {
-        if i == 0 {
-            continue;
+        if i == 0 && first_arg_is_ctx {
+            continue; // Skip ctx, already handled
         }
         if let syn::FnArg::Typed(pat_type) = arg {
             if let syn::Pat::Ident(pat_ident) = &*pat_type.pat {
@@ -99,18 +183,14 @@ pub fn expand_http_method(
                         std::concat!("DI Error: Missing component '", std::stringify!(#inner_type), "' for standalone router handler context")
                     );
                 });
-                
+
                 invocation_args.push(quote! { #arg_name });
-                
-                // Pass inner_type by value (transfer ownership into the Vec)
-                dependency_inner_types.push(inner_type); 
+                dependency_inner_types.push(inner_type);
             }
         }
     }
 
-    // Record what this handler needs so AutoWire::verify() can catch a missing
-    // dependency (e.g. an unregistered PaymentService) at boot instead of the
-    // first time a request happens to hit this specific route.
+    // ─── EDGE SUBMISSIONS ───
     let edge_submissions = dependency_inner_types.iter().map(|inner_type| {
         quote! {
             gritshield::inventory::submit! {
@@ -122,7 +202,7 @@ pub fn expand_http_method(
         }
     });
 
-    // Generate the handler call based on sync/async
+    // ─── GENERATE HANDLER CALL ───
     let handler_call = if is_async {
         quote! {
             #fn_name(#(#invocation_args),*).await.into_response()
@@ -133,6 +213,18 @@ pub fn expand_http_method(
         }
     };
 
+    // ─── CAPABILITY CHECKS ───
+    let capability_checks = detected_capabilities.iter().map(|cap| {
+        quote! {
+            const _: () = {
+                extern crate self as _downstream;
+                const fn verify_capability<T: _downstream::GritSecurityCheck>() {}
+                let _ = verify_capability::<#cap>();
+            };
+        }
+    });
+
+    // ─── FINAL EXPANSION ───
     Ok(quote! {
         #input_fn
 
@@ -141,8 +233,10 @@ pub fn expand_http_method(
             use gritshield::futures::future::FutureExt;
 
             #(#dependency_resolutions)*
+            #(#static_compile_fences)*
 
             async move {
+                #runtime_security_injection
                 #handler_call
             }.boxed()
         }
@@ -153,11 +247,13 @@ pub fn expand_http_method(
                 method: gritshield::http::request::HttpMethod::#http_method_ident,
                 handler: #wrapper_name,
                 required_role: #required_role_opt,
+                capabilities: #route_assigned_capabilities,
                 request_body_schema: #body_schema,
             }
         }
 
         #(#edge_submissions)*
+        #(#capability_checks)*
     })
 }
 
@@ -177,7 +273,7 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
             let fn_name = &method.sig.ident;
 
             // ------------------------------------------------------------------
-            // 1. FIRST: Scan for Capability Attributes (Moved to the Top of the Loop)
+            // Scan for Capability Attributes (Moved to the Top of the Loop)
             // ------------------------------------------------------------------
             // Find the position of the short `#[cap(...)]` attribute
             let cap_attr_idx = method
@@ -245,7 +341,7 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
             }
 
             // ------------------------------------------------------------------
-            // 2. SECOND: Parse HTTP Route Methods
+            // Parse HTTP Route Methods
             // ------------------------------------------------------------------
             let mut matched_method = None;
             let mut route_args = None;
@@ -299,36 +395,57 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
                 let mut dispatch_args = vec![];
                 let mut dispatch_dependency_types: Vec<Type> = vec![];
 
-                for arg in &method.sig.inputs {
+                // ─── DETECT IF FIRST PARAMETER IS RequestContext ───
+                let first_arg_is_ctx = method
+                    .sig
+                    .inputs
+                    .first()
+                    .and_then(|arg| {
+                        if let syn::FnArg::Typed(pat_type) = arg {
+                            if let Type::Path(type_path) = &*pat_type.ty {
+                                if let Some(segment) = type_path.path.segments.last() {
+                                    return Some(segment.ident == "RequestContext");
+                                }
+                            }
+                        }
+                        None
+                    })
+                    .unwrap_or(false);
+
+                // Inject ctx first if the handler expects it
+                if first_arg_is_ctx {
+                    dispatch_args.push(quote! { ctx });
+                }
+
+                for (i, arg) in method.sig.inputs.iter().enumerate() {
+                    if i == 0 && first_arg_is_ctx {
+                        continue; // Skip ctx
+                    }
                     if let syn::FnArg::Typed(pat_type) = arg {
                         let arg_type = &pat_type.ty;
 
-                        if quote! { #arg_type }.to_string().contains("RequestContext") {
-                            dispatch_args.push(quote! { ctx });
-                        } else {
-                            let (_is_arc, inner_type) = unwrap_arc_type(&arg_type);
+                        let (_is_arc, inner_type) = unwrap_arc_type(&arg_type);
 
-                            dispatch_checks.push(quote! {
-                                const _: fn() = || {
-                                    fn assert_runtime_injectable<T: ::gritshield::core::ioc::RuntimeInjectable>() {}
-                                    assert_runtime_injectable::<#inner_type>();
-                                };
-                            });
+                        dispatch_checks.push(quote! {
+                            const _: fn() = || {
+                                fn assert_runtime_injectable<T: ::gritshield::core::ioc::RuntimeInjectable>() {}
+                                assert_runtime_injectable::<#inner_type>();
+                            };
+                        });
 
-                            dispatch_args.push(quote! {
-                                ::gritshield::core::ioc::CONTEXT.resolve::<#inner_type>().expect(
-                                    std::concat!(
-                                        "GritShield Route Dispatch Error: Failed to satisfy parameter dependency '",
-                                        std::stringify!(#inner_type),
-                                        "' for route handler '",
-                                        std::stringify!(#fn_name),
-                                        "'."
-                                    )
+                        dispatch_args.push(quote! {
+                            ::gritshield::core::ioc::CONTEXT.resolve::<#inner_type>().expect(
+                                std::concat!(
+                                    "GritShield Route Dispatch Error: Failed to satisfy parameter dependency '",
+                                    std::stringify!(#inner_type),
+                                    "' for route handler '",
+                                    std::stringify!(#fn_name),
+                                    "'."
                                 )
-                            });
+                            )
+                        });
 
-                            dispatch_dependency_types.push(inner_type.clone());
-                        }
+                        dispatch_dependency_types.push(inner_type);
                     }
                 }
 
@@ -383,7 +500,7 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
                 });
 
                 // ------------------------------------------------------------------
-                // 3. THIRD: runtime_security_injection Is Fully Defined & Usable Here!
+                // runtime_security_injection Is Fully Defined & Usable Here!
                 // ------------------------------------------------------------------
 
                 inventory_submissions.push(quote! {
@@ -437,4 +554,3 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
         #(#security_checks)*
     })
 }
- 
