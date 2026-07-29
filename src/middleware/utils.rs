@@ -24,3 +24,16 @@ pub trait Middleware: Send + Sync {
 pub trait AfterRequestHook: Send + Sync {
     fn call(&self, ctx: &RequestContext, status: u16, duration: std::time::Duration);
 }
+
+impl Middleware for Box<dyn Middleware> {
+    fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult {
+        // Delegate to the inner middleware
+        self.as_ref().execute(ctx)
+    }
+}
+
+impl Middleware for Arc<dyn Middleware> {
+    fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult {
+        self.as_ref().execute(ctx)
+    }
+}

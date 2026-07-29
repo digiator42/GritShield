@@ -83,7 +83,7 @@ impl Router {
             );
         }
 
-        self.debug_dump_tree()
+        // self.debug_dump_tree()
     }
 
     #[cfg(feature = "admin")]

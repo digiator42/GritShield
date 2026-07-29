@@ -24,17 +24,18 @@ pub use gritshield_macros::component;
 pub use gritshield_macros::controller;
 pub use gritshield_macros::event;
 pub use gritshield_macros::job;
+pub use gritshield_macros::launch;
 #[cfg(feature = "admin")]
 pub use gritshield_macros::GritAdmin;
 pub use gritshield_macros::GritComponent;
-pub use gritshield_macros::GritWire;
+pub use gritshield_macros::GritEvent;
+pub use gritshield_macros::GritJob;
 pub use gritshield_macros::GritModel;
 pub use gritshield_macros::GritRelation;
 pub use gritshield_macros::GritSanitizer;
-pub use gritshield_macros::GritEvent;
-pub use gritshield_macros::GritJob;
 #[cfg(feature = "swagger")]
 pub use gritshield_macros::GritSchema;
+pub use gritshield_macros::GritWire;
 pub use gritshield_macros::WireContainer;
 pub use gritshield_macros::{delete, get, patch, post, put};
 
@@ -79,11 +80,13 @@ pub mod prelude {
 
     // Critical functions
     pub use crate::core::env::get_env;
+    pub use crate::core::Shield;
     pub use crate::http::ignite;
 
     // Re-export macros for the prelude
     pub use crate::action;
     pub use crate::controller;
+    pub use crate::launch;
     #[cfg(feature = "admin")]
     pub use crate::GritAdmin;
     pub use crate::GritModel;

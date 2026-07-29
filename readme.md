@@ -6,8 +6,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-gritshield = "0.1.1"
-tokio = { version = "1", features = ["full"] }
+gritshield = { git = "https://github.com/digiator42/gritShield" }
 ```
 
 ---
@@ -20,15 +19,13 @@ Create `src/main.rs`:
 use gritshield::prelude::*;
 
 #[get("/")]
-async fn hello(_: RequestContext) -> &'static str {
+async fn hello() -> &'static str {
     "Hello, GritShield!"
 }
 
-#[tokio::main]
+#[launch]
 async fn main() {
-    let router = Router::new().mount_logger();
-
-    ignite("127.0.0.1", "8080", router).await;
+    Shield::build().launch();
 }
 ```
 
@@ -39,3 +36,25 @@ Run with `cargo run` and open `http://localhost:8080`.
 ## Documentation
 
 The full documentation is available [here](https://digiator42.github.io/GritShield/).
+
+
+## Quick Features Brief
+
+🔒 **Security-First** – Built-in XSS, CSRF, security headers, rate limiting, and IP blacklisting.
+
+🏗️ **Spring Boot‑Like DI** – Compile‑time dependency injection with zero runtime overhead. Auto‑wire your components with `#[derive(GritComponent)]`.
+
+📊 **Auto Admin Panel** – Full CRUD admin UI with zero frontend code. Just annotate your repository with `#[derive(GritAdmin)]` and get a complete admin interface.
+
+🔍 **JQL Query Explorer** – Run SQL‑like JOIN queries directly from the browser. Supports SELECT, FROM, JOIN, and WHERE clauses.
+
+📝 **OpenAPI/Swagger** – Auto‑generated API documentation from your schemas. Access at `/admin/docs`.
+
+🔐 **RBAC + Capabilities** – Fine‑grained role-based and capability-based access control with compile‑time verification.
+
+🧩 **Compile‑Time Macros** – All the magic happens at compile time. Zero runtime reflection, maximum performance.
+
+
+## License
+
+Apache‑2.0 

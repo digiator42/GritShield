@@ -3,6 +3,7 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{parse_macro_input, DeriveInput, ItemImpl};
 
+mod shield;
 mod admin;
 mod core_parser;
 mod ioc;
@@ -123,6 +124,11 @@ pub fn component(_attr: TokenStream, item: TokenStream) -> TokenStream {
 // ==========================================
 // ATTRIBUTE MACROS (Controllers & Endpoints)
 // ==========================================
+
+#[proc_macro_attribute]
+pub fn launch(attr: TokenStream, item: TokenStream) -> TokenStream {
+    shield::launch::expand_launch(attr, item)
+}
 
 #[proc_macro_attribute]
 pub fn controller(attr: TokenStream, item: TokenStream) -> TokenStream {
