@@ -1,7 +1,7 @@
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{Data, Fields};
-use syn::{DeriveInput, FnArg, GenericArgument, PathArguments, Type};
+use syn::{DeriveInput, FnArg, Type};
 use syn::{ImplItem, ItemImpl, Pat};
 use crate::core_parser::unwrap_arc_type;
 

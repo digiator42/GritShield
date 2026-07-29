@@ -178,12 +178,20 @@ pub fn generate_query_methods(
     column_path: &TokenStream,
     all_builder_path: &TokenStream,
     one_builder_path: &TokenStream,
-    fields: &[(syn::Ident, ModelColumnType)],
+    fields: &[(syn::Ident, ModelColumnType, bool)],
 ) -> TokenStream {
     let mut query_dsl_methods = Vec::new();
 
-    // 1. Single Column Invocations
-    for (field_ident, col_type) in fields {
+    // Entry Point Method for Fluent Repository Queries
+    query_dsl_methods.push(quote! {
+        pub fn find(&self) -> #all_builder_path<'_> {
+            use ::gritshield::deps::sea_orm::EntityTrait;
+            #all_builder_path::new(&self.db, #entity_path::find())
+        }
+    });
+
+    // Single Column Invocations
+    for (field_ident, col_type, is_primary_key) in fields {
         let col_str = field_ident.to_string();
         let variant_ident = Ident::new(&to_pascal_case(&col_str), Span::call_site());
 
@@ -193,12 +201,19 @@ pub fn generate_query_methods(
         let delete_by_ident = Ident::new(&format!("delete_by_{}", col_str), Span::call_site());
         let count_by_ident = Ident::new(&format!("count_by_{}", col_str), Span::call_site());
 
+        // Primary Keys map to GritOneQueryBuilder (Option<T>), regular fields map to GritAllQueryBuilder (Vec<T>)
+        let find_by_builder_path = if *is_primary_key {
+            one_builder_path
+        } else {
+            all_builder_path
+        };
+
         query_dsl_methods.push(quote! {
-            pub fn #find_by_ident<V>(&self, val: V) -> #all_builder_path<'_>
+            pub fn #find_by_ident<V>(&self, val: V) -> #find_by_builder_path<'_>
             where V: ::std::convert::Into<::gritshield::deps::sea_orm::Value> {
                 use ::gritshield::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait};
                 let query = #entity_path::find().filter(#column_path::#variant_ident.eq(val));
-                #all_builder_path::new(&self.db, query)
+                #find_by_builder_path::new(&self.db, query)
             }
 
             pub fn #find_one_by_ident<V>(&self, val: V) -> #one_builder_path<'_>
@@ -248,7 +263,7 @@ pub fn generate_query_methods(
         query_dsl_methods.push(type_specific_block);
     }
 
-    // 2. Composite Multi-Column Invocations
+    // Composite Multi-Column Invocations
     for i in 0..fields.len() {
         for j in (i + 1)..fields.len() {
             let col1 = fields[i].0.to_string();

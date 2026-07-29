@@ -77,7 +77,7 @@ pub fn expand_model(input: DeriveInput) -> Result<TokenStream> {
     };
 
     // ---- Parse fields with enhanced metadata ----
-    let mut parsed_fields = Vec::new();
+    let mut parsed_fields: Vec<(Ident, ModelColumnType, bool)> = Vec::new();
     let mut field_schemas = Vec::new();
 
     for field in fields {
@@ -99,7 +99,7 @@ pub fn expand_model(input: DeriveInput) -> Result<TokenStream> {
             }
         }
 
-        parsed_fields.push((ident.clone(), col_type));
+        parsed_fields.push((ident.clone(), col_type, primary_key));
 
         // Build schema for registration
         let name = ident.to_string();
