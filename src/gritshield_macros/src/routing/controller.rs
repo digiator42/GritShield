@@ -99,17 +99,16 @@ pub fn expand_http_method(
                 detected_capabilities.push(cap_ident.clone());
                 cap_names_raw.push(cap_ident.to_string());
 
+                // No extern crate declaration here – will be declared once in the wrapper
                 static_compile_fences.push(quote! {
                     const _: () = {
-                        extern crate self as _downstream;
-                        const fn verify_capability<T: _downstream::GritSecurityCheck>() {}
+                        const fn verify_capability<T: crate::GritSecurityCheck>() {}
                         let _ = verify_capability::<#cap_ident>();
                     };
                 });
 
                 role_checks.push(quote! {
-                    extern crate self as _downstream;
-                    for role in <#cap_ident as _downstream::GritCapabilityRuntime>::allowed_roles() {
+                    for role in <#cap_ident as crate::GritCapabilityRuntime>::allowed_roles() {
                         if ctx.has_role(role) {
                             authorized = true;
                             break;
@@ -272,10 +271,7 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
         if let ImplItem::Fn(method) = item {
             let fn_name = &method.sig.ident;
 
-            // ------------------------------------------------------------------
-            // Scan for Capability Attributes (Moved to the Top of the Loop)
-            // ------------------------------------------------------------------
-            // Find the position of the short `#[cap(...)]` attribute
+            // ─── Scan for Capability Attributes ───
             let cap_attr_idx = method
                 .attrs
                 .iter()
@@ -288,7 +284,6 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
             if let Some(index) = cap_attr_idx {
                 let attr = &method.attrs[index];
                 if let Meta::List(meta_list) = &attr.meta {
-                    // Parse the tokens as a comma-separated list of idents: e.g., ViewLogs, ManageBilling
                     let caps = meta_list.parse_args_with(
                         syn::punctuated::Punctuated::<syn::Ident, syn::Token![,]>::parse_terminated,
                     )?;
@@ -300,19 +295,17 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
                         detected_capabilities.push(cap_ident.clone());
                         cap_names_raw.push(cap_ident.to_string());
 
-                        // Generate static compile-time boundaries for each capability
+                        // Use crate:: for compile-time verification (traits are in developer's crate)
                         static_compile_fences.push(quote! {
                             const _: () = {
-                                extern crate self as _downstream;
-                                const fn verify_capability<T: _downstream::GritSecurityCheck>() {}
+                                const fn verify_capability<T: crate::GritSecurityCheck>() {}
                                 let _ = verify_capability::<#cap_ident>();
                             };
                         });
 
-                        // Build the runtime role union lookup
+                        // Use crate:: for runtime role lookup
                         role_checks.push(quote! {
-                            extern crate self as _downstream;
-                            for role in <#cap_ident as _downstream::GritCapabilityRuntime>::allowed_roles() {
+                            for role in <#cap_ident as crate::GritCapabilityRuntime>::allowed_roles() {
                                 if ctx.has_role(role) {
                                     authorized = true;
                                     break;
@@ -321,17 +314,15 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
                         });
                     }
 
-                    // Join the list of capabilities to save into the route metadata (e.g., "ViewLogs, ManageBilling")
                     let cap_joined_str = cap_names_raw.join(", ");
                     route_assigned_capabilities = quote! { Some(#cap_joined_str) };
 
-                    // Consolidate into the runtime security injection block
                     runtime_security_injection = quote! {
                         let mut authorized = false;
                         #(#role_checks)*
 
                         if !authorized {
-                            return gritshield::http::response::Response::forbidden(
+                            return ::gritshield::http::response::Response::forbidden(
                                 "403 Forbidden - Insufficient capability privileges"
                             );
                         }
@@ -340,9 +331,7 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
                 method.attrs.remove(index);
             }
 
-            // ------------------------------------------------------------------
-            // Parse HTTP Route Methods
-            // ------------------------------------------------------------------
+            // ─── Parse HTTP Route Methods ───
             let mut matched_method = None;
             let mut route_args = None;
 
@@ -391,38 +380,24 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
 
                 let is_async = method.sig.asyncness.is_some();
 
+                // ─── BUILD ARGUMENT DISPATCH ───
                 let mut dispatch_checks = vec![];
                 let mut dispatch_args = vec![];
                 let mut dispatch_dependency_types: Vec<Type> = vec![];
 
-                // ─── DETECT IF FIRST PARAMETER IS RequestContext ───
-                let first_arg_is_ctx = method
-                    .sig
-                    .inputs
-                    .first()
-                    .and_then(|arg| {
-                        if let syn::FnArg::Typed(pat_type) = arg {
-                            if let Type::Path(type_path) = &*pat_type.ty {
-                                if let Some(segment) = type_path.path.segments.last() {
-                                    return Some(segment.ident == "RequestContext");
-                                }
-                            }
-                        }
-                        None
-                    })
-                    .unwrap_or(false);
-
-                // Inject ctx first if the handler expects it
-                if first_arg_is_ctx {
-                    dispatch_args.push(quote! { ctx });
-                }
-
                 for (i, arg) in method.sig.inputs.iter().enumerate() {
-                    if i == 0 && first_arg_is_ctx {
-                        continue; // Skip ctx
+                    if matches!(arg, syn::FnArg::Receiver(_)) {
+                        continue;
                     }
+
                     if let syn::FnArg::Typed(pat_type) = arg {
                         let arg_type = &pat_type.ty;
+                        let type_str = quote! { #arg_type }.to_string();
+
+                        if type_str.contains("RequestContext") {
+                            dispatch_args.push(quote! { ctx });
+                            continue;
+                        }
 
                         let (_is_arc, inner_type) = unwrap_arc_type(&arg_type);
 
@@ -499,14 +474,10 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
                     }
                 });
 
-                // ------------------------------------------------------------------
-                // runtime_security_injection Is Fully Defined & Usable Here!
-                // ------------------------------------------------------------------
-
                 inventory_submissions.push(quote! {
-                    fn #wrapper_name(ctx: gritshield::routing::engine::RequestContext) -> gritshield::futures::future::BoxFuture<'static, gritshield::http::response::Response> {
-                        use gritshield::routing::engine::IntoResponse;
-                        use gritshield::futures::future::FutureExt;
+                    fn #wrapper_name(ctx: ::gritshield::routing::engine::RequestContext) -> ::gritshield::futures::future::BoxFuture<'static, ::gritshield::http::response::Response> {
+                        use ::gritshield::routing::engine::IntoResponse;
+                        use ::gritshield::futures::future::FutureExt;
 
                         #(#dispatch_checks)*
                         #(#static_compile_fences)*
@@ -523,7 +494,7 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
                             method: gritshield::http::request::HttpMethod::#http_method_ident,
                             handler: #wrapper_name,
                             required_role: #required_role_opt,
-                            capabilities: #route_assigned_capabilities, // Captures your `Some("ViewLogs, ManageBilling")`
+                            capabilities: #route_assigned_capabilities,
                             request_body_schema: #body_schema,
                         }
                     }
@@ -534,11 +505,11 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
         }
     }
 
+    // ─── Module-level compile-time capability verification ───
     let security_checks = detected_capabilities.iter().map(|cap| {
         quote! {
             const _: () = {
-                extern crate self as _downstream;
-                const fn verify_capability<T: _downstream::GritSecurityCheck>() {}
+                const fn verify_capability<T: crate::GritSecurityCheck>() {}
                 let _ = verify_capability::<#cap>();
             };
         }

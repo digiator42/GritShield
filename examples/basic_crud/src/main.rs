@@ -18,22 +18,11 @@ use gritshield::{
 mod controllers;
 mod models;
 mod repositories;
+mod security;
 mod auth {
     mod login;
 }
 mod services;
-
-// One single source of truth grouped by capability matching your endpoint attributes!
-declare_security_caps! {
-    ManageBilling => [Admin],
-    DeleteUser    => [Admin],
-    ViewLogs      => [Manager, Auditor],
-}
-
-// #[get("/hello")]
-// pub async fn system_info(ctx: RequestContext, redis: Arc<OrderController>) -> Response {
-//     Response::ok("")
-// }
 
 fn auto_wire() {
     // provide!(PaymentService, PaymentService::new("Api key....".to_string()));
@@ -45,6 +34,9 @@ fn auto_wire() {
 
     // use provider!,
     inject!(RedisService, redis_service);
+
+    AutoWire::boot_di_container();
+    // AutoWire::controller::<InvoiceController>();
 }
 
 // 1. Define Dependencies
@@ -70,7 +62,6 @@ pub struct OrderController {
 pub struct AppContainer {
     pub db: Arc<DatabasePool>,
     pub ps: Arc<PaymentService>,
-    pub log: Arc<Logger>,
 }
 
 fn auto_wire_compile_time() -> Arc<OrderController> {
@@ -78,9 +69,6 @@ fn auto_wire_compile_time() -> Arc<OrderController> {
     let container = AppContainer {
         db: Arc::new(DatabasePool {}),
         ps: Arc::new(PaymentService {}),
-        log: Arc::new(Logger {
-            level: LogLevel::Debug,
-        }),
     };
 
     // B. Safely build the controller at compile-time (returns Arc<OrderController>)
@@ -94,7 +82,7 @@ async fn main() {
 
     let shared_db = DbManager::connect(db_config).await.unwrap();
 
-    let order_controller = auto_wire_compile_time();
+    // let order_controller = auto_wire_compile_time();
 
     auto_wire();
     // AutoWire::boot_di_container();
@@ -102,14 +90,6 @@ async fn main() {
     println!("{}", EventBusGraph::export_dot());
 
     let router = Router::new()
-        .route((
-            "/api/orders/checkout",
-            HttpMethod::GET,
-            move |ctx: RequestContext| {
-                let oc = order_controller.clone();
-                async move { oc.ps.checkout(ctx).await }.boxed()
-            },
-        ))
         .add_middleware(AuthMiddleware::new_session(
             vec![
                 "/auth/login".to_string(),
@@ -131,6 +111,7 @@ async fn main() {
     ignite("127.0.0.1", "8080", router).await;
 }
 
+use crate::controllers::order_controller::InvoiceController;
 use crate::{models::*, services::redis::RedisService};
 use chrono::Utc;
 use rand::seq::SliceRandom;

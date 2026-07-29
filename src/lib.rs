@@ -81,6 +81,7 @@ pub mod prelude {
     // Critical functions
     pub use crate::core::env::get_env;
     pub use crate::core::Shield;
+    pub use crate::core::GritShield;
     pub use crate::http::ignite;
 
     // Re-export macros for the prelude

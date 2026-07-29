@@ -1,6 +1,7 @@
 use chrono::{Duration, Utc};
 use gritshield::GritSanitizer;
 use gritshield::deps::sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+use gritshield::http::response::HttpStatus;
 use gritshield::{database::repository::GritRepository, prelude::*};
 use serde_json::Value;
 
@@ -93,7 +94,7 @@ impl ApiController {
             .unwrap();
 
         Response::json(
-            200,
+            HttpStatus::Ok,
             &json!({
                 "sea_user_with_posts": sea_user_with_posts,
                 "repo_user_with_posts": repo_user_with_posts,
@@ -147,7 +148,7 @@ impl ApiController {
         };
 
         Response::json(
-            200,
+            HttpStatus::Ok,
             &json!({
                 "test": "SeaORM Native Queries",
                 "user_with_posts": user_with_posts,
@@ -206,7 +207,7 @@ impl ApiController {
         };
 
         Response::json(
-            200,
+            HttpStatus::Ok,
             &json!({
                 "test": "GritRepository Basic Queries",
                 "user_with_posts": user_with_posts,
@@ -250,7 +251,7 @@ impl ApiController {
         };
 
         Response::json(
-            200,
+            HttpStatus::Ok,
             &json!({
                 "test": "PostRepository Queries",
                 "post_with_relations": post_with_relations,
@@ -294,7 +295,7 @@ impl ApiController {
         };
 
         Response::json(
-            200,
+            HttpStatus::Ok,
             &json!({
                 "test": "CommentRepository Queries",
                 "comment_with_relations": comment_with_relations,
@@ -333,7 +334,7 @@ impl ApiController {
             Err(e) => return Response::bad_request(format!("Deep nested query failed: {}", e)),
         };
 
-        Response::json(200, &deep_nested)
+        Response::json(HttpStatus::Ok, &deep_nested)
     }
 
     // ============================================================
@@ -374,7 +375,7 @@ impl ApiController {
         let query_duration = start.elapsed();
 
         Response::json(
-            200,
+            HttpStatus::Ok,
             &json!({
                 "test": "Performance Comparison",
                 "seaorm": {
@@ -423,7 +424,7 @@ impl ApiController {
         };
 
         Response::json(
-            200,
+            HttpStatus::Ok,
             &json!({
                 "test": "Error Handling",
                 "not_found": not_found,
@@ -469,7 +470,7 @@ impl ApiController {
             "performance_ms": start.elapsed().as_millis(),
         });
 
-        Response::json(200, &results)
+        Response::json(HttpStatus::Ok, &results)
     }
 
     // ============================================================
@@ -498,7 +499,7 @@ impl ApiController {
         };
 
         // ---- Structural Serialization ----
-        Response::json(200, &user_with_social_list)
+        Response::json(HttpStatus::Ok, &user_with_social_list)
     }
 
     // Use the body parameter in the route macro
@@ -528,6 +529,6 @@ impl ApiController {
             .await
             .unwrap();
 
-        Response::json(200, &sea_user_with_posts)
+        Response::json(HttpStatus::Ok, &sea_user_with_posts)
     }
 }

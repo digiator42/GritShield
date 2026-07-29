@@ -1,9 +1,9 @@
+use crate::core_parser::unwrap_arc_type;
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{Data, Fields};
 use syn::{DeriveInput, FnArg, Type};
 use syn::{ImplItem, ItemImpl, Pat};
-use crate::core_parser::unwrap_arc_type;
 
 pub fn expand_component(input: ItemImpl) -> TokenStream {
     let self_ty = &input.self_ty;
@@ -130,7 +130,6 @@ pub fn expand_grit_component(input: DeriveInput) -> TokenStream {
 
                 let (is_arc, inner_type) = unwrap_arc_type(&field_type);
 
-                // Dynamic Resolution Logic
                 if is_arc {
                     dynamic_resolutions.push(quote! {
                         #field_name: container.resolve::<#inner_type>().expect(
@@ -165,6 +164,12 @@ pub fn expand_grit_component(input: DeriveInput) -> TokenStream {
         }
     });
 
+    // Create a unique registration function name for the ctor
+    let register_fn_name = syn::Ident::new(
+        &format!("register_and_instantiate_{}", name),
+        proc_macro2::Span::call_site(),
+    );
+
     let expanded = quote! {
         // Mark as runtime injectable for inventory-based registration
         impl ::gritshield::core::ioc::RuntimeInjectable for #name {}
@@ -177,17 +182,27 @@ pub fn expand_grit_component(input: DeriveInput) -> TokenStream {
             }
         }
 
-        ::gritshield::inventory::submit! {
-            ::gritshield::core::ioc::AutoRegisterHook {
-                name: std::stringify!(#name),
-                register_fn: |container| {
-                    container.register_factory::<#name>(|c| {
-                        std::sync::Arc::new(<#name as ::gritshield::core::ioc::Injectable>::resolve_new(c))
-                    });
+        // Register the factory AND instantiate immediately
+        #[::gritshield::startup::ctor(unsafe)]
+        fn #register_fn_name() {
+            // Register the factory
+            ::gritshield::inventory::submit! {
+                ::gritshield::core::ioc::AutoRegisterHook {
+                    name: std::stringify!(#name),
+                    register_fn: |container| {
+                        container.register_factory::<#name>(|c| {
+                            std::sync::Arc::new(<#name as ::gritshield::core::ioc::Injectable>::resolve_new(c))
+                        });
+                    }
                 }
             }
+
+            // Instantiate immediately so the component is available in the container
+            // for route handlers that use &self
+            let _ = ::gritshield::core::ioc::CONTEXT.resolve::<#name>();
         }
 
+        // Keep the inventory submissions for dependency verification
         ::gritshield::inventory::submit! {
             ::gritshield::core::ioc::ProvidedComponent {
                 name: std::stringify!(#name),
