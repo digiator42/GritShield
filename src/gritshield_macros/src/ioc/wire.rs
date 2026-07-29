@@ -1,6 +1,7 @@
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{Data, DeriveInput, Error, Fields, GenericArgument, PathArguments, Result, Type};
+use crate::core_parser::unwrap_arc_type;
 
 pub fn expand_grit_wire(input: DeriveInput) -> Result<TokenStream> {
     let name = &input.ident;
@@ -31,20 +32,21 @@ pub fn expand_grit_wire(input: DeriveInput) -> Result<TokenStream> {
         let field_name = field.ident.unwrap();
         let field_type = field.ty;
 
-        // Safely peel Arc<T> to find the raw inner dependency type
-        let inner_type = extract_inner_arc_type(&field_type).unwrap_or(&field_type);
+        let (is_arc, inner_type) = unwrap_arc_type(&field_type);
 
-        // Generate: C: ::gritshield::core::ioc::HasComponent<DependencyType>
         trait_bounds.push(quote! {
             C: ::gritshield::core::ioc::HasComponent<#inner_type>
         });
 
-        // Generate: field_name: container.get_component()
-        // If the struct expects Arc<T>, grab it. If it expects T, we assume it's cloned or managed.
-        // Usually, components are stored as Arc<T> in compile-time containers.
-        static_resolutions.push(quote! {
-            #field_name: container.get_component()
-        });
+        if is_arc {
+            static_resolutions.push(quote! {
+                #field_name: container.get_component()
+            });
+        } else {
+            static_resolutions.push(quote! {
+                #field_name: (*container.get_component()).clone()
+            });
+        }
     }
 
     Ok(quote! {
@@ -64,19 +66,4 @@ pub fn expand_grit_wire(input: DeriveInput) -> Result<TokenStream> {
             }
         }
     })
-}
-
-/// Helper function to safely extract the internal type T out of Arc<T> signatures[cite: 6]
-fn extract_inner_arc_type(ty: &Type) -> Option<&Type> {
-    if let Type::Path(type_path) = ty {
-        let segment = type_path.path.segments.last()?;
-        if segment.ident == "Arc" {
-            if let PathArguments::AngleBracketed(args) = &segment.arguments {
-                if let Some(GenericArgument::Type(inner_ty)) = args.args.first() {
-                    return Some(inner_ty);
-                }
-            }
-        }
-    }
-    None
 }

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use gritshield::core::ioc::AutoWire; 
-use gritshield::{GritComponent, WireContainer};
+use gritshield::{GritComponent, WireContainer, GritWire};
 
 // Mock Dependencies for Testing
 #[derive(Clone)]
@@ -55,6 +55,13 @@ pub struct TestContainer {
     pub logger: Arc<MockLogger>,
 }
 
+// Mock Component that requires both
+#[derive(Clone, GritWire)]
+pub struct MockTestService {
+    pub db: Arc<MockDatabase>,
+    pub logger: Arc<MockLogger>,
+}
+
 #[test]
 fn test_strict_compile_time_wiring() {
     // Assemble the container context manually
@@ -64,7 +71,7 @@ fn test_strict_compile_time_wiring() {
     };
 
     // Statically wire up the component using the generated constructor
-    let service = MockService::compile_time_wire(&container);
+    let service = MockTestService::compile_time_wire(&container);
 
     // Assert that fields match structural constraints
     assert_eq!(service.db.url, "postgres://localhost");

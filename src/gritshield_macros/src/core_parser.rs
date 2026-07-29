@@ -1,5 +1,6 @@
 use syn::punctuated::Punctuated;
 use syn::{Expr, ExprArray, ExprLit, Lit, Meta, Result, Token};
+use syn::{DeriveInput, FnArg, GenericArgument, PathArguments, Type};
 
 #[derive(Default)]
 pub struct RepositoryAttributes {
@@ -61,4 +62,20 @@ fn extract_strings(expr: &Expr, target: &mut Vec<String>) {
             }
         }
     }
+}
+
+/// Helper function to safely extract the internal type T out of Arc<T> signatures
+pub fn unwrap_arc_type(ty: &Type) -> (bool, Type) {
+    if let Type::Path(type_path) = ty {
+        if let Some(segment) = type_path.path.segments.last() {
+            if segment.ident == "Arc" {
+                if let PathArguments::AngleBracketed(args) = &segment.arguments {
+                    if let Some(GenericArgument::Type(inner_ty)) = args.args.first() {
+                        return (true, inner_ty.clone());
+                    }
+                }
+            }
+        }
+    }
+    (false, ty.clone())
 }

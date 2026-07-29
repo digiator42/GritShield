@@ -5,6 +5,7 @@ use syn::{
     GenericArgument, Ident, ImplItem, ItemFn, ItemImpl, LitStr, Meta, PathArguments, Result, Token,
     Type,
 };
+use crate::core_parser::unwrap_arc_type;
 
 pub struct RouteArgs {
     pub path: LitStr,
@@ -38,21 +39,6 @@ impl Parse for RouteArgs {
             body,
         })
     }
-}
-
-/// Helper function to safely extract the internal type T out of Arc<T> signatures
-fn extract_inner_arc_type(ty: &Type) -> Option<&Type> {
-    if let Type::Path(type_path) = ty {
-        let segment = type_path.path.segments.last()?;
-        if segment.ident == "Arc" {
-            if let PathArguments::AngleBracketed(args) = &segment.arguments {
-                if let Some(GenericArgument::Type(inner_ty)) = args.args.first() {
-                    return Some(inner_ty);
-                }
-            }
-        }
-    }
-    None
 }
 
 pub fn expand_http_method(
@@ -91,7 +77,7 @@ pub fn expand_http_method(
 
     let mut dependency_resolutions = vec![];
     let mut invocation_args = vec![quote! { ctx }];
-    let mut dependency_inner_types: Vec<&Type> = vec![];
+    let mut dependency_inner_types: Vec<Type> = vec![];
 
     for (i, arg) in input_fn.sig.inputs.iter().enumerate() {
         if i == 0 {
@@ -101,10 +87,10 @@ pub fn expand_http_method(
             if let syn::Pat::Ident(pat_ident) = &*pat_type.pat {
                 let arg_name = &pat_ident.ident;
                 let arg_type = &pat_type.ty;
-                let inner_type = extract_inner_arc_type(arg_type).unwrap_or(arg_type);
+
+                let (_is_arc, inner_type) = unwrap_arc_type(&arg_type);
 
                 dependency_resolutions.push(quote! {
-                    // This forces a stable compile-time check directly on the type itself!
                     const _: fn() = || {
                         fn assert_runtime_injectable<T: ::gritshield::core::ioc::RuntimeInjectable>() {}
                         assert_runtime_injectable::<#inner_type>();
@@ -113,8 +99,11 @@ pub fn expand_http_method(
                         std::concat!("DI Error: Missing component '", std::stringify!(#inner_type), "' for standalone router handler context")
                     );
                 });
+                
                 invocation_args.push(quote! { #arg_name });
-                dependency_inner_types.push(inner_type);
+                
+                // Pass inner_type by value (transfer ownership into the Vec)
+                dependency_inner_types.push(inner_type); 
             }
         }
     }
@@ -317,7 +306,7 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
                         if quote! { #arg_type }.to_string().contains("RequestContext") {
                             dispatch_args.push(quote! { ctx });
                         } else {
-                            let inner_type = extract_inner_arc_type(arg_type).unwrap_or(arg_type);
+                            let (_is_arc, inner_type) = unwrap_arc_type(&arg_type);
 
                             dispatch_checks.push(quote! {
                                 const _: fn() = || {

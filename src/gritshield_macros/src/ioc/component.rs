@@ -3,6 +3,7 @@ use quote::quote;
 use syn::{Data, Fields};
 use syn::{DeriveInput, FnArg, GenericArgument, PathArguments, Type};
 use syn::{ImplItem, ItemImpl, Pat};
+use crate::core_parser::unwrap_arc_type;
 
 pub fn expand_component(input: ItemImpl) -> TokenStream {
     let self_ty = &input.self_ty;
@@ -27,9 +28,7 @@ pub fn expand_component(input: ItemImpl) -> TokenStream {
                             let arg_name = &pat_ident.ident;
                             let arg_type = &pat_type.ty;
 
-                            let is_arc = extract_inner_arc_type(arg_type).is_some();
-                            // Peek inside Arc<T> to extract T for CONTEXT.resolve::<T>()
-                            let inner_type = extract_inner_arc_type(arg_type).unwrap_or(arg_type);
+                            let (is_arc, inner_type) = unwrap_arc_type(&arg_type);
 
                             dependency_resolutions.push(quote! {
                                 let #arg_name = ::gritshield::core::ioc::CONTEXT.resolve::<#inner_type>().expect(
@@ -83,6 +82,9 @@ pub fn expand_component(input: ItemImpl) -> TokenStream {
         // Keep the original impl block untouched
         #input
 
+        // Mark as runtime injectable for inventory/dynamic container management
+        impl ::gritshield::core::ioc::RuntimeInjectable for #self_ty {}
+
         // Submit an automated registration hook to execute at runtime boot phase
         ::gritshield::inventory::submit! {
             ::gritshield::core::ioc::AutoRegisterHook {
@@ -114,26 +116,10 @@ pub fn expand_component(input: ItemImpl) -> TokenStream {
     TokenStream::from(expanded)
 }
 
-/// Helper function to safely peek inside Arc<T> types
-fn extract_inner_arc_type(ty: &Type) -> Option<&Type> {
-    if let Type::Path(type_path) = ty {
-        let segment = type_path.path.segments.last()?;
-        if segment.ident == "Arc" {
-            if let PathArguments::AngleBracketed(args) = &segment.arguments {
-                if let Some(GenericArgument::Type(inner_ty)) = args.args.first() {
-                    return Some(inner_ty);
-                }
-            }
-        }
-    }
-    None
-}
-
 pub fn expand_grit_component(input: DeriveInput) -> TokenStream {
     let name = input.ident;
 
     let mut dynamic_resolutions = vec![];
-    let mut static_resolutions = vec![];
     let mut dependency_inner_types = vec![];
 
     if let Data::Struct(data) = input.data {
@@ -142,13 +128,9 @@ pub fn expand_grit_component(input: DeriveInput) -> TokenStream {
                 let field_name = f.ident.unwrap();
                 let field_type = f.ty;
 
-                // Check if the struct field itself is Arc<T> or just T
-                let is_arc = extract_inner_arc_type(&field_type).is_some();
-                let inner_type = extract_inner_arc_type(&field_type)
-                    .cloned()
-                    .unwrap_or_else(|| field_type.clone());
+                let (is_arc, inner_type) = unwrap_arc_type(&field_type);
 
-                // PATH A: Dynamic Resolution
+                // Dynamic Resolution Logic
                 if is_arc {
                     dynamic_resolutions.push(quote! {
                         #field_name: container.resolve::<#inner_type>().expect(
@@ -156,23 +138,11 @@ pub fn expand_grit_component(input: DeriveInput) -> TokenStream {
                         )
                     });
                 } else {
-                    // Dereference and clone out of Arc<T> for plain types like DatabaseConnection
                     dynamic_resolutions.push(quote! {
                         #field_name: (*container.resolve::<#inner_type>().expect(
                             std::concat!("Critical DI Fault: Dependency mapping initialization failed for component: '", std::stringify!(#inner_type), "'")
                         )).clone()
                     });
-                }
-
-                // PATH B: Strict Resolution
-                if is_arc {
-                    static_resolutions.push(quote! {
-                    #field_name: ::gritshield::core::ioc::HasComponent::<#inner_type>::get_component(container)
-                });
-                            } else {
-                                static_resolutions.push(quote! {
-                    #field_name: (*::gritshield::core::ioc::HasComponent::<#inner_type>::get_component(container)).clone()
-                });
                 }
 
                 dependency_inner_types.push(inner_type);
@@ -183,11 +153,6 @@ pub fn expand_grit_component(input: DeriveInput) -> TokenStream {
     } else {
         panic!("GritComponent derive macro can only be used on Struct definitions");
     }
-
-    // Generate strict compile-time where bounds ensuring the container has what we need
-    let trait_bounds = dependency_inner_types.iter().map(|ty| {
-        quote! { C: ::gritshield::core::ioc::HasComponent<#ty> }
-    });
 
     let edge_submissions = dependency_inner_types.iter().map(|inner_type| {
         quote! {
@@ -201,11 +166,7 @@ pub fn expand_grit_component(input: DeriveInput) -> TokenStream {
     });
 
     let expanded = quote! {
-        // ---------------------------------------------------------
-        // PATH A: Dynamic / Inventory Magic
-        // ---------------------------------------------------------
-
-        // Only mark it if the dynamic registration hook actually runs!
+        // Mark as runtime injectable for inventory-based registration
         impl ::gritshield::core::ioc::RuntimeInjectable for #name {}
 
         impl ::gritshield::core::ioc::Injectable for #name {
@@ -234,22 +195,6 @@ pub fn expand_grit_component(input: DeriveInput) -> TokenStream {
             }
         }
         #(#edge_submissions)*
-
-        // ---------------------------------------------------------
-        // PATH B: Strict Compile-Time Rust
-        // ---------------------------------------------------------
-        impl #name {
-            /// Wires dependencies strictly at compile-time.
-            /// Will fail to compile if the provided container lacks required dependencies.
-            pub fn compile_time_wire<C>(container: &C) -> std::sync::Arc<Self>
-            where
-                C: ::gritshield::core::ioc::StrictContainer,
-                #(#trait_bounds),* {
-                std::sync::Arc::new(Self {
-                    #(#static_resolutions),*
-                })
-            }
-        }
     };
 
     TokenStream::from(expanded)
@@ -268,9 +213,7 @@ pub fn expand_wire_container(input: DeriveInput) -> TokenStream {
                 let field_name = field.ident.unwrap();
                 let field_type = field.ty;
 
-                let inner_type = extract_inner_arc_type(&field_type)
-                    .cloned()
-                    .unwrap_or_else(|| field_type.clone());
+                let (_is_arc, inner_type) = unwrap_arc_type(&field_type);
 
                 trait_impls.push(quote! {
                     impl ::gritshield::core::ioc::HasComponent<#inner_type> for #name {
