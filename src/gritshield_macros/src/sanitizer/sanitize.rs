@@ -1,6 +1,6 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{Data, DataStruct, DeriveInput, Fields, GenericArgument, PathArguments, Type};
+use syn::{Data, DataStruct, DeriveInput, Fields, Type};
 
 /// Helper to check if a field type is `Option<T>`
 fn is_option_type(ty: &Type) -> bool {

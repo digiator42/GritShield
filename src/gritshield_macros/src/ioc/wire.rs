@@ -1,6 +1,6 @@
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{Data, DeriveInput, Error, Fields, GenericArgument, PathArguments, Result, Type};
+use syn::{Data, DeriveInput, Error, Fields, Result};
 use crate::core_parser::unwrap_arc_type;
 
 pub fn expand_grit_wire(input: DeriveInput) -> Result<TokenStream> {

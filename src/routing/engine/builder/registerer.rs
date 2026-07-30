@@ -1,7 +1,6 @@
-use crate::database::repository::registry::AdminHandlerFn;
 use crate::http::request::HttpMethod;
 use crate::routing::engine::route::RouteTarget;
-use crate::routing::engine::{Node, Router};
+use crate::routing::engine::{Router};
 use crate::routing::IntoHandler;
 
 impl Router {

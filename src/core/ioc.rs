@@ -147,7 +147,7 @@ impl AutoWire {
                 format!(
                     "  - '{}' requires '{}', but nothing registered that type. \
              Add #[component] / #[derive(GritComponent)] to it, or register it \
-             explicitly with provide!({}, ...).",
+             explicitly with inject!({}, ...).",
                     edge.component.green(),
                     edge.requires.red(),
                     edge.requires.yellow(),

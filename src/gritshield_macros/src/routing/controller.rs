@@ -3,7 +3,7 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::parse::{Parse, ParseStream};
 use syn::{
-    GenericArgument, Ident, ImplItem, ItemFn, ItemImpl, LitStr, Meta, PathArguments, Result, Token,
+    Ident, ImplItem, ItemFn, ItemImpl, LitStr, Meta, Result, Token,
     Type,
 };
 
@@ -385,7 +385,7 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
                 let mut dispatch_args = vec![];
                 let mut dispatch_dependency_types: Vec<Type> = vec![];
 
-                for (i, arg) in method.sig.inputs.iter().enumerate() {
+                for (_i, arg) in method.sig.inputs.iter().enumerate() {
                     if matches!(arg, syn::FnArg::Receiver(_)) {
                         continue;
                     }

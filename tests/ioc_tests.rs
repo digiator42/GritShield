@@ -71,7 +71,7 @@ fn test_strict_compile_time_wiring() {
     };
 
     // Statically wire up the component using the generated constructor
-    let service = MockTestService::compile_time_wire(&container);
+    let service = MockTestService::wire(&container);
 
     // Assert that fields match structural constraints
     assert_eq!(service.db.url, "postgres://localhost");

@@ -1,6 +1,6 @@
 use syn::punctuated::Punctuated;
 use syn::{Expr, ExprArray, ExprLit, Lit, Meta, Result, Token};
-use syn::{DeriveInput, FnArg, GenericArgument, PathArguments, Type};
+use syn::{GenericArgument, PathArguments, Type};
 
 #[derive(Default)]
 pub struct RepositoryAttributes {

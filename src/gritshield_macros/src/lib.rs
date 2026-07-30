@@ -172,3 +172,8 @@ pub fn delete(attr: TokenStream, item: TokenStream) -> TokenStream {
         .unwrap_or_else(|e| e.to_compile_error())
         .into()
 }
+
+#[proc_macro_attribute]
+pub fn catch(attr: TokenStream, item: TokenStream) -> TokenStream {
+    shield::catch::expand_catch(attr, item)
+}

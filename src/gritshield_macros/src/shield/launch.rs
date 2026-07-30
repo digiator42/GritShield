@@ -2,7 +2,7 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{parse_macro_input, ItemFn, ReturnType};
 
-pub fn expand_launch(args: TokenStream, item: TokenStream) -> TokenStream {
+pub fn expand_launch(_args: TokenStream, item: TokenStream) -> TokenStream {
     let input_fn = parse_macro_input!(item as ItemFn);
     let fn_name = &input_fn.sig.ident;
     let fn_block = &input_fn.block;

@@ -1,6 +1,4 @@
-use ::gritshield::deps::futures::FutureExt;
 use gritshield::core::event_bus::EventBusGraph;
-use gritshield::security::rbac::{Admin, Auditor, DeleteUser, ManageBilling, Manager, ViewLogs};
 use gritshield::GritEvent;
 use gritshield::{
     component,
@@ -60,6 +58,9 @@ pub struct OrderController {
 #[derive(Clone, GritWire)]
 pub struct NewService {}
 
+#[derive(Clone, GritWire)]
+pub struct OldService {}
+
 // 3. Define Application Container
 #[derive(Clone, WireContainer)] // Automatically proves it has dependencies
 pub struct AppContainer {
@@ -87,10 +88,9 @@ async fn main() {
 
     let shared_db = DbManager::connect(db_config).await.unwrap();
 
-    // let order_controller = auto_wire_compile_time();
+    let order_controller = auto_wire_compile_time();
 
     auto_wire();
-    // AutoWire::boot_di_container();
 
     println!("{}", EventBusGraph::export_dot());
 
@@ -116,7 +116,6 @@ async fn main() {
     ignite("127.0.0.1", "8080", router).await;
 }
 
-use crate::controllers::order_controller::InvoiceController;
 use crate::{models::*, services::redis::RedisService};
 use chrono::Utc;
 use rand::seq::SliceRandom;
