@@ -3,6 +3,7 @@ pub mod jql;
 pub mod query_builder;
 pub mod traits;
 pub mod registry;
+pub mod transaction;
 
 // Re-exports from pagination
 pub use pagination::{Page, PageRequest, Sort, SortDirection};

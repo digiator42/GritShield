@@ -1,7 +1,7 @@
 extern crate proc_macro;
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, DeriveInput, ItemImpl};
+use syn::{parse_macro_input, DeriveInput, ItemImpl, ItemFn};
 
 mod shield;
 mod admin;
@@ -176,4 +176,39 @@ pub fn delete(attr: TokenStream, item: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn catch(attr: TokenStream, item: TokenStream) -> TokenStream {
     shield::catch::expand_catch(attr, item)
+}
+
+#[proc_macro_attribute]
+pub fn transactional(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    // Parse the input tokens into a Rust function AST
+    let input_fn = parse_macro_input!(item as ItemFn);
+
+    let vis = &input_fn.vis;
+    let sig = &input_fn.sig;
+    let body = &input_fn.block;
+    let attrs = &input_fn.attrs;
+
+    // Ensure the function is async
+    if sig.asyncness.is_none() {
+        return syn::Error::new_spanned(
+            sig.fn_token,
+            "#[transactional] can only be applied to async functions",
+        )
+        .to_compile_error()
+        .into();
+    }
+
+    // Generate the transformed function
+    let expanded = quote! {
+        #(#attrs)*
+        #vis #sig {
+            // Self must have a `db_pool` field or method accessible in scope.
+            // Adjust `self.db_pool()` to match your application's architecture.
+            ::gritshield::database::run_in_transaction(&self.db_pool, async move {
+                #body
+            }).await
+        }
+    };
+
+    TokenStream::from(expanded)
 }
