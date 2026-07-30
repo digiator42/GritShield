@@ -1,11 +1,12 @@
 use crate::models::user;
+use gritshield::GritComponent;
 use gritshield::{database::repository::transaction::CURRENT_TXN, transactional, GritAdmin};
 use sea_orm::ActiveModelTrait;
 use sea_orm::EntityTrait;
 use sea_orm::{ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbErr, DeleteResult};
 use std::sync::Arc;
 
-#[derive(GritAdmin)]
+#[derive(Clone, GritAdmin, GritComponent)]
 #[repository(
     searchable = ["username", "email", "created_at", "updated_at"],
     grid_columns = ["id", "email", "username", "created_at", "updated_at"],
@@ -38,7 +39,6 @@ impl UserRepository {
     pub async fn delete(&self, user: user::ActiveModel) -> Result<DeleteResult, DbErr> {
         let txn = self.conn().await.unwrap();
         user.delete(txn.as_ref()).await
-
     }
 
     pub async fn _find_by_id(&self, id: i32) -> Result<Option<user::Model>, DbErr> {
@@ -47,16 +47,21 @@ impl UserRepository {
     }
 }
 
+#[derive(GritComponent)]
 pub struct UserService {
-    user_repo: UserRepository,
+    pub user_repo: UserRepository,
     pub db_pool: DatabaseConnection,
 }
 
 impl UserService {
     #[transactional]
-    pub async fn register(&self, user: user::ActiveModel) -> Result<(), DbErr> {
-        // self.user_repo detects CURRENT_TXN -> Executes DELETE inside transaction.
-        let user = self.user_repo.delete(user).await?;
+    pub async fn delete(&self, user: user::ActiveModel) -> Result<(), DbErr> {
+        let txn = match CURRENT_TXN.try_with(|t| t.clone()) {
+            Ok(txn) => txn,
+            Err(e) => return Err(DbErr::Custom(e.to_string())),
+        };
+
+        let _ = user.delete(txn.as_ref()).await?;
 
         Ok(())
     }

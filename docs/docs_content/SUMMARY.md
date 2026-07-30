@@ -23,6 +23,7 @@
   - [Http Macros](04_macros_library/http_macros.md)
   - [Query DSL Macros](04_macros_library/query_dsl_macros.md)
   - [Dependency Injection Macros](04_macros_library/dependency_injection_macros.md)
+  - [Transctional Macro](04_macros_library/transaction.md)
 
 - [Event/Task & Job Queue](05_task_queue/index.md)
   - [Job queue with Redis](05_task_queue/redis_queue.md)

@@ -88,6 +88,8 @@ async fn main() {
 
     let shared_db = DbManager::connect(db_config).await.unwrap();
 
+    inject!(DatabaseConnection, (*shared_db).clone());
+
     let order_controller = auto_wire_compile_time();
 
     auto_wire();

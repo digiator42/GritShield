@@ -1,5 +1,8 @@
 use crate::AppContainer;
 use crate::OrderController;
+use crate::models::user::ActiveModel;
+use crate::repositories::user::UserService;
+use gritshield::database::GritRepository;
 use gritshield::http::response::JsonPayload;
 use gritshield::routing::engine::ShieldResult;
 use gritshield::{component, prelude::*};
@@ -89,7 +92,11 @@ impl InvoiceController {
     }
 
     #[get("/checkout22")]
-    pub async fn checkout2(ctx: RequestContext) -> Response {
+    pub async fn checkout2(ctx: RequestContext, usvc: Arc<UserService>) -> Response {
+        use sea_orm::IntoActiveModel;
+        let user = usvc.user_repo.find_by_id(5).await.ok().unwrap().unwrap();
+        let active_user = user.core.into_active_model();
+        usvc.delete(active_user).await.ok();
         Response::ok(JsonPayload(json!({ "status": "processed" })))
     }
     #[get("/checkout2", role = "Admin")]
