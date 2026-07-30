@@ -173,17 +173,11 @@ macro_rules! log_route {
 #[macro_export]
 macro_rules! declare_security_caps {
     ($( $cap:ty => [ $( $role:ty ),* ] ),* $(,)?) => {
-        pub trait GritSecurityCheck {}
-
-        pub trait GritCapabilityRuntime {
-            fn name() -> &'static str;
-            fn allowed_roles() -> &'static [&'static str];
-        }
 
         $(
-            impl GritSecurityCheck for $cap {}
+            impl ::gritshield::security::rbac::GritSecurityCheck for $cap {}
             
-            impl GritCapabilityRuntime for $cap {
+            impl ::gritshield::security::rbac::GritCapabilityRuntime for $cap {
                 fn name() -> &'static str {
                     std::stringify!($cap)
                 }

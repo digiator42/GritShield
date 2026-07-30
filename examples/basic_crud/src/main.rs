@@ -1,7 +1,7 @@
-use gritshield::GritEvent;
-use gritshield::core::event_bus::EventBusGraph;
 use ::gritshield::deps::futures::FutureExt;
+use gritshield::core::event_bus::EventBusGraph;
 use gritshield::security::rbac::{Admin, Auditor, DeleteUser, ManageBilling, Manager, ViewLogs};
+use gritshield::GritEvent;
 use gritshield::{
     component,
     core::{ioc::AutoWire, logger::Logger, schema::export_openapi, LogLevel},
@@ -57,11 +57,15 @@ pub struct OrderController {
     pub ps: Arc<PaymentService>,
 }
 
+#[derive(Clone, GritWire)]
+pub struct NewService {}
+
 // 3. Define Application Container
 #[derive(Clone, WireContainer)] // Automatically proves it has dependencies
 pub struct AppContainer {
     pub db: Arc<DatabasePool>,
     pub ps: Arc<PaymentService>,
+    pub ns: Arc<NewService>,
 }
 
 fn auto_wire_compile_time() -> Arc<OrderController> {
@@ -69,10 +73,11 @@ fn auto_wire_compile_time() -> Arc<OrderController> {
     let container = AppContainer {
         db: Arc::new(DatabasePool {}),
         ps: Arc::new(PaymentService {}),
+        ns: Arc::new(NewService {}),
     };
 
     // B. Safely build the controller at compile-time (returns Arc<OrderController>)
-    let order_controller = OrderController::compile_time_wire(&container);
+    let order_controller = OrderController::wire(&container);
     order_controller
 }
 

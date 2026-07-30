@@ -102,13 +102,13 @@ pub fn expand_http_method(
                 // No extern crate declaration here – will be declared once in the wrapper
                 static_compile_fences.push(quote! {
                     const _: () = {
-                        const fn verify_capability<T: crate::GritSecurityCheck>() {}
+                        const fn verify_capability<T: ::gritshield::security::rbac::GritSecurityCheck>() {}
                         let _ = verify_capability::<#cap_ident>();
                     };
                 });
 
                 role_checks.push(quote! {
-                    for role in <#cap_ident as crate::GritCapabilityRuntime>::allowed_roles() {
+                    for role in <#cap_ident as ::gritshield::security::rbac::GritCapabilityRuntime>::allowed_roles() {
                         if ctx.has_role(role) {
                             authorized = true;
                             break;
@@ -217,7 +217,7 @@ pub fn expand_http_method(
         quote! {
             const _: () = {
                 extern crate self as _downstream;
-                const fn verify_capability<T: _downstream::GritSecurityCheck>() {}
+                const fn verify_capability<T: ::gritshield::security::rbac::GritSecurityCheck>() {}
                 let _ = verify_capability::<#cap>();
             };
         }
@@ -298,14 +298,14 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
                         // Use crate:: for compile-time verification (traits are in developer's crate)
                         static_compile_fences.push(quote! {
                             const _: () = {
-                                const fn verify_capability<T: crate::GritSecurityCheck>() {}
+                                const fn verify_capability<T: ::gritshield::security::rbac::GritSecurityCheck>() {}
                                 let _ = verify_capability::<#cap_ident>();
                             };
                         });
 
                         // Use crate:: for runtime role lookup
                         role_checks.push(quote! {
-                            for role in <#cap_ident as crate::GritCapabilityRuntime>::allowed_roles() {
+                            for role in <#cap_ident as ::gritshield::security::rbac::GritCapabilityRuntime>::allowed_roles() {
                                 if ctx.has_role(role) {
                                     authorized = true;
                                     break;
@@ -509,7 +509,7 @@ pub fn expand_controller(attr: TokenStream, item: TokenStream) -> Result<TokenSt
     let security_checks = detected_capabilities.iter().map(|cap| {
         quote! {
             const _: () = {
-                const fn verify_capability<T: crate::GritSecurityCheck>() {}
+                const fn verify_capability<T: ::gritshield::security::rbac::GritSecurityCheck>() {}
                 let _ = verify_capability::<#cap>();
             };
         }

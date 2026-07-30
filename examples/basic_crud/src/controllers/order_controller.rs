@@ -1,3 +1,4 @@
+use crate::AppContainer;
 use crate::OrderController;
 use gritshield::http::response::JsonPayload;
 use gritshield::routing::engine::ShieldResult;
@@ -5,6 +6,7 @@ use gritshield::{component, prelude::*};
 use gritshield::{controller, GritComponent, GritSanitizer};
 use serde::Deserialize;
 use serde_json::json;
+
 
 #[derive(Deserialize, GritSanitizer)]
 pub struct CheckoutRequest {
@@ -86,11 +88,8 @@ impl InvoiceController {
         Response::ok(format!("Checked out safely"))
     }
 
-    #[get("/checkout2", role = "Admin")]
-    pub async fn checkout2(
-        ctx: RequestContext,
-        payment: Arc<PrintService>, // <-- Automatically Injected!
-    ) -> Response {
+    #[get("/checkout22")]
+    pub async fn checkout2(ctx: RequestContext) -> Response {
         Response::ok(JsonPayload(json!({ "status": "processed" })))
     }
     #[get("/checkout2", role = "Admin")]

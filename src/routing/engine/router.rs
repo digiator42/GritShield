@@ -1,5 +1,5 @@
 use crate::core::event_bus::{EventBus, JobStorage, JobWorkerEngine, MemoryJobQueue};
-use crate::core::{get_env, init_from_env};
+use crate::core::{AutoWire, get_env, init_from_env};
 use crate::middleware::{AfterRequestHook, Middleware};
 use crate::routing::engine::fallback::PageHandlerFn;
 use crate::routing::engine::{Node, GLOBAL_FALLBACK};
@@ -41,6 +41,8 @@ pub struct Router {
 impl Router {
     pub fn new() -> Self {
         let enable_lifecycle_logs = init_from_env();
+
+        AutoWire::boot_di_container();
 
         let secret_key = get_env("JWT_SECRET", &Uuid::new_v4().to_string());
 

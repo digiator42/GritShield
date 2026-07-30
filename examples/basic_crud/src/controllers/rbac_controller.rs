@@ -1,7 +1,7 @@
-use gritshield::security::rbac::{Admin, Auditor, DeleteUser, ManageBilling, Manager, ViewLogs};
+use gritshield::security::rbac::{Admin, Auditor, DeleteUser, Manager, ViewLogs};
 use gritshield::security::session::SessionStore;
 use gritshield::{controller, prelude::*};
-use crate::GritCapabilityRuntime;
+use crate::security::caps::ManageBilling;
 
 pub struct BillingController;
 

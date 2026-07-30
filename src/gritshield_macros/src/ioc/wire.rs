@@ -55,7 +55,7 @@ pub fn expand_grit_wire(input: DeriveInput) -> Result<TokenStream> {
         impl #name {
             /// Wires dependencies strictly at compile-time.
             /// Will fail to compile if the provided container lacks required dependencies.
-            pub fn compile_time_wire<C>(container: &C) -> std::sync::Arc<Self>
+            pub fn wire<C>(container: &C) -> std::sync::Arc<Self>
             where
                 C: ::gritshield::core::ioc::StrictContainer,
                 #(#trait_bounds),*
