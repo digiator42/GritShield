@@ -164,6 +164,7 @@ pub fn expand_admin(input: DeriveInput) -> syn::Result<TokenStream> {
     Ok(quote! {
         const _: () = {
             use #crate_root::deps::sea_orm;
+            use #crate_root::database::TxnRepository;
 
             trait AdminFieldFormat {
                 fn to_display_str(&self) -> ::std::string::String;
@@ -259,6 +260,12 @@ pub fn expand_admin(input: DeriveInput) -> syn::Result<TokenStream> {
                 }
             }
 
+            impl TxnRepository for #name {
+                fn db(&self) -> &#crate_root::deps::sea_orm::DatabaseConnection {
+                    &self.db
+                }
+            }
+
             #[#crate_root::deps::async_trait]
             impl #crate_root::database::repository::GritRepository for #name {
                 type Entity = #entity_module::Entity;
@@ -296,23 +303,23 @@ pub fn expand_admin(input: DeriveInput) -> syn::Result<TokenStream> {
                 ) -> ::std::result::Result<Self::Model, #crate_root::deps::sea_orm::DbErr> {
                     use #crate_root::deps::sea_orm::{ActiveModelTrait, EntityTrait, EntityName};
                     use #crate_root::deps::serde_json;
-
-                    if let ::std::option::Option::Some(record) = #entity_module::Entity::find_by_id(id).one(self.get_db()).await? {
+                    // Fetch record using dynamic self.conn() instead of self.get_db()
+                    let conn = #crate_root::database::TxnRepository::conn(self);
+                    if let ::std::option::Option::Some(record) = #entity_module::Entity::find_by_id(id).one(&conn).await? {
                         let mut active_model = <Self::ActiveModel as #crate_root::database::repository::ConvertFromModel<Self::Model>>::from_model(record.clone());
                         match column_name {
                             #(#update_field_tokens)*
                             _ => return ::std::result::Result::Err(#crate_root::deps::sea_orm::DbErr::Custom(::std::format!("Column '{}' is not editable", column_name))),
                         };
-                        let updated_model = active_model.update(self.get_db()).await?;
 
-                        // Capture old and new values for audit
+                        // Update record inside active transaction (if present)
+                        let updated_model = active_model.update(&conn).await?;
+
                         let old_json = serde_json::to_value(&record).ok();
                         let new_json = serde_json::to_value(&updated_model).ok();
-
-                        // Get table name from the entity
                         let table_name = <#entity_module::Entity as EntityName>::table_name(&#entity_module::Entity);
 
-                        // Log the change
+                        // Log audit inside the transaction scope
                         self.audit_log(
                             table_name,
                             &format!("{}", id),
@@ -351,19 +358,54 @@ pub fn expand_admin(input: DeriveInput) -> syn::Result<TokenStream> {
                         timestamp: sea_orm::Set(Utc::now().naive_utc()),
                         ..Default::default()
                     };
-                    new_entry.insert(self.get_db()).await?;
+
+                    // Executes via &self.conn() so audit logs inside service transactions rollback cleanly on error
+                    let conn = #crate_root::database::TxnRepository::conn(self);
+                    new_entry.insert(&conn).await?;
                     Ok(())
+                }
+
+                async fn delete_by_id(
+                    &self,
+                    id: Self::Id,
+                    user_id: Option<&str>,
+                ) -> ::std::result::Result<#crate_root::deps::sea_orm::DeleteResult, #crate_root::deps::sea_orm::DbErr> {
+                    use #crate_root::deps::sea_orm::{EntityTrait, EntityName};
+                    use #crate_root::deps::serde_json;
+
+                    let conn = #crate_root::database::TxnRepository::conn(self);
+                    let record = match #entity_module::Entity::find_by_id(id).one(&conn).await? {
+                        Some(r) => r,
+                        None => return ::std::result::Result::Err(#crate_root::deps::sea_orm::DbErr::Custom("Record not found".to_string())),
+                    };
+
+                    let old_json = serde_json::to_value(&record).ok();
+                    let table_name = <#entity_module::Entity as EntityName>::table_name(&#entity_module::Entity);
+
+                    // Delete using active transaction
+                    let res = #entity_module::Entity::delete_by_id(id).exec(&conn).await?;
+
+                    self.audit_log(
+                        table_name,
+                        &format!("{}", id),
+                        "delete",
+                        old_json,
+                        None,
+                        user_id,
+                    ).await?;
+
+                    ::std::result::Result::Ok(res)
                 }
 
                 async fn search_admin_fields(&self, text: &str) -> ::std::result::Result<::std::vec::Vec<Self::Model>, #crate_root::deps::sea_orm::DbErr> {
                     use #crate_root::deps::sea_orm::{EntityTrait, QueryFilter, ColumnTrait, Iterable, Iden};
                     use #crate_root::deps::sea_orm::sea_query::{Expr, ExprTrait, Alias};
 
-                    let db = &self.db;
+                    let conn = #crate_root::database::TxnRepository::conn(self);
                     let mut query = #entity_module::Entity::find();
 
                     if text.trim().is_empty() {
-                        return query.all(db).await;
+                        return query.all(&conn).await;
                     }
 
                     let mut condition = #crate_root::deps::sea_orm::Condition::any();
@@ -376,39 +418,7 @@ pub fn expand_admin(input: DeriveInput) -> syn::Result<TokenStream> {
                         }
                     }
 
-                    query.filter(condition).all(db).await
-                }
-                async fn delete_by_id(
-                    &self,
-                    id: Self::Id,
-                    user_id: Option<&str>,
-                ) -> ::std::result::Result<#crate_root::deps::sea_orm::DeleteResult, #crate_root::deps::sea_orm::DbErr> {
-                    use #crate_root::deps::sea_orm::{EntityTrait, EntityName};
-                    use #crate_root::deps::serde_json;
-
-                    // Fetch record before deletion for audit
-                    let record = match #entity_module::Entity::find_by_id(id).one(self.get_db()).await? {
-                        Some(r) => r,
-                        None => return ::std::result::Result::Err(#crate_root::deps::sea_orm::DbErr::Custom("Record not found".to_string())),
-                    };
-
-                    let old_json = serde_json::to_value(&record).ok();
-                    let table_name = <#entity_module::Entity as EntityName>::table_name(&#entity_module::Entity);
-
-                    // Delete the record
-                    let res = #entity_module::Entity::delete_by_id(id).exec(self.get_db()).await?;
-
-                    // Log the deletion
-                    self.audit_log(
-                        table_name,
-                        &format!("{}", id),
-                        "delete",
-                        old_json,
-                        None,
-                        user_id,
-                    ).await?;
-
-                    ::std::result::Result::Ok(res)
+                    query.filter(condition).all(&conn).await
                 }
             }
 

@@ -6,6 +6,7 @@ pub mod schema;
 pub mod shield;
 #[cfg(feature = "swagger")]
 pub mod swagger;
+pub mod aop;
 
 // Re-exports
 pub use env::{get_env, initialize_env};

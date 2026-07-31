@@ -26,6 +26,7 @@ pub use gritshield_macros::event;
 pub use gritshield_macros::job;
 pub use gritshield_macros::launch;
 pub use gritshield_macros::catch;
+pub use gritshield_macros::intercept;
 pub use gritshield_macros::transactional;
 #[cfg(feature = "admin")]
 pub use gritshield_macros::GritAdmin;

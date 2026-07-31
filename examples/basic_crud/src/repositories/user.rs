@@ -1,6 +1,6 @@
 use crate::models::user;
-use gritshield::GritComponent;
 use gritshield::{database::repository::transaction::CURRENT_TXN, transactional, GritAdmin};
+use gritshield::{intercept, GritComponent};
 use sea_orm::ActiveModelTrait;
 use sea_orm::EntityTrait;
 use sea_orm::{ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbErr, DeleteResult};
@@ -54,15 +54,49 @@ pub struct UserService {
 }
 
 impl UserService {
+    #[intercept(AuditLogger)]
     #[transactional]
-    pub async fn delete(&self, user: user::ActiveModel) -> Result<(), DbErr> {
-        let txn = match CURRENT_TXN.try_with(|t| t.clone()) {
-            Ok(txn) => txn,
-            Err(e) => return Err(DbErr::Custom(e.to_string())),
-        };
-
-        let _ = user.delete(txn.as_ref()).await?;
+    pub async fn delete(&self) -> Result<(), DbErr> {
+        // let _ = user.delete(txn.as_ref()).await?;
+        println!("<<=====>>");
 
         Ok(())
+    }
+}
+
+use gritshield::core::aop::{BoxFuture, Interceptor, InvocationContext};
+use gritshield::deps::async_trait;
+
+pub struct AuditLogger;
+
+#[async_trait]
+impl Interceptor for AuditLogger {
+    async fn intercept<'a>(
+        &'a self,
+        ctx: InvocationContext<'a>,
+        next: Box<dyn FnOnce() -> BoxFuture<'a, Result<(), DbErr>> + Send + 'a>,
+    ) -> Result<(), DbErr> {
+        let start = std::time::Instant::now();
+        println!(
+            "[Audit] Before calling {}::{}",
+            ctx.target_name, ctx.method_name
+        );
+
+        let result = next().await;
+
+        match &result {
+            Ok(_) => println!(
+                "[Audit] {}::{} succeeded in {:?}",
+                ctx.target_name,
+                ctx.method_name,
+                start.elapsed()
+            ),
+            Err(e) => println!(
+                "[Audit] {}::{} failed with error: {:?}",
+                ctx.target_name, ctx.method_name, e
+            ),
+        }
+
+        result
     }
 }

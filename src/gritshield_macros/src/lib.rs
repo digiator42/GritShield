@@ -1,7 +1,7 @@
 extern crate proc_macro;
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, DeriveInput, ItemImpl, ItemFn};
+use syn::{parse_macro_input, DeriveInput, ItemImpl, ItemFn, Type};
 
 mod shield;
 mod admin;
@@ -179,36 +179,57 @@ pub fn catch(attr: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 #[proc_macro_attribute]
-pub fn transactional(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    // Parse the input tokens into a Rust function AST
+pub fn intercept(attr: TokenStream, item: TokenStream) -> TokenStream {
+    // Parse the interceptor struct name passed in the attribute, e.g., AuditLogger
+    let interceptor_type = parse_macro_input!(attr as Type);
+    
+    // Parse the target function
     let input_fn = parse_macro_input!(item as ItemFn);
 
     let vis = &input_fn.vis;
     let sig = &input_fn.sig;
     let body = &input_fn.block;
     let attrs = &input_fn.attrs;
+    let fn_name = &sig.ident;
 
-    // Ensure the function is async
     if sig.asyncness.is_none() {
         return syn::Error::new_spanned(
             sig.fn_token,
-            "#[transactional] can only be applied to async functions",
+            "#[intercept] can only be applied to async functions",
         )
         .to_compile_error()
         .into();
     }
 
-    // Generate the transformed function
     let expanded = quote! {
         #(#attrs)*
         #vis #sig {
-            // Self must have a `db_pool` field or method accessible in scope.
-            // Adjust `self.db_pool()` to match your application's architecture.
-            ::gritshield::database::run_in_transaction(&self.db_pool, async move {
-                #body
-            }).await
+            use ::gritshield::core::aop::{Interceptor, InvocationContext};
+
+            let interceptor = #interceptor_type;
+
+            let ctx = InvocationContext {
+                target_name: std::any::type_name::<Self>(),
+                method_name: stringify!(#fn_name),
+                db: &self.db_pool,
+            };
+
+            // Execute the original body as the 'next' closure
+            interceptor.intercept(ctx, Box::new(|| {
+                Box::pin(async move {
+                    #body
+                })
+            })).await
         }
     };
 
     TokenStream::from(expanded)
+}
+
+/// Convenience macro alias so developers can write #[transactional]
+#[proc_macro_attribute]
+pub fn transactional(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    // Expands #[transactional] to #[intercept(::gritshield::aop::TransactionalInterceptor)]
+    let interceptor_path: TokenStream = quote!(::gritshield::core::aop::TransactionalInterceptor).into();
+    intercept(interceptor_path, item)
 }
