@@ -21,6 +21,7 @@ mod auth {
     mod login;
 }
 mod services;
+mod tests;
 
 fn auto_wire() {
     // provide!(PaymentService, PaymentService::new("Api key....".to_string()));

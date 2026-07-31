@@ -211,7 +211,7 @@ pub fn intercept(attr: TokenStream, item: TokenStream) -> TokenStream {
             let ctx = InvocationContext {
                 target_name: std::any::type_name::<Self>(),
                 method_name: stringify!(#fn_name),
-                db: &self.db_pool,
+                db: &self.db,
             };
 
             // Execute the original body as the 'next' closure

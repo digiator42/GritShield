@@ -97,6 +97,29 @@ impl ConnectionTrait for RepositoryConnection {
     }
 }
 
+impl RepositoryConnection {
+    /// Returns Some(&Arc<DatabaseTransaction>) if running inside a transaction scope
+    pub fn transaction(&self) -> Option<&Arc<DatabaseTransaction>> {
+        match self {
+            RepositoryConnection::Transaction(txn) => Some(txn),
+            RepositoryConnection::Pool(_) => None,
+        }
+    }
+
+    /// Returns Some(&DatabaseConnection) if running against the pool directly
+    pub fn pool(&self) -> Option<&DatabaseConnection> {
+        match self {
+            RepositoryConnection::Pool(db) => Some(db),
+            RepositoryConnection::Transaction(_) => None,
+        }
+    }
+
+    /// Check if currently executing within a transaction
+    pub fn is_transaction(&self) -> bool {
+        matches!(self, RepositoryConnection::Transaction(_))
+    }
+}
+
 pub trait TxnRepository {
     fn db(&self) -> &sea_orm::DatabaseConnection;
 
@@ -105,5 +128,14 @@ pub trait TxnRepository {
         CURRENT_TXN
             .try_with(|txn| RepositoryConnection::Transaction(txn.clone()))
             .unwrap_or_else(|_| RepositoryConnection::Pool(self.db().clone()))
+    }
+}
+
+impl RepositoryConnection {
+    pub fn as_ref(&self) -> &dyn ConnectionTrait {
+        match self {
+            RepositoryConnection::Pool(db) => db,
+            RepositoryConnection::Transaction(txn) => txn.as_ref(),
+        }
     }
 }
