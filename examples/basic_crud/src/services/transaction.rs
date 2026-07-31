@@ -31,9 +31,8 @@ impl UserService {
 
         // Leverage your TxnRepository connection directly!
         // Avoid dropping a temporary by binding the repo connection first.
-        let repo_conn = self.user_repo.conn();
-        let txn = repo_conn.transaction().unwrap();
-        user::Entity::insert(new_user).exec(txn.as_ref()).await?;
+        let conn = self.user_repo.conn();
+        user::Entity::insert(new_user).exec(&conn).await?;
 
         Ok(())
     }
