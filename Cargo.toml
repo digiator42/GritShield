@@ -1,6 +1,6 @@
 [package]
 name = "gritshield"
-version = "0.1.2"
+version = "0.2.0"
 authors = ["Ahmed Hassan digiator2020@gmail.com"]
 edition = "2021"
 description = "A security-first, high-performance micro-framework."
@@ -8,11 +8,11 @@ license = "Apache-2.0"
 repository = "https://github.com/digiator42/gritshield"
 documentation = "https://docs.rs/gritshield"
 readme = "README.md"
-keywords = ["web", "framework", "orm", "micro", "async"]
+keywords = ["web", "framework", "orm", "micro", "async", "security", "rust", "rust-lang", "rust-web"]
 categories = ["web-programming::http-server"]
 
 [features]
-# By default, we provide a clean engine. Users opt-in to their database of choice.
+# Users default opt-in.
 default = []
 admin = []
 swagger = []

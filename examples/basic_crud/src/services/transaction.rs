@@ -21,6 +21,11 @@ impl UserService {
     #[intercept(AuditLogger)]
     #[transactional]
     pub async fn create_user(&self, id: i64, email: String) -> Result<(), DbErr> {
+        let conn = self.user_repo.conn();
+        
+        // Trying to delete user id to check rollback on failure
+        user::Entity::delete_by_id(20).exec(&conn).await?;
+
         let new_user = user::ActiveModel {
             id: Set(id),
             username: Set(format!("user_{}", id)),
@@ -31,7 +36,6 @@ impl UserService {
 
         // Leverage your TxnRepository connection directly!
         // Avoid dropping a temporary by binding the repo connection first.
-        let conn = self.user_repo.conn();
         user::Entity::insert(new_user).exec(&conn).await?;
 
         Ok(())
@@ -52,12 +56,18 @@ impl Interceptor for AuditLogger {
         ctx: InvocationContext<'a>,
         next: Box<dyn FnOnce() -> BoxFuture<'a, Result<(), DbErr>> + Send + 'a>,
     ) -> Result<(), DbErr> {
+        println!("Before method execution...");
+
         let result = next().await;
 
         if result.is_err() {
+            eprintln!("Method execution failed and rolled back!");
             // The transaction failed and rolled back! Mark that AuditLogger caught it.
             AUDIT_LOGGED_FAILURE.store(true, Ordering::SeqCst);
+            return result;
         }
+
+        println!("Method execution succeeded!");
 
         result
     }

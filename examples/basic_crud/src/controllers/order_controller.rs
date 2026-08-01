@@ -96,7 +96,7 @@ impl InvoiceController {
         use sea_orm::IntoActiveModel;
         // let user = usvc.user_repo.find_by_id(5).await.ok().unwrap().unwrap();
         // let active_user = user.core.into_active_model();
-        // usvc.delete().await.ok();
+        usvc.create_user(56, "test@email.com".to_string()).await.expect("Error: ");
         Response::ok(JsonPayload(json!({ "status": "processed" })))
     }
     #[get("/checkout2", role = "Admin")]
