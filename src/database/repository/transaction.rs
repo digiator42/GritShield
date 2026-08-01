@@ -1,10 +1,8 @@
-use futures_util::stream::Stream;
 use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbErr, ExecResult, QueryResult,
-    Statement, TransactionError, TransactionTrait,
+    Statement, TransactionTrait,
 };
 use sea_orm_migration::async_trait::async_trait;
-use std::pin::Pin;
 use std::sync::Arc;
 use tokio::task_local;
 
