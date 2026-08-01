@@ -1,9 +1,14 @@
+use crate::core::event_bus::{JobEnvelope, JobStorage};
+use crate::{core::event_bus::EventBus, GritEvent};
 use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbErr, ExecResult, QueryResult,
     Statement, TransactionTrait,
 };
 use sea_orm_migration::async_trait::async_trait;
-use std::sync::Arc;
+use std::{
+    any::Any,
+    sync::{Arc, Mutex},
+};
 use tokio::task_local;
 
 // SeaORM's DatabaseTransaction is safe to share across tasks
@@ -18,32 +23,60 @@ where
     F: std::future::Future<Output = Result<R, E>>,
     E: From<DbErr>,
 {
-    // START TRANSACTION (Works on Postgres, SQLite, or MySQL dynamically!)
     let txn = db.begin().await?;
     let shared_txn = Arc::new(txn);
+    let event_buffer = Arc::new(Mutex::new(Vec::new()));
+    let job_buffer = Arc::new(Mutex::new(Vec::new())); // 1. Job staging buffer
 
-    // SCOPE TASK-LOCAL & EXECUTE
-    let result = CURRENT_TXN.scope(shared_txn.clone(), fut).await;
+    // Bind CURRENT_TXN, TX_EVENT_BUFFER, and TX_JOB_BUFFER
+    let result = CURRENT_TXN
+        .scope(shared_txn.clone(), {
+            TX_EVENT_BUFFER.scope(event_buffer.clone(), {
+                TX_JOB_BUFFER.scope(job_buffer.clone(), fut)
+            })
+        })
+        .await;
 
-    // COMMIT OR ROLLBACK
     match result {
         Ok(val) => {
-            // Unwrap the Arc to commit
-            match Arc::try_unwrap(shared_txn) {
-                Ok(txn) => {
-                    txn.commit().await?;
-                }
-                Err(_) => {
-                    return Err(DbErr::Custom(
-                        "Transaction handle held outside scope during commit".into(),
-                    )
-                    .into());
-                }
+            // Commit DB transaction
+            if let Ok(txn) = Arc::try_unwrap(shared_txn) {
+                txn.commit().await?;
             }
+
+            // 2. Flush staged events
+            let events = {
+                let mut guard = event_buffer.lock().unwrap();
+                std::mem::take(&mut *guard)
+            };
+
+            let _ = CURRENT_EVENT_BUS.try_with(|bus| {
+                for event in events {
+                    bus.publish_erased_box(event);
+                }
+            });
+
+            // 3. Flush staged background jobs (POST-COMMIT)
+            let jobs = {
+                let mut guard = job_buffer.lock().unwrap();
+                std::mem::take(&mut *guard)
+            };
+
+            if !jobs.is_empty() {
+                let _ = CURRENT_JOB_QUEUE.try_with(|queue| {
+                    let queue = queue.clone();
+                    tokio::spawn(async move {
+                        for job in jobs {
+                            let _ = queue.enqueue(job).await;
+                        }
+                    });
+                });
+            }
+
             Ok(val)
         }
         Err(err) => {
-            // If `fut` failed, dropping `shared_txn` or calling rollback handles cleanup
+            // ROLLBACK: Both event_buffer and job_buffer are dropped!
             if let Ok(txn) = Arc::try_unwrap(shared_txn) {
                 let _ = txn.rollback().await;
             }
@@ -136,4 +169,49 @@ impl RepositoryConnection {
             RepositoryConnection::Transaction(txn) => txn.as_ref(),
         }
     }
+}
+
+task_local! {
+    /// Active EventBus instance for the current task/request scope
+    pub static CURRENT_EVENT_BUS: Arc<EventBus>;
+}
+
+// Stage events emitted during an active transaction
+task_local! {
+    pub static TX_EVENT_BUFFER: Arc<Mutex<Vec<Box<dyn Any + Send + Sync>>>>;
+}
+
+#[inline(always)]
+pub async fn publish_event<E: GritEvent + Clone>(event: E) {
+    // Clone the event for staging, leaving the original available
+    let event_to_stage = event.clone();
+
+    // Check if inside active transaction scope
+    let is_staged = TX_EVENT_BUFFER.try_with(|buffer| {
+        let buffer = buffer.clone();
+        async move {
+            let mut guard = buffer.lock().unwrap();
+            guard.push(Box::new(event_to_stage));
+        }
+    });
+
+    if let Ok(fut) = is_staged {
+        fut.await;
+        return;
+    }
+
+    // Fallback: Publish directly to current request's EventBus
+    let _ = CURRENT_EVENT_BUS.try_with(|bus| {
+        bus.publish(event);
+    });
+}
+
+task_local! {
+    /// Active JobStorage instance for the current task/connection scope
+    pub static CURRENT_JOB_QUEUE: Arc<dyn JobStorage>;
+}
+
+task_local! {
+    /// Stage background jobs enqueued during an active transaction
+    pub static TX_JOB_BUFFER: Arc<Mutex<Vec<JobEnvelope>>>;
 }

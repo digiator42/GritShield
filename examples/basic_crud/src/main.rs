@@ -111,9 +111,9 @@ async fn main() {
         .add_role_inheritance("Manager", vec!["Editor", "Viewer"])
         .add_role_inheritance("Editor", vec!["Contributor"]);
 
-    export_openapi("target/schema.json").unwrap();
+    // export_openapi("target/schema.json").unwrap();
 
-    seed_social_media_if_empty(shared_db.as_ref()).await;
+    // seed_social_media_if_empty(shared_db.as_ref()).await;
 
     // Fire the framework runtime loop
     ignite("127.0.0.1", "8080", router).await;

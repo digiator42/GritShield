@@ -85,6 +85,15 @@ pub fn derive_grit_event(input: TokenStream) -> TokenStream {
                 #event_name_str
             }
         }
+
+        // Provides zero-import .publish() directly on the event struct!
+        impl #impl_generics #name #ty_generics #where_clause {
+            /// Waits in transactional context to publish the event after commit
+            pub async fn publish(self) {
+                use ::gritshield::core::event_bus::GritEventExt;
+                <Self as GritEventExt>::publish(self).await;
+            }
+        }
     };
     TokenStream::from(expanded)
 }

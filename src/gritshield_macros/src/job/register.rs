@@ -64,6 +64,18 @@ pub fn expand_job(attr: TokenStream, item: TokenStream) -> TokenStream {
             }
         }
 
+        impl #self_ty {
+            pub async fn enqueue(&self) -> Result<String, String> {
+                use ::gritshield::core::event_bus::GritJobExt;
+                <Self as GritJobExt>::enqueue(self).await
+            }
+
+            pub async fn enqueue_in(&self, delay: ::std::time::Duration) -> Result<String, String> {
+                use ::gritshield::core::event_bus::GritJobExt;
+                <Self as GritJobExt>::enqueue_in(self, delay).await
+            }
+        }
+
         // 3. Compile-time registration with full metadata
         ::gritshield::inventory::submit! {
             ::gritshield::core::event_bus::JobRegistration {

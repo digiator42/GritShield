@@ -10,6 +10,10 @@ use tokio::sync::broadcast;
 use tokio::sync::mpsc;
 use tokio::sync::Semaphore;
 use tokio::time::sleep;
+
+use crate::database::repository::transaction::CURRENT_JOB_QUEUE;
+use crate::database::repository::transaction::TX_JOB_BUFFER;
+use crate::database::repository::transaction::publish_event;
 pub struct EventRegistration {
     pub event_type: &'static str,   // e.g., "UserRegistered"
     pub handler_type: &'static str, // e.g., "WelcomeEmailHandler"
@@ -41,9 +45,16 @@ impl EventBus {
         }
     }
 
+    /// Publishes event directly to the bus, bypassing transaction staging.
     pub fn publish<E: GritEvent>(&self, event: E) {
         let payload = Arc::new(event);
         let _ = self.sender.send(payload);
+    }
+
+    /// Dispatches a erased event payload staged during transactions
+    pub fn publish_erased_box(&self, payload: Box<dyn Any + Send + Sync>) {
+        let arc_payload: Arc<dyn Any + Send + Sync> = payload.into();
+        let _ = self.sender.send(arc_payload);
     }
 
     /// Automatically manages channel subscriptions and downcasting in the background.
@@ -98,6 +109,17 @@ pub trait GritEvent: Send + Sync + 'static {
 pub trait GritEventHandler<E: GritEvent>: Send + Sync + 'static {
     async fn handle(&self, event: Arc<E>);
 }
+
+#[async_trait]
+pub trait GritEventExt: GritEvent + Clone {
+    /// Automatically stages inside `#[transactional]` or publishes directly to `CURRENT_EVENT_BUS`.
+    async fn publish(self) {
+        publish_event(self).await;
+    }
+}
+
+// Blanket implementation for all GritEvents that derive Clone
+impl<T: GritEvent + Clone> GritEventExt for T {}
 
 pub type JobFuture = Pin<Box<dyn Future<Output = Result<(), String>> + Send>>;
 
@@ -268,8 +290,13 @@ where
 /// Helper extension trait auto-implemented for all GritJobs
 #[async_trait]
 pub trait GritJobExt: GritJob {
-    /// Enqueue job for immediate execution
-    async fn enqueue(&self, queue: &Arc<dyn JobStorage>) -> Result<String, String> {
+    /// Enqueue job for immediate execution, this will stage the job in the transaction buffer if inside a #[transactional] context
+    async fn enqueue(&self) -> Result<String, String> {
+        self.enqueue_in(Duration::from_secs(0)).await
+    }
+
+    /// Enqueue immediately, bypassing transaction staging if explicitly desired
+    async fn enqueue_immediately(&self, queue: &Arc<dyn JobStorage>) -> Result<String, String> {
         let payload = serde_json::to_vec(self).map_err(|e| e.to_string())?;
         let job_id = uuid::Uuid::new_v4().to_string();
 
@@ -286,8 +313,41 @@ pub trait GritJobExt: GritJob {
         Ok(job_id)
     }
 
-    /// Enqueue job with a scheduled delay
-    async fn enqueue_in(
+    /// Enqueue job with a scheduled delay. Auto-detects active transaction!
+    async fn enqueue_in(&self, delay: Duration) -> Result<String, String> {
+        let payload = serde_json::to_vec(self).map_err(|e| e.to_string())?;
+        let job_id = uuid::Uuid::new_v4().to_string();
+
+        let envelope = JobEnvelope {
+            id: job_id.clone(),
+            job_type: Self::NAME.to_string(),
+            payload,
+            max_retries: self.max_retries(),
+            current_attempts: 0,
+            run_at: chrono::Utc::now().timestamp() + delay.as_secs() as i64,
+        };
+
+        // 1. If inside #[transactional], stage in TX_JOB_BUFFER
+        let is_staged = TX_JOB_BUFFER.try_with(|buffer| {
+            let mut guard = buffer.lock().unwrap();
+            guard.push(envelope.clone());
+        });
+
+        if is_staged.is_ok() {
+            return Ok(job_id); // Staged for post-commit dispatch!
+        }
+
+        // 2. Fallback: Enqueue immediately to task-local CURRENT_JOB_QUEUE
+        let queue = CURRENT_JOB_QUEUE
+            .try_with(|q| q.clone())
+            .map_err(|_| "No active JobStorage context found for task".to_string())?;
+
+        queue.enqueue(envelope).await?;
+        Ok(job_id)
+    }
+
+    /// Explicitly bypass transaction/task-local auto-detection if needed
+    async fn enqueue_directly(
         &self,
         queue: &Arc<dyn JobStorage>,
         delay: Duration,
@@ -374,7 +434,9 @@ impl EventBusGraph {
         dot.push_str("    color = \"#581c87\";\n");
         dot.push_str("    style = \"dashed,rounded\";\n");
         dot.push_str("    margin = 12;\n");
-        dot.push_str("    node [fillcolor=\"#1e1b4b\", color=\"#818cf8\", fontcolor=\"#e0e7ff\"];\n\n");
+        dot.push_str(
+            "    node [fillcolor=\"#1e1b4b\", color=\"#818cf8\", fontcolor=\"#e0e7ff\"];\n\n",
+        );
 
         for job in inventory::iter::<JobRegistration> {
             let clean_name = job.job_type.replace("::", "_");
@@ -406,7 +468,9 @@ impl EventBusGraph {
         dot.push_str("    color = \"#0369a1\";\n");
         dot.push_str("    style = \"dashed,rounded\";\n");
         dot.push_str("    margin = 12;\n");
-        dot.push_str("    node [fillcolor=\"#0c4a6e\", color=\"#38bdf8\", fontcolor=\"#f0f9ff\"];\n\n");
+        dot.push_str(
+            "    node [fillcolor=\"#0c4a6e\", color=\"#38bdf8\", fontcolor=\"#f0f9ff\"];\n\n",
+        );
 
         let mut has_events = false;
         for reg in inventory::iter::<EventRegistration> {

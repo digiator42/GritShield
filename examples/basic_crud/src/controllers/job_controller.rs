@@ -66,7 +66,7 @@ impl ReportController {
 
         // Push job to background worker queue
         let _ = job
-            .enqueue_in(&ctx.job_queue, Duration::from_secs(15))
+            .enqueue_in(std::time::Duration::from_secs(15))
             .await;
 
         Response::ok("Report generation queued in background!")

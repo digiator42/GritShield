@@ -37,7 +37,6 @@ impl LogLevel {
     /// Get the default log level from environment or .env file
     pub fn from_env_or_default() -> Self {
         let log_level = get_env("GRIT_LOG", "");
-        println!("===> {}", log_level);
         if let Some(level) = Self::from_str(&log_level) {
             return level;
         }

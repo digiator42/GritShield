@@ -34,7 +34,7 @@ serde_json = "1.0"
 uuid = { version = "1.0", features = ["v4"] }
 pulldown-cmark = "0.9"
 maud = "0.25"
-gritshield_macros = { version = "0.2.0" }
+gritshield_macros = { path = "src/gritshield_macros" }
 inventory = "0.3"
 notify = "4.0"
 

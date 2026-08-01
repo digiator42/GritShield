@@ -4,12 +4,51 @@ use chrono::Utc;
 use gritshield::core::aop::{BoxFuture, Interceptor, InvocationContext};
 use gritshield::database::TxnRepository;
 use gritshield::deps::async_trait;
-use gritshield::intercept;
-use gritshield::transactional;
-use gritshield::GritComponent;
+use gritshield::{event, intercept, GritEvent};
+use gritshield::{job, transactional, GritJob};
+use gritshield::{GritComponent, GritJobExt};
 use sea_orm::ActiveValue::Set;
 use sea_orm::EntityTrait;
 use sea_orm::{DatabaseConnection, DbErr};
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Debug, GritEvent)]
+pub struct UserRegisteredEvent {
+    pub user_id: i64,
+    pub email: String,
+}
+
+pub struct UserRegisteredHandler;
+
+#[event]
+impl UserRegisteredHandler {
+    pub async fn handle(&self, event: Arc<UserRegisteredEvent>) {
+        println!(
+            "🔥 [EVENT FIRED!] User registered event dispatched for ID {}",
+            event.user_id
+        );
+    }
+}
+
+// =================================
+
+#[derive(Clone, Serialize, Deserialize, Debug, GritJob)]
+pub struct UserRegisteredJob {
+    pub email: String,
+}
+
+#[job]
+impl UserRegisteredJob {
+    pub async fn perform(&self) -> Result<(), String> {
+        println!(
+            "🔥 [JOB FIRED!] User registered job dispatched for email {}",
+            self.email
+        );
+        Ok(())
+    }
+}
+
+// =================================
 
 #[derive(GritComponent)]
 pub struct UserService {
@@ -22,9 +61,24 @@ impl UserService {
     #[transactional]
     pub async fn create_user(&self, id: i64, email: String) -> Result<(), DbErr> {
         let conn = self.user_repo.conn();
-        
-        // Trying to delete user id to check rollback on failure
-        user::Entity::delete_by_id(20).exec(&conn).await?;
+
+        // Action 1: Delete user ID 19 (will roll back on error)
+        user::Entity::delete_by_id(19).exec(&conn).await?;
+
+        // Stage event in TX_EVENT_BUFFER
+        UserRegisteredEvent {
+            user_id: id,
+            email: email.clone(),
+        }
+        .publish()
+        .await;
+
+        UserRegisteredJob {
+            email: email.clone(),
+        }
+        .enqueue_in(std::time::Duration::from_secs(30))
+        .await
+        .unwrap();
 
         let new_user = user::ActiveModel {
             id: Set(id),
@@ -34,8 +88,7 @@ impl UserService {
             updated_at: Set(Utc::now().naive_utc()),
         };
 
-        // Leverage your TxnRepository connection directly!
-        // Avoid dropping a temporary by binding the repo connection first.
+        // Action 2: Duplicate key insert (FAILS HERE 💥)
         user::Entity::insert(new_user).exec(&conn).await?;
 
         Ok(())
@@ -43,6 +96,7 @@ impl UserService {
 }
 
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 // Shared state to verify AuditLogger caught the error
 pub static AUDIT_LOGGED_FAILURE: AtomicBool = AtomicBool::new(false);

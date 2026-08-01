@@ -31,8 +31,6 @@ async fn main() {
 
 Run with `cargo run` and open `http://localhost:8080`.
 
----
-
 ## Documentation
 
 The full documentation is available [here](https://digiator42.github.io/GritShield/).
@@ -40,19 +38,21 @@ The full documentation is available [here](https://digiator42.github.io/GritShie
 
 ## Quick Features Brief
 
-🔒 **Security-First** – Built-in XSS, CSRF, security headers, rate limiting, and IP blacklisting.
+* 🔒 **Security-First** – Built-in XSS, CSRF, security headers, rate limiting, and IP blacklisting.
 
-🏗️ **Spring Boot‑Like DI** – Compile‑time dependency injection with zero runtime overhead. Auto‑wire your components with `#[derive(GritComponent)]`.
+* 🏗️ **Spring Boot‑Like DI** – Compile‑time dependency injection with zero runtime overhead. Auto‑wire your components with `#[derive(GritComponent)]`.
 
-📊 **Auto Admin Panel** – Full CRUD admin UI with zero frontend code. Just annotate your repository with `#[derive(GritAdmin)]` and get a complete admin interface.
+* ⚡ **Declarative AOP & Interceptors (`#[intercept]`)** – Wrap service methods with reusable cross-cutting concerns (audit logging, security timing, metrics).
 
-🔍 **JQL Query Explorer** – Run SQL‑like JOIN queries directly from the browser. Supports SELECT, FROM, JOIN, and WHERE clauses.
+* 📊 **Auto Admin Panel** – Full CRUD admin UI with zero frontend code. Just annotate your repository with `#[derive(GritAdmin)]` and get a complete admin interface.
 
-📝 **OpenAPI/Swagger** – Auto‑generated API documentation from your schemas. Access at `/admin/docs`.
+* 🔍 **JQL Query Explorer** – Run SQL‑like JOIN queries directly from the browser. Supports SELECT, FROM, JOIN, and WHERE clauses.
 
-🔐 **RBAC + Capabilities** – Fine‑grained role-based and capability-based access control with compile‑time verification.
+* 📝 **OpenAPI/Swagger** – Auto‑generated API documentation from your schemas. Access at `/admin/docs`.
 
-🧩 **Compile‑Time Macros** – All the magic happens at compile time. Zero runtime reflection, maximum performance.
+* 🔐 **RBAC + Capabilities** – Fine‑grained role-based and capability-based access control with compile‑time verification.
+
+* 🧩 **Compile‑Time Macros** – All the magic happens at compile time. Zero runtime reflection, maximum performance.
 
 
 ## License

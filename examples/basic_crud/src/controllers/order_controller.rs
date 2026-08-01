@@ -1,6 +1,7 @@
 use crate::AppContainer;
 use crate::OrderController;
 use crate::models::user::ActiveModel;
+use crate::services::transaction::UserRegisteredEvent;
 use crate::services::transaction::UserService;
 use gritshield::database::GritRepository;
 use gritshield::http::response::JsonPayload;
@@ -88,6 +89,10 @@ impl InvoiceController {
     #[get("/checkout")]
     pub async fn checkout(&self, ctx: RequestContext) -> Response {
         self.db.execute("SELECT 1").await;
+        ctx.event_bus.publish(UserRegisteredEvent {
+            user_id: 20,
+            email: "email".to_string(),
+        });
         Response::ok(format!("Checked out safely"))
     }
 
