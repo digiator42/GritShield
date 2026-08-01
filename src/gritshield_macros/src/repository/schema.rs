@@ -25,7 +25,7 @@ pub fn expand_schema(input: DeriveInput) -> Result<TokenStream> {
     let mut field_schemas = Vec::new();
     for field in fields {
         let field_name = field.ident.as_ref().unwrap().to_string();
-        let type_str = format!("{:?}", field.ty);
+        let type_str = quote::quote!(#field.ty).to_string();
         let is_option = type_str.contains("Option");
         let type_name = if is_option {
             let inner = type_str.replace("Option<", "").replace(">", "");
