@@ -8,7 +8,7 @@ license = "Apache-2.0"
 repository = "https://github.com/digiator42/gritshield"
 documentation = "https://docs.rs/gritshield"
 readme = "README.md"
-keywords = ["web", "framework", "orm", "micro", "async", "security", "rust", "rust-lang", "rust-web"]
+keywords = ["web", "framework", "orm", "micro", "async"]
 categories = ["web-programming::http-server"]
 
 [features]
@@ -34,7 +34,7 @@ serde_json = "1.0"
 uuid = { version = "1.0", features = ["v4"] }
 pulldown-cmark = "0.9"
 maud = "0.25"
-gritshield_macros = { version = "0.1.0", path = "./src/gritshield_macros" }
+gritshield_macros = { version = "0.2.0" }
 inventory = "0.3"
 notify = "4.0"
 
