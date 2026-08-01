@@ -18,7 +18,7 @@ Create `src/main.rs`:
 ```rust
 use gritshield::prelude::*;
 
-#[get("/")]
+#[get("/hello")]
 async fn hello() -> &'static str {
     "Hello, GritShield!"
 }
@@ -29,7 +29,23 @@ async fn main() {
 }
 ```
 
-Run with `cargo run` and open `http://localhost:8080`.
+## With Controller
+
+```rust
+use gritshield::prelude::*;
+
+pub struct ApiController;
+
+#[controller("/api/v1")]
+impl ApiController {
+    #[get("/hello")]
+    async fn hello() -> &'static str {
+        "Hello, GritShield!"
+    }
+}
+```
+
+Run with `cargo run` and open `http://localhost:8080/hello` / `http://localhost:8080/api/v1/hello`.
 
 ## Documentation
 

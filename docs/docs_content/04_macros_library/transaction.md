@@ -107,11 +107,50 @@ impl UserService {
 
 ```
 
-## How It Works Under the Hood
+### 3. Transaction-Aware Events & Job Queues
 
-Plaintext
+The core strength of transactions is rolling back database mutations when an error occurs. Any events published via .publish() or jobs scheduled via .enqueue() inside a #[transactional] boundary are automatically staged and held. They are seamlessly dispatched only after a successful database commit, and completely discarded if the transaction fails or rolls back.
 
 ```rust
+impl UserService {
+    #[intercept(AuditLogger)]
+    #[transactional]
+    pub async fn create_user(&self, id: i64, email: String) -> Result<(), DbErr> {
+        let conn = self.user_repo.conn();
+
+        // 1. Perform Database Mutation
+        let new_user = user::ActiveModel {
+            id: Set(id),
+            email: Set(email.clone()),
+            ..Default::default()
+        };
+        user::Entity::insert(new_user).exec(&conn).await?;
+
+        // 2. Publish Domain Event (Staged until DB commit!)
+        UserRegisteredEvent { user_id: id, email: email.clone() }
+            .publish()
+            .await;
+
+        // 3. Queue Immediate Background Job (Staged until DB commit!)
+        SendWelcomeEmailJob { email: email.clone() }
+            .enqueue()
+            .await
+            .unwrap();
+
+        // 4. Queue Delayed Job (Runs 5 minutes post-commit!)
+        AnounceRelatedProduct { email: email.clone() }
+            .enqueue_in(Duration::from_secs(300))
+            .await
+            .unwrap();
+
+        Ok(()) // -> Transact Commit -> Flushes Events & Jobs automatically!
+    }
+}
+```
+
+## How It Works Under the Hood
+
+```
 UserService::create_user()
  ├── 1. [AuditLogger] Interceptor captures invocation context
  ├── 2. #[transactional] begins a transaction on `self.db`
@@ -120,6 +159,9 @@ UserService::create_user()
  ├── 5. Executes queries over the active transaction handle
  └── 6. Evaluates result:
         ├── Ok(_)  ➜ COMMIT transaction ➜ Interceptor sees Ok
+        |    └── 7. Post-Commit Task Flushes Event & Job Buffers Asynchronously
+        |      ├── 🔥 [EVENT FIRED!]
+        |      └── 🔥 [JOB FIRED!]
         └── Err(_) ➜ ROLLBACK transaction ➜ Interceptor catches Err
 ```
 
