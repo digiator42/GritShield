@@ -132,20 +132,6 @@ macro_rules! register_page {
 }
 
 #[macro_export]
-macro_rules! register_fallback_page {
-    ($handler:expr) => {
-        #[$crate::ctor::ctor(unsafe)]
-        fn init_framework_fallback() {
-            // Wrap the developer's async handler into a clean, pinned BoxFuture pointer
-            let wrapped_handler: $crate::routing::engine::PageHandlerFn =
-                |ctx| Box::pin($handler(ctx));
-
-            $crate::routing::engine::register_global_fallback(wrapped_handler);
-        }
-    };
-}
-
-#[macro_export]
 macro_rules! register_ws {
     ($path:expr, $handler:expr) => {
         #[$crate::ctor::ctor(unsafe)]

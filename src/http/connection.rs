@@ -4,7 +4,7 @@ use crate::{
     http::{request::Request, response::Response},
     middleware::MiddlewareResult,
     routing::{
-        engine::{RequestContext, Router, RoutingResult, GLOBAL_FALLBACK},
+        engine::{RequestContext, Router, RoutingResult},
         websocket::WS_REGISTRY,
     },
     security::{cookies::CookieJar, errors::ShieldError, xss::Sanitizer},
@@ -232,11 +232,7 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
                             response
                         }
                         RoutingResult::NotFound => {
-                            let fallback_opt = GLOBAL_FALLBACK.lock().ok().and_then(|g| g.clone());
-
-                            if let Some(custom_fallback) = fallback_opt {
-                                custom_fallback(ctx).await
-                            } else if let Some(err_handler) = error_handler_ptr {
+                            if let Some(err_handler) = error_handler_ptr {
                                 err_handler(ctx, ShieldError::NotFound).await
                             } else {
                                 Response::new(404, Sanitizer::trust("<h1>404 Not Found</h1>"))

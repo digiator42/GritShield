@@ -1,10 +1,8 @@
-use crate::core::event_bus::{EventRegistration, GritEvent, GritEventHandler, JobWorkerEngine};
+use crate::core::event_bus::{EventRegistration, GritEvent, GritEventHandler};
 use crate::core::logger::{self, log_request_summary, LogLevel};
 use crate::middleware::{AfterRequestHook, Middleware};
-use crate::routing::engine::fallback::PageHandlerFn;
 use crate::routing::engine::Router;
 use crate::routing::RequestContext;
-use crate::JobStorage;
 use sea_orm::DatabaseConnection;
 use std::sync::Arc;
 
@@ -29,12 +27,6 @@ impl Router {
     /// Builder to mount custom post-execution lifecycle hooks
     pub fn add_after_hook(mut self, hook: Box<dyn AfterRequestHook>) -> Self {
         self.after_hooks.push(hook);
-        self
-    }
-
-    /// Allows developers to attach a custom layout handler for unmatched 404 routes
-    pub fn set_fallback(mut self, handler: PageHandlerFn) -> Self {
-        self.fallback_handler = Some(handler);
         self
     }
 

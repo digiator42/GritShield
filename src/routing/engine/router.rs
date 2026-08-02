@@ -1,8 +1,7 @@
-use crate::core::event_bus::{EventBus, JobStorage, JobWorkerEngine, MemoryJobQueue};
+use crate::core::event_bus::{EventBus, JobStorage, MemoryJobQueue};
 use crate::core::{AutoWire, get_env, init_from_env};
 use crate::middleware::{AfterRequestHook, Middleware};
-use crate::routing::engine::fallback::PageHandlerFn;
-use crate::routing::engine::{Node, GLOBAL_FALLBACK};
+use crate::routing::engine::Node;
 use crate::routing::IntoHandler;
 use crate::security::errors::{default_framework_error_handler, GlobalErrorHandler};
 use crate::security::telemetry::SystemTelemetry;
@@ -31,7 +30,6 @@ pub struct Router {
     pub telemetry: SystemTelemetry,
     pub event_bus: Arc<EventBus>,
     pub job_queue: Arc<dyn JobStorage>,
-    pub fallback_handler: Option<PageHandlerFn>,
     pub role_registry: HashMap<String, &'static str>,
     pub role_inheritance: Arc<HashMap<String, Vec<String>>>,
     pub enable_lifecycle_logs: bool,
@@ -46,12 +44,6 @@ impl Router {
 
         let secret_key = get_env("JWT_SECRET", &Uuid::new_v4().to_string());
 
-        let fallback = if let Ok(guard) = GLOBAL_FALLBACK.lock() {
-            guard.clone()
-        } else {
-            None
-        };
-
         let mut router = Router {
             root: Node::new(),
             middlewares: Vec::new(),
@@ -63,7 +55,6 @@ impl Router {
             telemetry: SystemTelemetry::new(),
             event_bus: Arc::new(EventBus::init()),
             job_queue: Arc::new(MemoryJobQueue::new()),
-            fallback_handler: fallback,
             role_registry: HashMap::new(),
             role_inheritance: Arc::new(HashMap::new()),
             enable_lifecycle_logs,

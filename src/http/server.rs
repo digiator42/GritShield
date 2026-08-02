@@ -10,7 +10,6 @@ use tokio::time::{sleep, Duration};
 
 use crate::{
     core::event_bus::{CronScheduler, JobWorkerEngine},
-    database::repository::transaction::{CURRENT_EVENT_BUS, CURRENT_JOB_QUEUE},
     routing::engine::Router,
 };
 use crate::{error, http::handle_connection, info};
