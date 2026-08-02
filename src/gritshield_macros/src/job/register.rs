@@ -1,23 +1,28 @@
+use cron::Schedule;
 use proc_macro::TokenStream;
 use quote::quote;
+use std::str::FromStr;
 use syn::{
     parse::{Parse, ParseStream},
-    parse_macro_input, DeriveInput, ItemImpl, LitInt, LitStr, Token,
+    parse_macro_input, DeriveInput, Ident, ItemImpl, LitInt, LitStr, Token,
 };
 
 /// Parses parameters inside `#[job(name = "send_welcome_email", retries = 3)]`
-struct JobArgs {
-    name: Option<String>,
-    retries: u32,
+#[derive(Default)]
+pub struct JobArgs {
+    pub name: Option<String>,
+    pub retries: u32,
+    pub cron: Option<String>,
 }
 
 impl Parse for JobArgs {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let mut name = None;
         let mut retries = 3; // Default 3 retries if omitted
+        let mut cron = None;
 
         while !input.is_empty() {
-            let ident: syn::Ident = input.parse()?;
+            let ident: Ident = input.parse()?;
             let _eq: Token![=] = input.parse()?;
 
             if ident == "name" {
@@ -26,14 +31,37 @@ impl Parse for JobArgs {
             } else if ident == "retries" {
                 let lit: LitInt = input.parse()?;
                 retries = lit.base10_parse()?;
+            } else if ident == "cron" {
+                let lit: LitStr = input.parse()?;
+                let cron_expr = lit.value();
+
+                // Compile-time validation: Catches invalid cron expressions at compile-time!
+                if let Err(err) = Schedule::from_str(&cron_expr) {
+                    return Err(syn::Error::new(
+                        lit.span(),
+                        format!("Invalid cron expression '{}': {}, example: '0 0 0 * * *'", cron_expr, err),
+                    ));
+                }
+
+                cron = Some(cron_expr);
+            } else {
+                return Err(syn::Error::new(
+                    ident.span(),
+                    format!("Unknown argument `{}` for #[job]", ident),
+                ));
             }
 
+            // Handle optional trailing/separating comma
             if input.peek(Token![,]) {
                 let _comma: Token![,] = input.parse()?;
             }
         }
 
-        Ok(JobArgs { name, retries })
+        Ok(JobArgs {
+            name,
+            retries,
+            cron,
+        })
     }
 }
 
@@ -41,6 +69,12 @@ pub fn expand_job(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = parse_macro_input!(attr as JobArgs);
     let input = parse_macro_input!(item as ItemImpl);
     let self_ty = &input.self_ty;
+
+    // Convert Option<String> to Option<&'static str> token expression
+    let cron_tokens = match &args.cron {
+        Some(c) => quote!(Some(#c)),
+        None => quote!(None),
+    };
 
     let job_name = args.name.unwrap_or_else(|| quote!(#self_ty).to_string());
     let handler_type_str = quote!(#self_ty).to_string();
@@ -82,6 +116,7 @@ pub fn expand_job(attr: TokenStream, item: TokenStream) -> TokenStream {
                 job_type: #job_name,
                 handler_type: #handler_type_str,
                 max_retries: #max_retries,
+                cron: #cron_tokens, // Some("0 0 * * *") or None
                 execute: |payload: &[u8]| {
                     let bytes = payload.to_vec();
                     Box::pin(async move {

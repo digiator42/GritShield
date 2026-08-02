@@ -76,21 +76,21 @@ impl Router {
         }
     }
 
-    /// Registers a job queue storage engine and automatically boots the background worker pool.
-    pub fn with_job_queue(mut self, storage: Arc<dyn JobStorage>, max_workers: usize) -> Self {
-        // 1. Store storage reference for RequestContext injection
-        self.job_queue = storage.clone();
+    // Registers a job queue storage engine and automatically boots the background worker pool.
+    // pub fn with_job_queue(mut self, storage: Arc<dyn JobStorage>, max_workers: usize) -> Self {
+    //     // 1. Store storage reference for RequestContext injection
+    //     self.job_queue = storage.clone();
 
-        // 2. Automatically instantiate and spawn worker engine in background Tokio task
-        let worker_engine = JobWorkerEngine::new(storage, max_workers);
-        tokio::spawn(async move {
-            println!(
-                " [ENGINE] Background JobWorkerEngine spawned with {} workers...",
-                max_workers
-            );
-            worker_engine.start().await;
-        });
+    //     // 2. Automatically instantiate and spawn worker engine in background Tokio task
+    //     let worker_engine = JobWorkerEngine::new(storage, max_workers);
+    //     tokio::spawn(async move {
+    //         println!(
+    //             " [ENGINE] Background JobWorkerEngine spawned with {} workers...",
+    //             max_workers
+    //         );
+    //         worker_engine.start().await;
+    //     });
 
-        self
-    }
+    //     self
+    // }
 }

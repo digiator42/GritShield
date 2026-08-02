@@ -126,3 +126,16 @@ impl Interceptor for AuditLogger {
         result
     }
 }
+
+// ===============================
+
+#[derive(Serialize, Deserialize, Default)]
+pub struct PulseCheckJob;
+
+#[job(name = "pulse_check", cron = "0/5 * * * * *", retries = 1)]
+impl PulseCheckJob {
+    pub async fn perform(&self) -> Result<(), String> {
+        println!("⏱️ [CRON PULSE] Executed cron job every minute!");
+        Ok(())
+    }
+}

@@ -98,18 +98,18 @@ async fn main() {
     println!("{}", EventBusGraph::export_dot());
 
     let router = Router::new()
-        .add_middleware(AuthMiddleware::new_session(
-            vec![
-                "/auth/login".to_string(),
-                "/api/**".to_string(),
-                "/admin/**".to_string(),
-            ],
-            Some("/api/info/sea-orm"),
-        ))
-        .mount_db(shared_db.clone())
-        .add_role_inheritance("Admin", vec!["Manager", "Operator", "Auditor"])
-        .add_role_inheritance("Manager", vec!["Editor", "Viewer"])
-        .add_role_inheritance("Editor", vec!["Contributor"]);
+       .add_middleware(AuthMiddleware::new_session(
+           vec![
+               "/auth/login".to_string(),
+               "/api/**".to_string(),
+               "/admin/**".to_string(),
+           ],
+           Some("/api/info/sea-orm"),
+       ))
+       .mount_db(shared_db.clone())
+       .add_role_inheritance("Admin", vec!["Manager", "Operator", "Auditor"])
+       .add_role_inheritance("Manager", vec!["Editor", "Viewer"])
+       .add_role_inheritance("Editor", vec!["Contributor"]);
 
     // export_openapi("target/schema.json").unwrap();
 

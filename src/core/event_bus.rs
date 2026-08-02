@@ -1,3 +1,4 @@
+use futures::FutureExt;
 use sea_orm_migration::async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::any::Any;
@@ -11,9 +12,10 @@ use tokio::sync::mpsc;
 use tokio::sync::Semaphore;
 use tokio::time::sleep;
 
+use crate::database::repository::transaction::publish_event;
+use crate::database::repository::transaction::CURRENT_EVENT_BUS;
 use crate::database::repository::transaction::CURRENT_JOB_QUEUE;
 use crate::database::repository::transaction::TX_JOB_BUFFER;
-use crate::database::repository::transaction::publish_event;
 pub struct EventRegistration {
     pub event_type: &'static str,   // e.g., "UserRegistered"
     pub handler_type: &'static str, // e.g., "WelcomeEmailHandler"
@@ -22,7 +24,7 @@ pub struct EventRegistration {
 
 inventory::collect!(EventRegistration);
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct EventBus {
     // Allows both internal async channels and multi-subscriber dispatches
     sender: broadcast::Sender<Arc<dyn Any + Send + Sync>>,
@@ -127,6 +129,7 @@ pub struct JobRegistration {
     pub job_type: &'static str,
     pub handler_type: &'static str,
     pub max_retries: u32,
+    pub cron: Option<&'static str>,
     pub execute: fn(payload: &[u8]) -> JobFuture,
 }
 
@@ -189,13 +192,15 @@ impl MemoryJobQueue {
 }
 
 pub struct JobWorkerEngine {
+    event_bus: Arc<EventBus>,
     storage: Arc<dyn JobStorage>,
     concurrency_limit: Arc<Semaphore>,
 }
 
 impl JobWorkerEngine {
-    pub fn new(storage: Arc<dyn JobStorage>, max_workers: usize) -> Self {
+    pub fn new(event_bus: Arc<EventBus>, storage: Arc<dyn JobStorage>, max_workers: usize) -> Self {
         Self {
+            event_bus,
             storage,
             concurrency_limit: Arc::new(Semaphore::new(max_workers)),
         }
@@ -211,32 +216,55 @@ impl JobWorkerEngine {
                 .await
                 .unwrap();
             let storage = self.storage.clone();
+            let event_bus = self.event_bus.clone(); // Require event_bus in JobWorkerEngine struct!
 
             if let Ok(Some(mut job)) = storage.fetch_next().await {
                 tokio::spawn(async move {
-                    job.current_attempts += 1;
+                    // SCOPE TASK-LOCALS INSIDE SPAWNED TASK
+                    CURRENT_EVENT_BUS
+                        .scope(event_bus, {
+                            CURRENT_JOB_QUEUE.scope(storage.clone(), async move {
+                                job.current_attempts += 1;
 
-                    // Execute Job
-                    match Self::dispatch_job(&job).await {
-                        Ok(_) => {
-                            let _ = storage.complete(&job.id).await;
-                        }
-                        Err(err) => {
-                            if job.current_attempts < job.max_retries {
-                                // Exponential backoff retry
-                                let delay = 2u64.pow(job.current_attempts);
-                                job.run_at = chrono::Utc::now().timestamp() + delay as i64;
-                                let _ = storage.fail(job, &err).await;
-                            } else {
-                                eprintln!(
-                                    "[JOB DEAD-LETTER] Job {} exceeded max retries: {}",
-                                    job.id, err
-                                );
-                                let _ = storage.complete(&job.id).await;
-                            }
-                        }
-                    }
-                    drop(permit); // Release slot back to pool
+                                // PANIC SHIELD FOR BACKGROUND JOBS
+                                let dispatch_result = std::panic::AssertUnwindSafe(async {
+                                    Self::dispatch_job(&job).await
+                                })
+                                .catch_unwind()
+                                .await;
+
+                                let execution_result = match dispatch_result {
+                                    Ok(res) => res,
+                                    Err(_) => {
+                                        Err("Job execution panicked unexpectedly!".to_string())
+                                    }
+                                };
+
+                                // Execute Job Handling
+                                match execution_result {
+                                    Ok(_) => {
+                                        let _ = storage.complete(&job.id).await;
+                                    }
+                                    Err(err) => {
+                                        if job.current_attempts < job.max_retries {
+                                            // Exponential backoff retry
+                                            let delay = 2u64.pow(job.current_attempts);
+                                            job.run_at =
+                                                chrono::Utc::now().timestamp() + delay as i64;
+                                            let _ = storage.fail(job, &err).await;
+                                        } else {
+                                            eprintln!(
+                                                "[JOB DEAD-LETTER] Job {} exceeded max retries: {}",
+                                                job.id, err
+                                            );
+                                            let _ = storage.complete(&job.id).await;
+                                        }
+                                    }
+                                }
+                                drop(permit); // Release slot back to pool
+                            })
+                        })
+                        .await;
                 });
             } else {
                 drop(permit);
@@ -410,6 +438,58 @@ impl JobStorage for MemoryJobQueue {
         eprintln!("[JOB FAILED] ID: {} | Error: {}", job.id, error);
         // Re-enqueue the job for backoff retry execution
         self.enqueue(job).await
+    }
+}
+
+use cron::Schedule;
+use std::str::FromStr;
+
+pub struct CronScheduler {
+    storage: Arc<dyn JobStorage>,
+}
+
+impl CronScheduler {
+    pub fn new(storage: Arc<dyn JobStorage>) -> Self {
+        Self { storage }
+    }
+
+    pub async fn start(&self) {
+        let storage = self.storage.clone();
+
+        tokio::spawn(async move {
+            // Tick every 1 second to evaluate cron rules reliably
+            let mut interval = tokio::time::interval(Duration::from_secs(1));
+
+            loop {
+                interval.tick().await;
+
+                for reg in inventory::iter::<JobRegistration> {
+                    if let Some(cron_expr) = reg.cron {
+                        if let Ok(schedule) = Schedule::from_str(cron_expr) {
+                            let now = chrono::Utc::now();
+
+                            // Evaluate if the upcoming trigger falls within the current second
+                            if let Some(next) = schedule.upcoming(chrono::Utc).next() {
+                                let diff = (next - now).num_seconds().abs();
+
+                                if diff == 0 {
+                                    let envelope = JobEnvelope {
+                                        id: uuid::Uuid::new_v4().to_string(),
+                                        job_type: reg.job_type.to_string(),
+                                        payload: b"null".to_vec(),
+                                        max_retries: reg.max_retries,
+                                        current_attempts: 0,
+                                        run_at: now.timestamp(),
+                                    };
+
+                                    let _ = storage.enqueue(envelope).await;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
     }
 }
 

@@ -70,11 +70,6 @@ impl Router {
             secret_key,
         };
 
-        let worker_engine = JobWorkerEngine::new(router.job_queue.clone(), 10); // 10 concurrent worker slots
-        tokio::spawn(async move {
-            worker_engine.start().await;
-        });
-
         router.event_bus.auto_discover();
 
         // Register auto routes
