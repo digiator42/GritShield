@@ -1,17 +1,18 @@
 extern crate proc_macro;
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, DeriveInput, ItemImpl, ItemFn, Type};
+use syn::{parse_macro_input, DeriveInput, ItemFn, ItemImpl, Type};
 
-mod shield;
 mod admin;
+mod aop;
 mod core_parser;
+mod event;
 mod ioc;
+mod job;
 mod repository;
 mod routing;
 mod sanitizer;
-mod event;
-mod job;
+mod shield;
 
 #[proc_macro_derive(GritAdmin, attributes(repository))]
 pub fn derive_grit_admin(input: TokenStream) -> TokenStream {
@@ -74,28 +75,7 @@ pub fn derive_grit_sanitizer(input: TokenStream) -> TokenStream {
 #[proc_macro_derive(GritEvent)]
 pub fn derive_grit_event(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
-    let name = &input.ident;
-    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
-    
-    // String representation of the struct name for compile-time dispatching
-    let event_name_str = name.to_string();
-    let expanded = quote! {
-        impl #impl_generics ::gritshield::core::event_bus::GritEvent for #name #ty_generics #where_clause {
-            fn event_name() -> &'static str {
-                #event_name_str
-            }
-        }
-
-        // Provides zero-import .publish() directly on the event struct!
-        impl #impl_generics #name #ty_generics #where_clause {
-            /// Waits in transactional context to publish the event after commit
-            pub async fn publish(self) {
-                use ::gritshield::core::event_bus::GritEventExt;
-                <Self as GritEventExt>::publish(self).await;
-            }
-        }
-    };
-    TokenStream::from(expanded)
+    event::register::expand_grit_event(input).into()
 }
 
 #[proc_macro_derive(GritJob, attributes(job))]
@@ -146,7 +126,6 @@ pub fn controller(attr: TokenStream, item: TokenStream) -> TokenStream {
         .into()
 }
 
-
 #[proc_macro_attribute]
 pub fn get(attr: TokenStream, item: TokenStream) -> TokenStream {
     routing::expand_http_method("GET", attr.into(), item.into())
@@ -191,54 +170,18 @@ pub fn catch(attr: TokenStream, item: TokenStream) -> TokenStream {
 pub fn intercept(attr: TokenStream, item: TokenStream) -> TokenStream {
     // Parse the interceptor struct name passed in the attribute, e.g., AuditLogger
     let interceptor_type = parse_macro_input!(attr as Type);
-    
+
     // Parse the target function
     let input_fn = parse_macro_input!(item as ItemFn);
 
-    let vis = &input_fn.vis;
-    let sig = &input_fn.sig;
-    let body = &input_fn.block;
-    let attrs = &input_fn.attrs;
-    let fn_name = &sig.ident;
-
-    if sig.asyncness.is_none() {
-        return syn::Error::new_spanned(
-            sig.fn_token,
-            "#[intercept] can only be applied to async functions",
-        )
-        .to_compile_error()
-        .into();
-    }
-
-    let expanded = quote! {
-        #(#attrs)*
-        #vis #sig {
-            use ::gritshield::core::aop::{Interceptor, InvocationContext};
-
-            let interceptor = #interceptor_type;
-
-            let ctx = InvocationContext {
-                target_name: std::any::type_name::<Self>(),
-                method_name: stringify!(#fn_name),
-                db: &self.db,
-            };
-
-            // Execute the original body as the 'next' closure
-            interceptor.intercept(ctx, Box::new(|| {
-                Box::pin(async move {
-                    #body
-                })
-            })).await
-        }
-    };
-
-    TokenStream::from(expanded)
+    aop::intercept::expand_intercept(interceptor_type, input_fn)
 }
 
 /// Convenience macro alias so developers can write #[transactional]
 #[proc_macro_attribute]
 pub fn transactional(_attr: TokenStream, item: TokenStream) -> TokenStream {
     // Expands #[transactional] to #[intercept(::gritshield::aop::TransactionalInterceptor)]
-    let interceptor_path: TokenStream = quote!(::gritshield::core::aop::TransactionalInterceptor).into();
+    let interceptor_path: TokenStream =
+        quote!(::gritshield::core::aop::TransactionalInterceptor).into();
     intercept(interceptor_path, item)
 }

@@ -1,6 +1,6 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{GenericArgument, ImplItem, ItemImpl, PathArguments, Type, TypePath};
+use syn::{DeriveInput, GenericArgument, ImplItem, ItemImpl, PathArguments, Type, TypePath};
 
 pub fn expand_event(input: ItemImpl) -> TokenStream {
     let self_ty = &input.self_ty;
@@ -78,4 +78,29 @@ fn extract_inner_event_type(ty: &Type) -> Type {
         }
     }
     ty.clone()
+}
+
+pub fn expand_grit_event(input: DeriveInput) -> TokenStream {
+    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+    let name = &input.ident;
+    
+    // String representation of the struct name for compile-time dispatching
+    let event_name_str = name.to_string();
+    let expanded = quote! {
+        impl #impl_generics ::gritshield::core::event_bus::GritEvent for #name #ty_generics #where_clause {
+            fn event_name() -> &'static str {
+                #event_name_str
+            }
+        }
+
+        // Provides zero-import .publish() directly on the event struct!
+        impl #impl_generics #name #ty_generics #where_clause {
+            /// Waits in transactional context to publish the event after commit
+            pub async fn publish(self) {
+                use ::gritshield::core::event_bus::GritEventExt;
+                <Self as GritEventExt>::publish(self).await;
+            }
+        }
+    };
+    TokenStream::from(expanded)
 }
