@@ -4,14 +4,10 @@
 
 ```bash
             +-------------------------------------------------+
-            |   #[derive(GritEvent)] / #[serive(GritJob)      |
+            |   #[derive(GritEvent)] / #[derive(GritJob)      |
             +--------------+----------------------------------+
                                      |
                                      v
-                       +-------------+-------------+
-                       |   Compile-Time Registry   |
-                       |        (inventory)        |
-                       +-------------+-------------+
                                      |
                                      v
  +------------------+  Event Publish |  Enqueue Job   +-------------------+
@@ -130,6 +126,32 @@ pub async fn upload_avatar(ctx: RequestContext) -> Response {
 
 
     Response::ok("Image uploaded! Compression queued.")
+}
+```
+
+### Cron Job
+
+You could run a job repeatedly using cron field (which internally uses cron crate), pretty much like the cron in linux but with more fields
+
+```
+ sec   min   hour   day_of_month   month   day_of_week   year
+
+  |     |     |          |           |          |         |
+  *     *     *          *           *          *         *
+```
+
+This cron job runs each 5 secs infinitely.
+
+```rust
+#[derive(Serialize, Deserialize, Default)]
+pub struct PulseCheckJob;
+
+#[job(name = "pulse_check", cron = "0/5 * * * * *", retries = 1)]
+impl PulseCheckJob {
+    pub async fn perform(&self) -> Result<(), String> {
+        println!("⏱️ [CRON PULSE] Executed cron job every minute!");
+        Ok(())
+    }
 }
 ```
 

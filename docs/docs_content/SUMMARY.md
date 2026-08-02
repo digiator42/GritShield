@@ -5,33 +5,33 @@
 
 - [Response](02_response/index.md)
 
-- [Security](02_security/index.md)
-  - [Data Sanitization](02_security/data_sanitization.md)
-  - [RBAC](02_security/rbac.md)
-  - [CAPS RBAC](02_security/caps.md)
+- [Security](03_security/index.md)
+  - [Data Sanitization](03_security/data_sanitization.md)
+  - [RBAC](03_security/rbac.md)
+  - [CAPS RBAC](03_security/caps.md)
 
-- [Routing](03_routing/index.md)
-  - [Dynamic Routes](03_routing/dynamic-routes.md)
-  - [Middleware](03_routing/middleware.md)
+- [Routing](04_routing/index.md)
+  - [Dynamic Routes](04_routing/dynamic-routes.md)
+  - [Middleware](04_routing/middleware.md)
 
-- [Admin Panel](04_admin_panel/index.md)
+- [Macros Library](05_macros_library/index.md)
+  - [Http Macros](05_macros_library/http_macros.md)
+  - [Query DSL Macros](05_macros_library/query_dsl_macros.md)
+  - [Dependency Injection Macros](05_macros_library/dependency_injection_macros.md)
+  - [Transctional Macro](05_macros_library/transaction.md)
 
-- [Dependency Injection](04_dependency_injection/index.md)
-  - [Redis as DI](04_dependency_injection/redis_di.md)
+- [Admin Panel](06_admin_panel/index.md)
 
-- [Macros Library](04_macros_library/index.md)
-  - [Http Macros](04_macros_library/http_macros.md)
-  - [Query DSL Macros](04_macros_library/query_dsl_macros.md)
-  - [Dependency Injection Macros](04_macros_library/dependency_injection_macros.md)
-  - [Transctional Macro](04_macros_library/transaction.md)
+- [Event/Task & Job Queue](07_task_queue/index.md)
+  - [Job queue with Redis](07_task_queue/redis_queue.md)
+  - [Job queue with PG](07_task_queue/pg_queue.md)
 
-- [Event/Task & Job Queue](05_task_queue/index.md)
-  - [Job queue with Redis](05_task_queue/redis_queue.md)
-  - [Job queue with PG](05_task_queue/pg_queue.md)
+- [Dependency Injection](08_dependency_injection/index.md)
+  - [Redis as DI](08_dependency_injection/redis_di.md)
 
-- [Database](05_database/index.md)
-  - [Migrations](05_database/migrations.md)
+- [WebSocket](09_websocket/index.md)
 
-- [WebSocket](06_websocket/index.md)
+- [Database](10_database/index.md)
+  - [Migrations](10_database/migrations.md)
 
-- [Deployment](07_deployment/index.md)
+- [Deployment](11_deployment/index.md)
