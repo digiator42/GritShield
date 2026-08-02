@@ -11,7 +11,8 @@ pub use ctor;
 pub use futures;
 pub use inventory;
 
-pub use crate::core::event_bus::{GritEvent, GritEventHandler, GritJob, GritJobExt, JobStorage};
+pub use crate::core::event_bus::{GritEvent, GritEventHandler};
+pub use crate::core::job_queue::{GritJob, GritJobExt, JobStorage};
 
 #[cfg(feature = "admin")]
 pub mod gritadmin;

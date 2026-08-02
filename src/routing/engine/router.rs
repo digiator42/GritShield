@@ -1,4 +1,5 @@
-use crate::core::event_bus::{EventBus, JobStorage, MemoryJobQueue};
+use crate::core::event_bus::EventBus;
+use crate::core::job_queue::{JobStorage, MemoryJobQueue};
 use crate::core::{AutoWire, get_env, init_from_env};
 use crate::middleware::{AfterRequestHook, Middleware};
 use crate::routing::engine::Node;

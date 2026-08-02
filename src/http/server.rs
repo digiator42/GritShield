@@ -9,7 +9,7 @@ use tokio::sync::broadcast;
 use tokio::time::{sleep, Duration};
 
 use crate::{
-    core::event_bus::{CronScheduler, JobWorkerEngine},
+    core::job_queue::{CronScheduler, JobWorkerEngine},
     routing::engine::Router,
 };
 use crate::{error, http::handle_connection, info};

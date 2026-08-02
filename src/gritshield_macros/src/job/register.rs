@@ -86,7 +86,7 @@ pub fn expand_job(attr: TokenStream, item: TokenStream) -> TokenStream {
 
         // 2. Auto-generate GritJob trait implementation
         #[::gritshield::deps::sea_orm_migration::async_trait::async_trait]
-        impl ::gritshield::core::event_bus::GritJob for #self_ty {
+        impl ::gritshield::core::job_queue::GritJob for #self_ty {
             const NAME: &'static str = #job_name;
 
             fn max_retries(&self) -> u32 {
@@ -100,19 +100,19 @@ pub fn expand_job(attr: TokenStream, item: TokenStream) -> TokenStream {
 
         impl #self_ty {
             pub async fn enqueue(&self) -> Result<String, String> {
-                use ::gritshield::core::event_bus::GritJobExt;
+                use ::gritshield::core::job_queue::GritJobExt;
                 <Self as GritJobExt>::enqueue(self).await
             }
 
             pub async fn enqueue_in(&self, delay: ::std::time::Duration) -> Result<String, String> {
-                use ::gritshield::core::event_bus::GritJobExt;
+                use ::gritshield::core::job_queue::GritJobExt;
                 <Self as GritJobExt>::enqueue_in(self, delay).await
             }
         }
 
         // 3. Compile-time registration with full metadata
         ::gritshield::inventory::submit! {
-            ::gritshield::core::event_bus::JobRegistration {
+            ::gritshield::core::job_queue::JobRegistration {
                 job_type: #job_name,
                 handler_type: #handler_type_str,
                 max_retries: #max_retries,

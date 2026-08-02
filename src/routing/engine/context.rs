@@ -1,4 +1,5 @@
-use crate::core::event_bus::{EventBus, JobStorage, MemoryJobQueue};
+use crate::core::event_bus::EventBus;
+use crate::core::job_queue::{JobStorage, MemoryJobQueue};
 use crate::http::form::FormData;
 use crate::http::request::Request;
 use crate::http::response::Cookie;

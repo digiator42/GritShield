@@ -1,4 +1,4 @@
-use crate::core::event_bus::{JobEnvelope, JobStorage};
+use crate::core::job_queue::{JobEnvelope, JobStorage};
 use crate::{core::event_bus::EventBus, GritEvent};
 use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbErr, ExecResult, QueryResult,
