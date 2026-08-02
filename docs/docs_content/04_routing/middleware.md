@@ -109,17 +109,63 @@ router = router
 Middleware runs before requests, `AfterRequestHook` run after request completion.
 
 ```rust
-pub trait AfterRequestHook: Send + Sync {
-    fn call(&self, ctx: &RequestContext, status: u16, duration: Duration);
-}
+use async_trait::async_trait;
+use std::time::Duration;
 
-struct MetricsHook;
+// Audit Logger Hook: Persists HTTP request metadata to a DB or external log service
+pub struct AuditLogHook;
 
-impl AfterRequestHook for MetricsHook {
-    fn call(&self, ctx: &RequestContext, status: u16, duration: Duration) {
-        metrics.record_request(ctx.req.path, status, duration);
+#[async_trait]
+impl AfterRequestHook for AuditLogHook {
+    async fn call(&self, ctx: &RequestContext, status: u16, duration: Duration) {
+        // Asynchronously save to DB or audit system
+        tokio::spawn({
+            let path = ctx.path.clone();
+            let method = ctx.method.clone();
+            async move {
+                println!(
+                    "📜 [AUDIT LOG] {} {} -> Status: {} (Took {}ms)",
+                    method, path, status, duration.as_millis()
+                );
+            }
+        });
     }
 }
 
-router = router.add_after_hook(Box::new(MetricsHook));
+// Performance Monitoring Hook: Triggers alerts for slow requests
+pub struct SlowRequestNotifier {
+    pub threshold: Duration,
+}
+
+#[async_trait]
+impl AfterRequestHook for SlowRequestNotifier {
+    async fn call(&self, ctx: &RequestContext, status: u16, duration: Duration) {
+        if duration >= self.threshold {
+            eprintln!(
+                "⚠️ [WARN SLOW ROUTE] Path '{}' took {:?} to respond!",
+                ctx.path, duration
+            );
+            // Can call async webhook, slack notification, or emit event
+        }
+    }
+}
+```
+
+### Register Hooks
+
+Rust
+
+```rust
+#[launch]
+async fn main() {
+    let router = Router::new()
+        // Register middlewares (Before Hooks)
+        .add_middleware(AuthMiddleware)
+        // Register async after-hooks (After Hooks)
+        .add_after_hook(AuditLogHook)
+        .add_after_hook(SlowRequestNotifier {
+            threshold: Duration::from_millis(500), // Warn if > 500ms
+        });
+
+}
 ```

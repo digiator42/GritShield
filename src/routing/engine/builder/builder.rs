@@ -21,12 +21,12 @@ impl Router {
     /// Register a global pipeline middleware by moving ownership
     pub fn add_middleware(mut self, middleware: impl Middleware + 'static) -> Self {
         self.middlewares.push(Box::new(middleware));
-        self // Return ownership back out to the chain
+        self
     }
 
     /// Builder to mount custom post-execution lifecycle hooks
-    pub fn add_after_hook(mut self, hook: Box<dyn AfterRequestHook>) -> Self {
-        self.after_hooks.push(hook);
+    pub fn add_after_hook(mut self, hook: impl AfterRequestHook + 'static) -> Self {
+        self.after_hooks.push(Box::new(hook));
         self
     }
 
