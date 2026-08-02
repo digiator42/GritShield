@@ -1,6 +1,6 @@
-use std::time::Duration;
 use crate::middleware::{MiddlewareResult, MiddlewareState};
 use crate::routing::engine::{RequestContext, Router};
+use std::time::Duration;
 
 impl Router {
     pub fn run_middlewares(&self, ctx: &mut RequestContext) -> MiddlewareResult {
@@ -33,9 +33,9 @@ impl Router {
         MiddlewareResult::Next(Some(accumulated_state))
     }
 
-    pub fn run_after_hooks(&self, ctx: RequestContext, status: u16, duration: Duration) {
+    pub async fn run_after_hooks(&self, ctx: &RequestContext, status: u16, duration: Duration) {
         for hook in &self.after_hooks {
-            hook.call(&ctx, status, duration);
+            hook.call(ctx, status, duration).await;
         }
     }
 }

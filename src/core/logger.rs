@@ -174,6 +174,7 @@ fn colorize_status(status: u16) -> String {
         200..=299 => format!("{}", status).green().bold().to_string(),
         300..=399 => format!("{}", status).cyan().to_string(),
         400..=499 => format!("{}", status).red().to_string(),
+        500..=599 => format!("{}", status).magenta().to_string(),
         _ => format!("{}", status).yellow().to_string(),
     }
 }

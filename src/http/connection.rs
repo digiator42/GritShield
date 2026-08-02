@@ -47,7 +47,7 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
                         {
                             break;
                         }
-                        warn!("{} {}", "Security Warning:".red().bold(), e);
+                        warn!("{}", e);
                         let err_res = Response::new(400, Sanitizer::trust("<h1>Bad Request</h1>"));
                         let (bytes, mime) = err_res.resolve();
                         let _ = stream.write_all(&err_res.to_bytes(&bytes, &mime)).await;
@@ -133,7 +133,7 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
                             break;
                         }
 
-                        router.run_after_hooks(ctx, err_res.status, duration);
+                        router.run_after_hooks(&ctx, err_res.status, duration).await;
 
                         if !keep_alive {
                             break;
@@ -197,10 +197,11 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
                 }
 
                 let error_handler_ptr = router.global_error_handler.handler;
-                let router_clone = router.clone();
 
                 // Save request path reference before passing ctx into async task
                 let req_path = ctx.req.path.clone();
+
+                let hook_ctx = ctx.clone();
 
                 // Route Execution
                 let response_future = async move {
@@ -218,16 +219,15 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
                                 }
                             }
 
-                            let mut response: Response = handler.call(ctx.clone()).await;
+                            let headers = ctx.headers.clone();
 
-                            for (key, value) in ctx.headers.iter() {
+                            let mut response: Response = handler.call(ctx).await;
+
+                            for (key, value) in headers.iter() {
                                 if !response.headers.iter().any(|(k, _)| k == key) {
                                     response.headers.push((key.clone(), value.clone()));
                                 }
                             }
-
-                            router_clone.log_lifecycle(&ctx, response.status, start_time.elapsed());
-                            router_clone.run_after_hooks(ctx, response.status, start_time.elapsed());
 
                             response
                         }
@@ -271,6 +271,9 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
                 };
 
                 let duration = start_time.elapsed();
+
+                router.log_lifecycle(&hook_ctx, response.status, duration);
+                router.run_after_hooks(&hook_ctx, response.status, duration).await;
 
                 router
                     .telemetry

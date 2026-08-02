@@ -2,7 +2,6 @@
 pub mod utils;
 pub mod auth;
 pub mod cors;
-pub mod logger;
 pub mod rate_limit;
 pub mod ip_blacklist;
 
@@ -15,6 +14,5 @@ pub use utils::{
 // Re-export middleware implementations
 pub use auth::AuthMiddleware;
 pub use cors::CorsMiddleware;
-pub use logger::LoggerMiddleware;
 pub use rate_limit::RateLimitMiddleware;
 pub use ip_blacklist::IPBlacklistMiddleware;

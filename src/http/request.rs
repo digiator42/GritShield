@@ -79,7 +79,7 @@ impl Request {
             {
                 Ok(Ok(n)) => n,
                 Ok(Err(e)) => return Err(format!("I/O Error: {}", e)),
-                Err(_) => return Err("Request timeout exceeded".to_string()),
+                Err(_) => return Err("Request timeout exceeded after 10 seconds".to_string()),
             };
 
             if n == 0 {

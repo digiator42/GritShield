@@ -1,9 +1,9 @@
-// src/middleware/utils.rs
+use sea_orm_migration::async_trait::async_trait;
 use crate::http::response::Response;
 use crate::routing::engine::RequestContext;
 use crate::security::jwt::Claims;
 use crate::security::session::Session;
-use std::sync::{Arc, Mutex};
+use std::{sync::{Arc, Mutex}, time::Duration};
 
 pub enum MiddlewareResult {
     Next(Option<MiddlewareState>), // State can hold session data, claims, or both
@@ -21,8 +21,9 @@ pub trait Middleware: Send + Sync {
     fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult;
 }
 
+#[async_trait]
 pub trait AfterRequestHook: Send + Sync {
-    fn call(&self, ctx: &RequestContext, status: u16, duration: std::time::Duration);
+    async fn call(&self, ctx: &RequestContext, status: u16, duration: Duration);
 }
 
 impl Middleware for Box<dyn Middleware> {
