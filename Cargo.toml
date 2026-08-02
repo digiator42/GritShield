@@ -1,6 +1,6 @@
 [package]
 name = "gritshield"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Ahmed Hassan digiator2020@gmail.com"]
 edition = "2021"
 description = "A security-first, high-performance micro-framework."
