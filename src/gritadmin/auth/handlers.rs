@@ -1,12 +1,11 @@
+use crate::gritadmin::auth::creds::get_admin_credentials;
 use crate::http::response::{Cookie, HttpStatus};
 use crate::http::response::{JsonPayload, SameSite};
-use crate::routing::engine::RequestContext;
-use crate::middleware::{
-    Middleware, MiddlewareResult,
-};
 use crate::middleware::auth::get_session_store;
+use crate::middleware::{Middleware, MiddlewareResult};
+use crate::routing::engine::RequestContext;
 use crate::security::session::{Session, SessionStore};
-use crate::{debug, warn, prelude::*};
+use crate::{debug, prelude::*, warn};
 use serde_json::json;
 use std::sync::{Arc, Mutex};
 
@@ -90,7 +89,15 @@ pub async fn render_login_page(ctx: RequestContext) -> Response {
 /// Processes API authorization attempts securely
 pub async fn handle_login_auth(ctx: RequestContext) -> Response {
     // Unpack incoming JSON payload
-    let auth_data = ctx.json_body().await.unwrap();
+    let auth_data = match ctx.json_body().await {
+        Some(data) => data,
+        None => {
+            return Response::json_ok(&json!({
+                "status": "error",
+                "message": "Invalid payload format"
+            }));
+        }
+    };
 
     let input_user = auth_data
         .get("username")
@@ -101,11 +108,10 @@ pub async fn handle_login_auth(ctx: RequestContext) -> Response {
         .and_then(|v| v.as_str())
         .unwrap_or("");
 
-    // Perform Credential Validation Checks
-    let env_admin_user = crate::core::env::get_env("GRITSHIELD_ADMIN_USER", "");
-    let env_admin_pass = crate::core::env::get_env("GRITSHIELD_ADMIN_PASSWORD", "");
+    // Perform Credential Validation Checks (Static, In-Memory Cached Check)
+    let admin = get_admin_credentials();
 
-    if input_user != env_admin_user || input_pass != env_admin_pass {
+    if input_user != admin.username || input_pass != admin.password {
         return Response::json(
             HttpStatus::Ok,
             &json!({
@@ -128,8 +134,7 @@ pub async fn handle_login_auth(ctx: RequestContext) -> Response {
         last_accessed: std::time::Instant::now(),
     }));
 
-    // Fetch the shared global store reference and insert the session directly —
-    // DashMap handles its own concurrency, no lock needed.
+    // Fetch the shared global store reference and insert the session directly
     let store = get_session_store();
     store.sessions.insert(new_sid.clone(), new_session);
 
@@ -140,7 +145,7 @@ pub async fn handle_login_auth(ctx: RequestContext) -> Response {
         .set_same_site(SameSite::Lax);
 
     let response = Response::json(
-        crate::http::response::HttpStatus::Accepted,
+        HttpStatus::Accepted,
         &json!({
             "status": "success",
             "message": "Subsystem authorization handshake completed successfully"
@@ -192,9 +197,7 @@ pub fn verify_and_get_admin_id(ctx: &RequestContext) -> Option<String> {
                 if let Some(admin_user_id) = session.data.get("admin_user_id") {
                     return Some(admin_user_id.clone());
                 } else {
-                    warn!(
-                        "[STORE SEARCH] ✗ Session found, but it lacks the 'admin_user_id' key."
-                    );
+                    warn!("[STORE SEARCH] ✗ Session found, but it lacks the 'admin_user_id' key.");
                 }
             }
         } else {

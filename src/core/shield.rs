@@ -33,14 +33,14 @@ impl Shield {
         initialize_env();
 
         // Read host and port from environment if available
-        let host = get_env("SHIELD_HOST", "127.0.0.1");
-        let port = get_env("SHIELD_PORT", "8080");
+        let host = get_env("HOST", "127.0.0.1");
+        let port = get_env("PORT", "8080");
 
         shield.host = host;
         shield.port = port;
 
         // Read log level from environment if available
-        if let Some(level) = LogLevel::from_str(&get_env("SHIELD_LOG", "")) {
+        if let Some(level) = LogLevel::from_str(&get_env("GRIT_LOG", "")) {
             shield.log_level = Some(level);
         }
 
