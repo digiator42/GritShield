@@ -1,7 +1,7 @@
 use crate::core_parser::unwrap_arc_type;
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{Data, Fields};
+use syn::{Attribute, Data, Fields, Meta};
 use syn::{DeriveInput, FnArg, Type};
 use syn::{ImplItem, ItemImpl, Pat};
 
@@ -62,7 +62,7 @@ pub fn expand_component(input: ItemImpl) -> TokenStream {
     // Fallback error if the developer didn't provide a `new` function
     if !constructor_found {
         panic!(
-            "Framework compilation error: #[component] requires an associated `pub fn new(...)` constructor method inside the impl block for '{}'.", 
+            "Framework compilation error: #[component] requires an associated `pub fn new(...)` constructor method inside the impl block for '{}'.",
             quote! { #self_ty }.to_string()
         );
     }
@@ -116,6 +116,24 @@ pub fn expand_component(input: ItemImpl) -> TokenStream {
     TokenStream::from(expanded)
 }
 
+/// Helper to check if a field contains #[grit(skip)] or #[component(skip)]
+fn is_field_skipped(attrs: &[Attribute]) -> bool {
+    attrs.iter().any(|attr| {
+        let is_target_attr = attr.path().is_ident("grit") || attr.path().is_ident("component");
+        if !is_target_attr {
+            return false;
+        }
+
+        // Check if attribute is formatted as #[grit(skip)] or #[component(skip)]
+        if let Meta::List(meta_list) = &attr.meta {
+            if let Ok(nested_ident) = meta_list.parse_args::<syn::Ident>() {
+                return nested_ident == "skip";
+            }
+        }
+        false
+    })
+}
+
 pub fn expand_grit_component(input: DeriveInput) -> TokenStream {
     let name = input.ident;
 
@@ -127,6 +145,14 @@ pub fn expand_grit_component(input: DeriveInput) -> TokenStream {
             for f in fields.named {
                 let field_name = f.ident.unwrap();
                 let field_type = f.ty;
+
+                // Check if field is marked #[grit(skip)] or #[component(skip)]
+                if is_field_skipped(&f.attrs) {
+                    dynamic_resolutions.push(quote! {
+                        #field_name: unsafe { std::mem::zeroed() }
+                    });
+                    continue;
+                }
 
                 let (is_arc, inner_type) = unwrap_arc_type(&field_type);
 
@@ -164,14 +190,12 @@ pub fn expand_grit_component(input: DeriveInput) -> TokenStream {
         }
     });
 
-    // Create a unique registration function name for the ctor
     let register_fn_name = syn::Ident::new(
         &format!("register_and_instantiate_{}", name),
         proc_macro2::Span::call_site(),
     );
 
     let expanded = quote! {
-        // Mark as runtime injectable for inventory-based registration
         impl ::gritshield::core::ioc::RuntimeInjectable for #name {}
 
         impl ::gritshield::core::ioc::Injectable for #name {
@@ -182,10 +206,8 @@ pub fn expand_grit_component(input: DeriveInput) -> TokenStream {
             }
         }
 
-        // Register the factory AND instantiate immediately
         #[::gritshield::startup::ctor(unsafe)]
         fn #register_fn_name() {
-            // Register the factory
             ::gritshield::inventory::submit! {
                 ::gritshield::core::ioc::AutoRegisterHook {
                     name: std::stringify!(#name),
@@ -197,12 +219,9 @@ pub fn expand_grit_component(input: DeriveInput) -> TokenStream {
                 }
             }
 
-            // Instantiate immediately so the component is available in the container
-            // for route handlers that use &self
             let _ = ::gritshield::core::ioc::CONTEXT.resolve::<#name>();
         }
 
-        // Keep the inventory submissions for dependency verification
         ::gritshield::inventory::submit! {
             ::gritshield::core::ioc::ProvidedComponent {
                 name: std::stringify!(#name),

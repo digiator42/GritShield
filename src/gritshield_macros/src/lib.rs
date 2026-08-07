@@ -46,7 +46,7 @@ pub fn derive_grit_schema(input: TokenStream) -> TokenStream {
         .into()
 }
 
-#[proc_macro_derive(GritComponent)]
+#[proc_macro_derive(GritComponent, attributes(grit, component))]
 pub fn derive_grit_component(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     ioc::component::expand_grit_component(input)

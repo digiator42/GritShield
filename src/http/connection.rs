@@ -10,7 +10,6 @@ use crate::{
     security::{cookies::CookieJar, errors::ShieldError, xss::Sanitizer},
     warn,
 };
-use colored::Colorize;
 use futures::future::FutureExt;
 use std::{
     collections::HashMap,
