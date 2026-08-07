@@ -1,3 +1,5 @@
+use serde::de::DeserializeOwned;
+
 use crate::security::xss::{SafeHtml, Sanitizer, UntrustedString};
 use std::collections::HashMap;
 
@@ -11,9 +13,9 @@ pub struct UploadedFile {
 #[derive(Debug, Clone)]
 pub struct FormData {
     // Standard form inputs: e.g., name="username", value="admin"
-    pub fields: HashMap<String, UntrustedString>,
+    pub fields: HashMap<String, Vec<UntrustedString>>,
     // Binary file uploads: e.g., name="avatar", value=UploadedFile
-    pub files: HashMap<String, UploadedFile>,
+    pub files: HashMap<String, Vec<UploadedFile>>,
 }
 
 impl FormData {
@@ -29,13 +31,14 @@ impl FormData {
     pub fn get_safe_html(&self, key: &str) -> Option<SafeHtml> {
         self.fields
             .get(key)
-            .map(|untrusted| Sanitizer::encode(untrusted.as_str()))
+            .and_then(|values| values.first()
+            .map(|untrusted| Sanitizer::encode(untrusted.as_str())))
     }
 
     /// Safely extracts the plain text value as an unescaped standard `String`.
-    /// Use this for internal values
+    /// This is for internal values
     pub fn get_plain_str(&self, key: &str) -> Option<&str> {
-        self.fields.get(key).map(|untrusted| untrusted.as_str())
+        self.fields.get(key)?.first().map(|s| s.as_str())
     }
 
     /// Gets a text field and attempts to parse it into an expected primitive type
@@ -48,8 +51,39 @@ impl FormData {
         raw_str.parse::<T>().ok()
     }
 
-    /// Retrieves an uploaded binary file asset from the form data map.
+   pub fn get_all_plain_str(&self, key: &str) -> Vec<&str> {
+        self.fields
+            .get(key)
+            .map(|vec| vec.iter().map(|s| s.as_str()).collect())
+            .unwrap_or_default()
+    }
+
     pub fn get_file(&self, key: &str) -> Option<&UploadedFile> {
-        self.files.get(key)
+        self.files.get(key)?.first()
+    }
+
+    pub fn get_all_files(&self, key: &str) -> Vec<&UploadedFile> {
+        self.files
+            .get(key)
+            .map(|vec| vec.iter().collect())
+            .unwrap_or_default()
+    }
+
+    /// Deserializes form fields into a strongly typed struct using `serde_json`
+    pub fn populate<T: DeserializeOwned>(&self) -> Result<T, String> {
+        let mut map = serde_json::Map::new();
+        for (k, v) in &self.fields {
+            if v.len() == 1 {
+                map.insert(k.clone(), serde_json::Value::String(v[0].as_str().to_string()));
+            } else {
+                let arr = v
+                    .iter()
+                    .map(|s| serde_json::Value::String(s.as_str().to_string()))
+                    .collect();
+                map.insert(k.clone(), serde_json::Value::Array(arr));
+            }
+        }
+        serde_json::from_value(serde_json::Value::Object(map))
+            .map_err(|e| format!("Form Deserialization Error: {}", e))
     }
 }

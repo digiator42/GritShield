@@ -24,11 +24,11 @@ pub struct RequestContext {
     pub telemetry: SystemTelemetry,
     pub event_bus: Arc<EventBus>,
     pub job_queue: Arc<dyn JobStorage>,
-    pub params: HashMap<String, UntrustedString>,
+    pub params: HashMap<String, UntrustedString>, // Dynamic route path params (e.g. /users/:id)
     pub peer_addr: SocketAddr,
-    pub headers: HashMap<String, String>,
+    pub headers: HashMap<String, Vec<String>>,    // Multi-value headers
     pub claims: Option<Claims>,
-    pub query: HashMap<String, UntrustedString>,
+    pub query: HashMap<String, Vec<UntrustedString>>, // Multi-value query params
     pub session: Option<Arc<Mutex<Session>>>,
     pub form: FormData,
     pub db: Option<Arc<DatabaseConnection>>,
@@ -62,16 +62,47 @@ impl RequestContext {
         }
     }
 
+    /// Get the first value of a header (case-insensitive lookup)
+    pub fn header(&self, key: &str) -> Option<&str> {
+        self.headers
+            .get(&key.to_lowercase())
+            .and_then(|v| v.first().map(|s| s.as_str()))
+    }
+
+    /// Get all values associated with a header
+    pub fn header_all(&self, key: &str) -> Option<&[String]> {
+        self.headers.get(&key.to_lowercase()).map(|v| v.as_slice())
+    }
+
+    /// Get the first value of a query parameter
+    pub fn query_param(&self, key: &str) -> Option<&str> {
+        self.query
+            .get(key)
+            .and_then(|v| v.first().map(|s| s.as_str()))
+    }
+
+    /// Get all values associated with a query parameter
+    pub fn query_all(&self, key: &str) -> Option<&[UntrustedString]> {
+        self.query.get(key).map(|v| v.as_slice())
+    }
+
+    /// Get a dynamic route path parameter (e.g., /user/:id)
+    pub fn param(&self, key: &str) -> Option<&str> {
+        self.params.get(key).map(|s| s.as_str())
+    }
+
     /// Safely resolves the true client IP address while mitigating IP Spoofing risks
     pub fn resolve_client_ip(&self) -> String {
         // Look for X-Forwarded-For (injected by downstream edge networks/proxies)
-        if let Some(forwarded_header) = self.req.headers.get("x-forwarded-for") {
-            // X-Forwarded-For can look like: "203.0.113.195, 70.41.3.18, 150.172.238.178"
-            // The very first value on the left is the actual client identity.
-            if let Some(real_ip) = forwarded_header.split(',').next() {
-                let trimmed_ip = real_ip.trim();
-                if !trimmed_ip.is_empty() {
-                    return trimmed_ip.to_string();
+        if let Some(values) = self.req.headers.get("x-forwarded-for") {
+            if let Some(forwarded_header) = values.first() {
+                // X-Forwarded-For can look like: "203.0.113.195, 70.41.3.18, 150.172.238.178"
+                // The very first value on the left is the actual client identity.
+                if let Some(real_ip) = forwarded_header.split(',').next() {
+                    let trimmed_ip = real_ip.trim();
+                    if !trimmed_ip.is_empty() {
+                        return trimmed_ip.to_string();
+                    }
                 }
             }
         }
@@ -96,7 +127,7 @@ impl RequestContext {
             .headers
             .get("cookie")
             .or_else(|| self.req.headers.get("Cookie"))
-            .map(|val| val.contains("GSESSION_ID"))
+            .map(|val| val.contains(&"GSESSION_ID".to_string()))
             .unwrap_or(false);
 
         had_cookie && self.session.is_none()
@@ -513,10 +544,10 @@ impl RequestContext {
     /// Safely extracts and decodes a query parameter value by key.
     /// Converts hex escape sequences (like %20) back into clean UTF-8 text.
     pub fn get_query_param_decoded(&self, key: &str) -> Option<String> {
-        let raw_val = self.query.get(key)?;
+        let raw_val = self.query.get(key)?.first()?.as_str();
 
         let mut decoded = String::new();
-        let mut chars = raw_val.as_str().chars();
+        let mut chars = raw_val.chars();
 
         while let Some(ch) = chars.next() {
             if ch == '%' {

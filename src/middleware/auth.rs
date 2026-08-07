@@ -312,12 +312,14 @@ impl Middleware for AuthMiddleware {
             {
                 let mut csrf_verified = false;
                 let mut incoming_token: Option<String> =
-                    ctx.headers.get("x-csrf-token").map(|s| s.to_string());
+                    ctx.headers.get("x-csrf-token").and_then(|vals| vals.first().cloned());
 
                 if incoming_token.is_none() {
                     let form_data = ctx.req.parse_form_body();
                     if let Some(form_val) = form_data.fields.get("csrf_token") {
-                        incoming_token = Some(form_val.to_string());
+                        if let Some(token) = form_val.first() {
+                            incoming_token = Some(token.to_string());
+                        }
                     }
                 }
 
@@ -368,25 +370,27 @@ impl Middleware for AuthMiddleware {
 
         // Fallback check against incoming JWT Bearer tokens
         if let Some(jwt_handler) = &self.jwt_handler {
-            if let Some(auth_header) = ctx.headers.get("authorization") {
-                if auth_header.starts_with("Bearer ") {
-                    let token = &auth_header[7..];
+            if let Some(auth_headers) = ctx.headers.get("authorization") {
+                if let Some(auth_header) = auth_headers.first() {
+                    if auth_header.starts_with("Bearer ") {
+                        let token = &auth_header[7..];
 
-                    match jwt_handler.verify(token) {
-                        Ok(claims) => {
-                            debug!("[AUTH MIDDLEWARE] Verified user token: {}", claims.sub);
-                            ctx.claims = Some(claims.clone());
+                        match jwt_handler.verify(token) {
+                            Ok(claims) => {
+                                debug!("[AUTH MIDDLEWARE] Verified user token: {}", claims.sub);
+                                ctx.claims = Some(claims.clone());
 
-                            return MiddlewareResult::Next(Some(MiddlewareState {
-                                session: active_session.clone(),
-                                claims: Some(claims),
-                                session_was_stale: false,
-                            }));
+                                return MiddlewareResult::Next(Some(MiddlewareState {
+                                    session: active_session.clone(),
+                                    claims: Some(claims),
+                                    session_was_stale: false,
+                                }));
+                            }
+                            Err(e) => {
+                                debug!("[AUTH MIDDLEWARE] Token validation rejected: {}", e);
+                            }
                         }
-                        Err(e) => {
-                            debug!("[AUTH MIDDLEWARE] Token validation rejected: {}", e);
-                        }
-                    }
+                    }    
                 }
             }
         }

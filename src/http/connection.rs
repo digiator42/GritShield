@@ -1,7 +1,7 @@
 use crate::{
     database::repository::transaction::{CURRENT_EVENT_BUS, CURRENT_JOB_QUEUE},
     error,
-    http::{request::Request, response::Response},
+    http::{request::HttpMethod, request::Request, response::Response, FormData},
     middleware::MiddlewareResult,
     routing::{
         engine::{RequestContext, Router, RoutingResult},
@@ -13,9 +13,10 @@ use crate::{
 use futures::future::FutureExt;
 use std::{
     collections::HashMap,
+    net::SocketAddr,
+    sync::atomic::Ordering,
     sync::{Arc, Mutex},
 };
-use std::{net::SocketAddr, sync::atomic::Ordering};
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 
@@ -27,12 +28,7 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
                 .active_connections
                 .fetch_add(1, Ordering::Relaxed);
 
-            // One reusable buffer per connection, not per request
             let mut read_buf = vec![0u8; 16 * 1024];
-
-            // Nagle's algorithm batches small writes waiting for an ACK, which is exactly
-            // what produces the occasional multi-hundred-ms tail latency spike under
-            // concurrent load on a raw-socket server like this one.
             let _ = stream.set_nodelay(true);
 
             loop {
@@ -60,9 +56,9 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
                     .headers
                     .get("connection")
                     .or_else(|| req.headers.get("Connection"))
-                    .map_or(true, |v| v.to_lowercase() != "close");
+                    // header values are Vec<String>, so check if any value equals "close" (case-insensitive)
+                    .map_or(true, |v| !v.iter().any(|s| s.eq_ignore_ascii_case("close")));
 
-                // Single route match pass
                 let routing_result = router.match_route(&req.method, &req.path);
 
                 let params = match &routing_result {
@@ -70,18 +66,23 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
                     _ => HashMap::new(),
                 };
 
-                let form = req.parse_form_body();
+                // Lazy Form Parsing: Only execute form parsing for HTTP methods that accept payloads
+                let form = match req.method {
+                    HttpMethod::GET | HttpMethod::HEAD | HttpMethod::OPTIONS => FormData::new(),
+                    _ => req.parse_form_body(),
+                };
+
                 let cookie_header = req
                     .headers
                     .get("cookie")
-                    .or_else(|| req.headers.get("Cookie"));
+                    .or_else(|| req.headers.get("Cookie"))
+                    .and_then(|v| v.get(0));
 
                 let jar = Arc::new(Mutex::new(CookieJar::new(
                     cookie_header,
                     router.secret_key.clone(),
                 )));
 
-                // Construct RequestContext without duplicating req inner fields
                 let mut ctx = RequestContext {
                     params,
                     telemetry: router.telemetry.clone(),
@@ -95,14 +96,16 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
                     form,
                     db: router.db.clone(),
                     raw_body: req.body.clone(),
-                    content_type: req.headers.get("content-type").cloned(),
+                    content_type: req
+                        .headers
+                        .get("content-type")
+                        .and_then(|v| v.first().cloned()),
                     req,
                     cookies: jar.clone(),
                     start_time,
                     role_inheritance: router.role_inheritance.clone(),
                 };
 
-                // Process Middleware Stack
                 match router.run_middlewares(&mut ctx) {
                     MiddlewareResult::Next(maybe_state) => {
                         if let Some(state) = maybe_state {
@@ -141,12 +144,11 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
                     }
                 }
 
-                // WebSocket handling check
                 if ctx
                     .req
                     .headers
                     .get("upgrade")
-                    .map_or(false, |v| v == "websocket")
+                    .map_or(false, |v| v.iter().any(|val| val == "websocket"))
                 {
                     let target_ws_handler = {
                         let ws_routes = WS_REGISTRY.lock().unwrap();
@@ -154,10 +156,11 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
                     };
 
                     if let Some(ws_handler) = target_ws_handler {
-                        if let Some(key) = ctx.req.headers.get("sec-websocket-key") {
-                            let accept_hash = tokio_tungstenite::tungstenite::handshake::derive_accept_key(
-                                key.as_bytes(),
-                            );
+                        if let Some(keys) = ctx.req.headers.get("sec-websocket-key") {
+                                if let Some(key) = keys.get(0) {
+                                    let accept_hash = tokio_tungstenite::tungstenite::handshake::derive_accept_key(
+                                        key.as_bytes(),
+                                    );
 
                             let handshake_response = format!(
                                 "HTTP/1.1 101 Switching Protocols\r\n\
@@ -186,6 +189,8 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
                                 ws_handler(ws_stream, ctx).await;
                             });
 
+                            }
+
                             router
                                 .telemetry
                                 .active_connections
@@ -196,13 +201,9 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
                 }
 
                 let error_handler_ptr = router.global_error_handler.handler;
-
-                // Save request path reference before passing ctx into async task
                 let req_path = ctx.req.path.clone();
-
                 let hook_ctx = ctx.clone();
 
-                // Route Execution
                 let response_future = async move {
                     match routing_result {
                         RoutingResult::Found(handler, required_role, _) => {
@@ -219,12 +220,13 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
                             }
 
                             let headers = ctx.headers.clone();
-
                             let mut response: Response = handler.call(ctx).await;
 
-                            for (key, value) in headers.iter() {
-                                if !response.headers.iter().any(|(k, _)| k == key) {
-                                    response.headers.push((key.clone(), value.clone()));
+                            for (key, values) in headers.iter() {
+                                for value in values.iter() {
+                                    if !response.headers.iter().any(|(k, _)| k == key) {
+                                        response.headers.push((key.clone(), value.clone()));
+                                    }
                                 }
                             }
 

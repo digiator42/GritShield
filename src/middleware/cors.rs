@@ -19,11 +19,17 @@ impl CorsMiddleware {
 impl Middleware for CorsMiddleware {
     fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult {
         // Extract the origin the browser is currently calling from
-        let inbound_origin = ctx.req.headers.get("Origin").cloned().unwrap_or_default();
+        // headers may store multiple values; take the first origin if present
+        let inbound_origin = ctx
+            .req
+            .headers
+            .get("Origin")
+            .and_then(|vals| vals.first().cloned())
+            .unwrap_or_default();
 
         // Determine the target match. If the domain is whitelisted, echo it!
         // Otherwise, fallback to your primary origin safely.
-        let dynamic_origin = if self.allowed_origins.contains(&inbound_origin) {
+        let dynamic_origin = if self.allowed_origins.iter().any(|o| o == &inbound_origin) {
             inbound_origin
         } else {
             self.allowed_origins
@@ -56,14 +62,14 @@ impl Middleware for CorsMiddleware {
 
         // Handle standard operations
         ctx.headers
-            .insert("Access-Control-Allow-Origin".to_string(), dynamic_origin);
+            .insert("Access-Control-Allow-Origin".to_string(), vec![dynamic_origin.clone()]);
         ctx.headers.insert(
             "Access-Control-Allow-Methods".to_string(),
-            "GET, POST, PUT, PATCH, DELETE, OPTIONS".to_string(),
+            vec!["GET, POST, PUT, PATCH, DELETE, OPTIONS".to_string()],
         );
         ctx.headers.insert(
             "Access-Control-Allow-Headers".to_string(),
-            "Content-Type, Authorization".to_string(),
+            vec!["Content-Type, Authorization".to_string()],
         );
 
         MiddlewareResult::Next(None)
