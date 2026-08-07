@@ -2,11 +2,76 @@
 
 GritShield uses simple environment variables for configuration with `.env` file support, for most of cases configuration is done programmatically.
 
+## Shield Builder Pattern
+
+The recommended way to configure and launch your GritShield application is using the `Shield` builder pattern:
+
+```rust
+use gritshield::prelude::*;
+
+#[launch]
+async fn main() {
+    Shield::build()
+        .router(router) // if you need custom router
+        .launch();
+}
+```
+
+### Shield Configuration Options
+
+```rust
+use gritshield::prelude::*;
+
+#[launch]
+async fn main() {
+    Shield::build()
+        .host("0.0.0.0")              // Set custom host (default: 127.0.0.1)
+        .port("3000")                 // Set custom port (default: 8080)
+        .log_level(LogLevel::Debug)   // Set log level
+        .mount_db(db_connection)      // Mount database connection
+        .add_middleware(MyMiddleware) // Add custom middleware
+        .router(router)               // Set custom router
+        .launch();                    // Launch the application
+}
+```
+
+### Environment Variables Integration
+
+`Shield::build()` automatically loads configuration from environment variables:
+
+```env
+HOST=0.0.0.0
+PORT=3000
+GRIT_LOG=debug
+```
+
+### Custom Launch Methods
+
+```rust
+// Launch with defaults (127.0.0.1:8080)
+Shield::build().router(router).launch();
+
+// Launch with custom host and port
+Shield::build().router(router).launch_with("0.0.0.0", "3000");
+```
+
+### GritShield Alias
+
+You can also use `GritShield` as an alias for `Shield`:
+
+```rust
+GritShield::build()
+    .router(router)
+    .launch();
+```
+
 ## Hot Reload (Development)
 
 ```rust
-//          localhost,  port,  router
-ignite("127.0.0.1", "8080", router).await;
+// Restarts your app on every file change.
+cargo watch -x run
+// Clears the terminal screen before each restart to keep the logs readable.
+cargo watch -c -x run
 ```
 
 Automatically rebuilds and reloads on source changes.

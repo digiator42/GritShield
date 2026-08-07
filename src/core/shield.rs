@@ -137,11 +137,6 @@ impl Shield {
             });
         }
     }
-
-    /// Launch with custom host and port (shorthand)
-    pub fn launch_at(self, host: &str, port: &str) {
-        self.launch_with_defaults(host, port)
-    }
 }
 
 // Also provide a builder-style `GritShield` alias for clarity

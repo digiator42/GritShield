@@ -34,9 +34,18 @@ async fn hello(ctx: RequestContext) -> &'static str {
     "Hello, GritShield!"
 }
 
+#[launch]
+async fn main() {
+    Shield::build().launch();
+}
+```
+
+Or with the traditional approach:
+
+```rust
 #[tokio::main]
 async fn main() {
-    let router = Router::new().mount_logger();
+    let router = Router::new();
     ignite("127.0.0.1", "8080", router, false).await;
 }
 ```
