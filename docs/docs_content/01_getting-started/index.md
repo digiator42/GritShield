@@ -20,8 +20,7 @@ Add GritShield to Cargo.toml:
 
 ```toml
 [dependencies]
-gritshield = { version = "0.1.1" }
-tokio = { version = "1", features = ["full"] }
+gritshield = { version = "0.2.2" }
 ```
 
 Create your first handler in src/main.rs:
@@ -41,12 +40,16 @@ async fn main() {
 ```
 
 Or with the traditional approach:
+```toml
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+```
 
 ```rust
 #[tokio::main]
 async fn main() {
     let router = Router::new();
-    ignite("127.0.0.1", "8080", router, false).await;
+    ignite("127.0.0.1", "8080", router).await;
 }
 ```
 

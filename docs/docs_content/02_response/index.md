@@ -225,6 +225,24 @@ pub async fn handler(ctx: RequestContext) -> Response {
 }
 ```
 
+## Common Html Response Methods
+
+| Method                        | Status | Use Case                        |
+|-------------------------------|--------|---------------------------------|
+| `Response::ok()`              | 200    | Success                         |
+| `Response::created()`         | 201    | Resource successfully created   |
+| `Response::bad_request()`     | 400    | Validation / client error       |
+| `Response::unauthorized()`    | 401    | Authentication required         |
+| `Response::forbidden()`       | 403    | Insufficient permissions        |
+| `Response::not_found()`       | 404    | Resource not found              |
+| `Response::conflict()`        | 409    | Resource conflict               |
+| `Response::too_many_requests()`| 429   | Rate limiting                   |
+| `Response::internal_error()`  | 500    | Server error                    |
+| `Response::redirect()`        | 303/302| Redirect to URL                 |
+| `Response::navigate_to()`     | 302    | Simple redirect                 |
+| `Response::static_file()`     | 200    | Serve static files             |
+
+
 ## JSON-Specific Response Methods
 
 For API endpoints, use the dedicated JSON response methods:
@@ -295,23 +313,6 @@ errors.insert("email".to_string(), vec!["Invalid format".to_string()]);
 errors.insert("password".to_string(), vec!["Too short".to_string()]);
 Response::json_validation_error(errors)
 ```
-
-## Common Response Methods
-
-| Method                        | Status | Use Case                        |
-|-------------------------------|--------|---------------------------------|
-| `Response::ok()`              | 200    | Success                         |
-| `Response::created()`         | 201    | Resource successfully created   |
-| `Response::bad_request()`     | 400    | Validation / client error       |
-| `Response::unauthorized()`    | 401    | Authentication required         |
-| `Response::forbidden()`       | 403    | Insufficient permissions        |
-| `Response::not_found()`       | 404    | Resource not found              |
-| `Response::conflict()`        | 409    | Resource conflict               |
-| `Response::too_many_requests()`| 429   | Rate limiting                   |
-| `Response::internal_error()`  | 500    | Server error                    |
-| `Response::redirect()`        | 303/302| Redirect to URL                 |
-| `Response::navigate_to()`     | 302    | Simple redirect                 |
-| `Response::static_file()`     | 200    | Serve static files             |
 
 ## Available HTTP Status Codes
 

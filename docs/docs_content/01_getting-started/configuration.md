@@ -70,6 +70,8 @@ GritShield::build()
 ```rust
 // Restarts your app on every file change.
 cargo watch -x run
+// Watch only src folder
+cargo watch -w src -x run
 // Clears the terminal screen before each restart to keep the logs readable.
 cargo watch -c -x run
 ```
