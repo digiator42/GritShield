@@ -14,12 +14,6 @@
   - [Dynamic Routes](04_routing/dynamic-routes.md)
   - [Middleware](04_routing/middleware.md)
 
-- [Macros Library](05_macros_library/index.md)
-  - [Http Macros](05_macros_library/http_macros.md)
-  - [Query DSL Macros](05_macros_library/query_dsl_macros.md)
-  - [Dependency Injection Macros](05_macros_library/dependency_injection_macros.md)
-  - [Transctional Macro](05_macros_library/transaction.md)
-
 - [Admin Panel](06_admin_panel/index.md)
 
 - [Event/Task & Job Queue](07_task_queue/index.md)
@@ -28,6 +22,13 @@
 
 - [Dependency Injection](08_dependency_injection/index.md)
   - [Redis as DI](08_dependency_injection/redis_di.md)
+
+- [Macros Library](05_macros_library/index.md)
+  - [Http Macros](05_macros_library/http_macros.md)
+  - [Query DSL Macros](05_macros_library/query_dsl_macros.md)
+  - [Dependency Injection Macros](05_macros_library/dependency_injection_macros.md)
+  - [Transctional Macro](05_macros_library/transaction.md)
+  - [Catch Macro](05_macros_library/catch_macros.md)
 
 - [WebSocket](09_websocket/index.md)
 
