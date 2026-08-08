@@ -104,6 +104,24 @@ impl OrderController {
 }
 ```
 
+### Skipping Dependency Injection
+
+In some cases, you may want to bypass the container check for specific fields that are managed by other services or third-party libraries. You can use the `#[grit(skip)]` attribute to ignore fields during dependency injection validation at boot time.
+
+**⚠️ Best Practice:** Only use `#[grit(skip)]` for component fields that are explicitly managed by external services. Using it inappropriately can lead to runtime errors if the skipped field is not properly initialized.
+
+```rust
+#[derive(Clone, GritComponent)]
+pub struct RedisService {
+    #[grit(skip)]
+    client: redis::Client,
+    #[grit(skip)]
+    manager: Arc<OnceCell<ConnectionManager>>,
+}
+```
+
+In this example, the `client` and `manager` fields are managed by the Redis service itself and don't need to be injected through the DI container. The `#[grit(skip)]` attribute ensures these fields are ignored during the container boot-time validation.
+
 ### Explicit Registration
 
 When registering components that can not be annotated with `#[derive(GritComponent)]` (such as raw third-party clients, or environment configuration parameters), the runtime injection capability is split into two straightforward parts:
@@ -138,23 +156,6 @@ async fn auto_wire() {
         max_connections: 100,
         timeout_seconds: 30,
     });
-}
-```
-
-### Verification at Boot
-
-To ensure missing references fail fast before serving traffic, ignite and evaluate the dynamic dependency tree inside your bootstrap sequence:
-
-Rust
-
-```rust
-#[tokio::main]
-async fn main() {
-    // 1. Run dynamic container setup
-    auto_wire().await;
-
-    // 2. Validate structural graph completeness
-    AutoWire::boot_di_container();
 }
 ```
 

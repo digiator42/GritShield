@@ -31,14 +31,15 @@ where
     let mut search_q = None;
 
     for (key, value) in ctx.query.iter() {
+        let str_value = value.first().map(|v| v.as_str().to_string()).unwrap_or_default();
         if let Some(stripped) = key.strip_prefix("filter__") {
             if let Some(rest) = stripped.strip_suffix("__op") {
-                op_map.insert(rest.to_string(), value.as_str().to_string());
+                op_map.insert(rest.to_string(), str_value);
             } else if let Some(rest) = stripped.strip_suffix("__value") {
-                val_map.insert(rest.to_string(), value.as_str().to_string());
+                val_map.insert(rest.to_string(), str_value);
             }
         } else if key == "q" {
-            search_q = Some(value.as_str().to_string());
+            search_q = Some(str_value);
         }
     }
 

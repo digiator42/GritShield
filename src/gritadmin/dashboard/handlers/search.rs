@@ -26,7 +26,8 @@ where
     let query = ctx
         .query
         .get("q")
-        .map(|v| v.to_string())
+        .and_then(|v| v.first())
+        .map(|v| v.as_str().to_string())
         .unwrap_or_default();
 
     let items = if query.is_empty() {
@@ -53,7 +54,8 @@ pub async fn handle_search_palette(ctx: RequestContext) -> Response {
     let query = ctx
         .query
         .get("q")
-        .map(|v| v.to_string().to_lowercase())
+        .and_then(|v| v.first())
+        .map(|v| v.as_str().to_lowercase())
         .unwrap_or_default();
 
     let static_settings = vec![
@@ -107,7 +109,7 @@ pub async fn handle_search_palette(ctx: RequestContext) -> Response {
             let mut sub_ctx = ctx.clone();
             sub_ctx
                 .query
-                .insert("q".to_string(), UntrustedString::new(query.clone()));
+                .insert("q".to_string(), vec![UntrustedString::new(query.clone())]);
 
             let search_response = search_handler(sub_ctx).await;
 
@@ -209,7 +211,7 @@ where
     <R as GritRepository>::Id: std::str::FromStr,
     <<R as GritRepository>::Id as std::str::FromStr>::Err: std::fmt::Display,
 {
-    let query_input = ctx.query.get("jql").map(|v| v.as_str()).unwrap_or("");
+    let query_input = ctx.query.get("jql").and_then(|v| v.first()).map(|v| v.as_str()).unwrap_or("");
     let db = ctx.db.clone().expect("DB connection missing");
 
     if query_input.is_empty() {

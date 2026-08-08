@@ -241,7 +241,7 @@ pub async fn admin_security_matrix_view_handler(ctx: RequestContext) -> Response
     let is_ssl = ctx
         .headers
         .get("x-forwarded-proto")
-        .map(|v| v == "https")
+        .map(|v| v.iter().any(|val| val == "https"))
         .unwrap_or(false);
 
     // Scan headers mapping inside RequestContext case-insensitively
@@ -249,7 +249,7 @@ pub async fn admin_security_matrix_view_handler(ctx: RequestContext) -> Response
     let has_nosniff = ctx
         .headers
         .get("x-content-type-options")
-        .map(|v| v.to_lowercase() == "nosniff")
+        .map(|v| v.iter().any(|val| val.to_lowercase() == "nosniff"))
         .unwrap_or(false);
     let has_frame_opt = ctx.headers.contains_key("x-frame-options");
     let has_hsts = ctx.headers.contains_key("strict-transport-security");

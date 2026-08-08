@@ -274,15 +274,17 @@ impl Router {
                     .form
                     .fields
                     .get("table_name")
-                    .cloned()
+                    .and_then(|v| v.first())
+                    .map(|v| v.as_str().to_string())
                     .unwrap_or_default();
                 let columns_json = ctx
                     .form
                     .fields
                     .get("columns_data")
-                    .cloned()
+                    .and_then(|v| v.first())
+                    .map(|v| v.as_str().to_string())
                     .unwrap_or_default();
-                let columns_json_trimmed = columns_json.as_str().trim();
+                let columns_json_trimmed = columns_json.trim();
 
                 if columns_json_trimmed.is_empty() {
                     return error_response("Columns configuration cannot be blank.");
@@ -304,7 +306,7 @@ impl Router {
                         }
                     };
 
-                match handle_create_table_dynamic(db, table_name.to_string(), parsed_columns).await
+                match handle_create_table_dynamic(db, table_name, parsed_columns).await
                 {
                     Ok(success_msg) => success_response(success_msg),
                     Err(error_msg) => error_response(error_msg),

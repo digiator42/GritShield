@@ -7,16 +7,16 @@ use std::collections::HashMap;
 #[test]
 fn test_request_builder_and_normalization() {
     let mut headers = HashMap::new();
-    headers.insert("host".to_string(), "127.0.0.1".to_string());
+    headers.insert("host".to_string(), vec!["127.0.0.1".to_string()]);
     headers.insert(
         "content-type".to_string(),
-        "application/x-www-form-urlencoded".to_string(),
+        vec!["application/x-www-form-urlencoded".to_string()],
     );
 
     let mut query = HashMap::new();
     query.insert(
         "debug".to_string(),
-        UntrustedString::new("true".to_string()),
+        vec![UntrustedString::new("true".to_string())],
     );
 
     let request = Request::fill(
@@ -30,7 +30,7 @@ fn test_request_builder_and_normalization() {
 
     assert_eq!(request.method, HttpMethod::POST);
     assert_eq!(request.path, "/api/v1/secure-endpoint");
-    assert_eq!(request.query.get("debug").unwrap().to_string(), "true");
+    assert_eq!(request.query.get("debug").unwrap().first().unwrap().as_str(), "true");
 }
 
 #[test]

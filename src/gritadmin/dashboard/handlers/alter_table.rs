@@ -61,8 +61,8 @@ pub async fn handle_append_table_column(
 pub async fn alter_table_add_column_handler(ctx: RequestContext) -> Response {
     let table_slug = ctx.params.get("table_slug").unwrap().as_str();
 
-    let col_name = ctx.form.fields.get("column_name").unwrap().as_str();
-    let col_type = ctx.form.fields.get("column_type").unwrap().as_str();
+    let col_name = ctx.form.fields.get("column_name").and_then(|v| v.first()).map(|v| v.as_str()).unwrap_or("");
+    let col_type = ctx.form.fields.get("column_type").and_then(|v| v.first()).map(|v| v.as_str()).unwrap_or("");
 
     if col_name.trim().is_empty() {
         return error_response("Column name input parameter field cannot be empty.");

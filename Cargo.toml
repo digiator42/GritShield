@@ -16,7 +16,7 @@ categories = ["web-programming::http-server"]
 default = []
 admin = []
 swagger = []
-validator = []
+validator = ["dep:validator"]
 
 # Database driver features mapping to both SeaORM core and migration crates
 sqlite = ["sea-orm/sqlx-sqlite", "sea-orm-migration/sqlx-sqlite"]
@@ -68,3 +68,4 @@ html-escape = "0.2.13"
 rust_decimal = "1.39.0"
 urlencoding = "2.1"
 cron = "0.17.0"
+validator = { version = "0.18", optional = true }

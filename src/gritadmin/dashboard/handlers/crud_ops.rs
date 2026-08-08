@@ -26,8 +26,9 @@ where
         .form
         .fields
         .get("id")
+        .and_then(|v| v.first())
         .map(|v| v.as_str())
-        .or_else(|| ctx.query.get("id").map(|v| v.as_str()))
+        .or_else(|| ctx.query.get("id").and_then(|v| v.first()).map(|v| v.as_str()))
     {
         Some(id) => id,
         None => return error_response("Missing record target ID"),
@@ -55,7 +56,7 @@ where
     <<R as GritRepository>::Id as std::str::FromStr>::Err: std::fmt::Display,
 {
     let form = ctx.form.clone().fields;
-    let record_id_raw = match form.get("id") {
+    let record_id_raw = match form.get("id").and_then(|v| v.first()) {
         Some(id) => id,
         None => return error_response("Missing record ID"),
     };
@@ -63,12 +64,12 @@ where
         Ok(id) => id,
         Err(e) => return error_response(format!("Invalid record ID: {}", e)),
     };
-    let raw_column = match form.get("column") {
+    let raw_column = match form.get("column").and_then(|v| v.first()) {
         Some(col) => col.as_str(),
         None => return error_response("Missing targeted column"),
     };
     let column_name = Sanitizer::url_decode(raw_column);
-    let raw_value = match form.get(raw_column) {
+    let raw_value = match form.get(raw_column).and_then(|v| v.first()) {
         Some(val) => val.as_str(),
         None => return error_response("Missing field update payload"),
     };
@@ -90,7 +91,7 @@ where
                     name=(column_name)
                     hx-target="this"
                     hx-swap="outerHTML"
-                    hx-vals=(format!("{{\"id\": \"{}\", \"column\": \"{}\", \"table_to_modify\": \"{}\"}}", record_id_raw, column_name, table_slug))
+                    hx-vals=(format!("{{\"id\": \"{}\", \"column\": \"{}\", \"table_to_modify\": \"{}\"}}", record_id_raw.as_str(), column_name, table_slug))
                     class="bg-transparent hover:bg-gray-850 focus:bg-gray-800 px-2 py-1 rounded focus:outline-none w-full border border-transparent focus:border-emerald-600 transition";
             };
             Response::ok(single_input_html.into_string())
@@ -190,7 +191,7 @@ where
     use sea_orm::{ActiveModelTrait, EntityTrait, TransactionTrait};
 
     // Unpack incoming form payload
-    let payload_str = match ctx.form.fields.get("bulk_json") {
+    let payload_str = match ctx.form.fields.get("bulk_json").and_then(|v| v.first()) {
         Some(val) => Sanitizer::url_decode(val.as_str()),
         None => {
             return error_response("Missing key field 'bulk_json' inside the request body payload")
@@ -324,7 +325,7 @@ where
     // Inject HTMX-driven interface refresh using the matrix partial layout
     ctx.query.insert(
         "partial".to_string(),
-        UntrustedString::new("matrix".to_string()),
+        vec![UntrustedString::new("matrix".to_string())],
     );
     let mut refreshed_view = handle_list(ctx, repo, table_slug).await;
 
@@ -352,7 +353,7 @@ where
     <R as GritRepository>::Id: std::str::FromStr,
     <<R as GritRepository>::Id as std::str::FromStr>::Err: std::fmt::Display,
 {
-    let ids_str = match ctx.form.fields.get("ids") {
+    let ids_str = match ctx.form.fields.get("ids").and_then(|v| v.first()) {
         Some(v) => v.as_str(),
         None => return error_response("Missing 'ids' field"),
     };

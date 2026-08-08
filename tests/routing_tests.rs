@@ -3,6 +3,7 @@ use gritshield::http::request::{HttpMethod, Request};
 use gritshield::http::response::Response;
 use gritshield::routing::engine::{RequestContext, Router, RoutingResult};
 use gritshield::security::xss::Sanitizer;
+use gritshield::security::xss::UntrustedString;
 use std::collections::HashMap;
 
 // Define a Mock Handler for a route
@@ -73,7 +74,7 @@ fn test_router_registration_matching_and_params() {
                 dynamic_params.contains_key("id"),
                 "Trie matching failed to parse the dynamic placeholder parameter ':id'"
             );
-            assert_eq!(dynamic_params.get("id").unwrap().to_string(), "ORD-99211");
+            assert_eq!(dynamic_params.get("id").unwrap().as_str(), "ORD-99211");
 
             // Verify role extraction if any
             assert!(required_role.is_none());
@@ -85,11 +86,12 @@ fn test_router_registration_matching_and_params() {
                 "http://127.0.0.1:8080".to_string(),
                 HashMap::new(),
                 vec![],
-                dynamic_params, // Pass parsed parameters forward
+                HashMap::new(), // Request uses empty query params
             );
 
             let mut ctx = RequestContext::new();
             ctx.req = request;
+            ctx.params = dynamic_params; // Set params on context instead
 
             // Execute the boxed future out of your trait object handler
             let handler_fut = handler.call(ctx);

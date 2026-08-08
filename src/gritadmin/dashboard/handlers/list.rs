@@ -36,9 +36,9 @@ where
 
     for (key, value) in ctx.query.iter() {
         // Decode special characters immediately at the entry boundary
-        let decoded_value = urlencoding::decode(value.as_str())
-            .map(|s| s.into_owned())
-            .unwrap_or_else(|_| value.as_str().to_string());
+        let decoded_value = value.first()
+            .and_then(|v| urlencoding::decode(v.as_str()).map(|s| s.into_owned()).ok())
+            .unwrap_or_else(|| value.first().map(|v| v.as_str().to_string()).unwrap_or_default());
 
         if let Some(stripped) = key.strip_prefix("filter__") {
             if let Some(rest) = stripped.strip_suffix("__op") {
@@ -49,7 +49,7 @@ where
         } else if key == "q" {
             search_q = Some(decoded_value);
         } else if key == "infinite" {
-            infinite_scroll = decoded_value.as_str() == "true";
+            infinite_scroll = decoded_value == "true";
         }
     }
 
@@ -76,10 +76,11 @@ where
     }
 
     // ---- Sorting ----
-    let sort_col = ctx.query.get("sort").map(|v| v.as_str()).unwrap_or("");
+    let sort_col = ctx.query.get("sort").and_then(|v| v.first()).map(|v| v.as_str()).unwrap_or("");
     let sort_dir = ctx
         .query
         .get("direction")
+        .and_then(|v| v.first())
         .map(|v| v.as_str())
         .unwrap_or("desc");
     let mut query = <R::Entity as EntityTrait>::find();
@@ -141,6 +142,7 @@ where
     let page = ctx
         .query
         .get("page")
+        .and_then(|v| v.first())
         .and_then(|v| v.parse::<u64>().ok())
         .unwrap_or(0);
 
@@ -153,7 +155,7 @@ where
     //   - (absent)       → a top-level route visit (sidebar, command palette, FK link, or a
     //                      plain browser load) that should render the FULL workspace view,
     //                      JQL explorer included, whether or not it's an htmx request.
-    let partial = ctx.query.get("partial").map(|v| v.as_str()).unwrap_or("");
+    let partial = ctx.query.get("partial").and_then(|v| v.first()).map(|v| v.as_str()).unwrap_or("");
     let is_row_append = partial == "rows";
     let is_matrix_only = partial == "matrix";
     let page_size = 15;
