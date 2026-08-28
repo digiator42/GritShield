@@ -1,3 +1,4 @@
+use crate::deps::sea_orm::sea_query::extension::postgres::PgExpr;
 use crate::deps::sea_orm::sea_query::{Alias, Asterisk, Condition, Expr, JoinType, Query, SimpleExpr};
 use crate::security::xss::Sanitizer;
 use sea_orm::{DbBackend, Statement};
@@ -75,22 +76,37 @@ impl JqlCompiler {
                 Expr::col((Alias::new(&spec.base_table), Alias::new(&cond.column)))
             };
 
-            // Parse numeric / integer values vs string literals safely
-            let val_expr: SimpleExpr = if let Ok(int_val) = cond.value.parse::<i64>() {
-                Expr::val(int_val).into()
-            } else if let Ok(bool_val) = cond.value.parse::<bool>() {
-                Expr::val(bool_val).into()
-            } else {
-                Expr::val(cond.value.clone()).into()
-            };
+            // Cast the column to text so int/varchar/timestamp columns all
+            // compare cleanly against string literals (e.g. `priority = 2`).
+            let col_text = col_ref.clone().cast_as(Alias::new("text"));
 
-            let clause = match cond.operator.as_str() {
-                "=" => col_ref.eq(val_expr),
-                "LIKE" => col_ref.like(format!("%{}%", cond.value)),
-                ">" => col_ref.gt(val_expr),
-                "<" => col_ref.lt(val_expr),
-                _ => col_ref.eq(val_expr),
-            };
+            // For >/< bind numeric-looking literals as numbers so those
+            // comparisons work numerically (col is NOT cast to text here).
+            let numeric_val: Option<f64> = cond.value.parse::<f64>().ok();
+
+let clause = match cond.operator.as_str() {
+    // Compare on text side so text/numeric/timestamp columns all match.
+    "=" => col_text.eq(Expr::val(cond.value.clone())),
+    "LIKE" => {
+        // Case-insensitive substring match. Postgres uses ILIKE; other backends
+        // fall back to (case-sensitive) LIKE.
+        let pattern = format!("%{}%", cond.value);
+        if matches!(backend, DbBackend::Postgres) {
+            col_text.ilike(pattern)
+        } else {
+            col_text.like(pattern)
+        }
+    }
+    ">" => match numeric_val {
+        Some(n) => col_ref.gt(Expr::val(n)),
+        None => col_ref.gt(Expr::val(cond.value.clone())),
+    },
+    "<" => match numeric_val {
+        Some(n) => col_ref.lt(Expr::val(n)),
+        None => col_ref.lt(Expr::val(cond.value.clone())),
+    },
+    _ => col_text.eq(Expr::val(cond.value.clone())),
+};
             conditions = conditions.add(clause);
         }
 
@@ -103,14 +119,17 @@ impl JqlCompiler {
 impl CustomQuerySpec {
     pub fn parse_from_str(input: &str) -> Result<Self, String> {
         let input = Sanitizer::url_decode(input).replace(";", "");
-        let normalized = input.replace(",", " ").to_lowercase();
+        // Keep original casing so string comparisons stay exact; lowercase only
+        // the tokens used to locate structural keywords (SELECT/FROM/JOIN/WHERE)
+        let normalized = input.replace(",", " ");
         let tokens: Vec<&str> = normalized.split_whitespace().collect();
+        let lc: Vec<String> = tokens.iter().map(|t| t.to_lowercase()).collect();
 
         // Detect core indexing components
-        let select_idx = tokens.iter().position(|&t| t == "select");
-        let from_idx = tokens.iter().position(|&t| t == "from");
-        let join_idx = tokens.iter().position(|&t| t == "join");
-        let where_idx = tokens.iter().position(|&t| t == "where");
+        let select_idx = lc.iter().position(|t| t == "select");
+        let from_idx = lc.iter().position(|t| t == "from");
+        let join_idx = lc.iter().position(|t| t == "join");
+        let where_idx = lc.iter().position(|t| t == "where");
 
         if select_idx.is_none() || from_idx.is_none() {
             return Err(
@@ -136,7 +155,7 @@ impl CustomQuerySpec {
         // Extract dynamic joins if present
         let mut joins = Vec::new();
         if let Some(j_idx) = join_idx {
-            let on_idx = tokens.iter().position(|&t| t == "on");
+            let on_idx = lc.iter().position(|t| t == "on");
             if let Some(o_idx) = on_idx {
                 let target_table = tokens[j_idx + 1].to_string();
                 let left_side = tokens[o_idx + 1].split('.').collect::<Vec<&str>>();
@@ -154,8 +173,8 @@ impl CustomQuerySpec {
         let mut conditions = Vec::new();
         if let Some(w_idx) = where_idx {
             let col_part = tokens[w_idx + 1];
-            let operator = tokens[w_idx + 2].to_string();
-            let value = tokens[w_idx + 3].replace("'", "").to_string();
+            let operator = tokens[w_idx + 2].to_uppercase();
+            let value = tokens[w_idx + 3].replace("'", "");
 
             if col_part.contains('.') {
                 let chunks: Vec<&str> = col_part.split('.').collect();
