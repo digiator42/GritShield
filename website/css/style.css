@@ -20,6 +20,20 @@
 
 html { scroll-behavior: smooth; }
 
+/* ============ Themed scrollbar ============ */
+::-webkit-scrollbar { width: 10px; }
+::-webkit-scrollbar-track { background: var(--bg-0); }
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(0,224,255,.35), rgba(160,107,255,.35));
+  border: 2px solid var(--bg-0); border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(0,224,255,.55), rgba(160,107,255,.55));
+}
+* { scrollbar-width: thin; scrollbar-color: rgba(0,224,255,.4) var(--bg-0); }
+.panel::-webkit-scrollbar { width: 6px; }
+.panel::-webkit-scrollbar-thumb { background: rgba(0,224,255,.25); border-radius: 999px; }
+
 body {
   font-family: var(--font);
   background: radial-gradient(1200px 800px at 70% -10%, #0b132b 0%, var(--bg-0) 45%) fixed,
@@ -188,11 +202,23 @@ body {
 .snippet-file { margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--ink-dim); }
 .panel-snippet pre {
   padding: 18px 20px; overflow-x: auto;
+  margin: 0; background: transparent !important;
 }
-.panel-snippet code {
-  font-family: var(--mono); font-size: 13px; line-height: 1.6; color: #cfe9ff;
-  white-space: pre;
+.panel-snippet code,
+.panel-snippet pre code {
+  font-family: var(--mono); font-size: 13px; line-height: 1.65; color: #cfe9ff;
+  white-space: pre; background: transparent !important;
+  text-shadow: none !important;
 }
+/* Prism token overrides — match the GritShield palette */
+.token.comment, .token.prolog, .token.doctype, .token.cdata { color: #5c7a9e; }
+.token.punctuation { color: #7b9ec0; }
+.token.property, .token.tag, .token.boolean, .token.number, .token.constant, .token.symbol, .token.deleted { color: #ff9f43; }
+.token.selector, .token.attr-name, .token.string, .token.char, .token.builtin, .token.inserted { color: #34f5c5; }
+.token.operator, .token.entity, .token.url { color: #00e0ff; }
+.token.atrule, .token.attr-value, .token.keyword { color: #a06bff; }
+.token.function, .token.class-name { color: #5fd6ff; }
+.token.regex, .token.important, .token.variable { color: #ff5fae; }
 
 /* ============ Scroll sections ============ */
 main#content {

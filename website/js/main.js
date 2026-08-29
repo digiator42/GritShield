@@ -548,6 +548,7 @@ function openPanel(idx) {
   elDesc.textContent = cfg.desc;
   elFile.textContent = "// " + cfg.file;
   elCode.textContent = cfg.code.trim();
+  if (window.Prism) Prism.highlightElement(elCode);
   panel.classList.add("open");
   panel.setAttribute("aria-hidden", "false");
   interacting = true;
