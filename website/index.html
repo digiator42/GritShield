@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>GritShield — Real Rust. Compile-Time Magic. Zero Runtime Cost.</title>
+<meta name="description" content="GritShield is an async-first, security-hardened web framework for Rust that eliminates the majority of OWASP Top 10 vulnerabilities by design — all the Spring Boot magic, generated at compile time." />
+<meta name="theme-color" content="#00e0ff" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="./css/style.css" />
+</head>
+<body>
+
+<!-- Three.js render targets -->
+<div id="webgl" aria-hidden="true"></div>
+
+<!-- ============ HUD / Overlay ============ -->
+<header class="hud hud-top">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="34" height="34">
+        <path d="M12 2 L22 7 V12 C22 17.5 17.6 21.5 12 22 C6.4 21.5 2 17.5 2 12 V7 Z" fill="none" stroke="currentColor" stroke-width="1.6"/>
+        <path d="M12 6.5 L17.5 9.25 V12.5 C17.5 15.6 15.1 18.3 12 19.3 C8.9 18.3 6.5 15.6 6.5 12.5 V9.25 Z" fill="none" stroke="currentColor" stroke-width="1.1" opacity="0.7"/>
+      </svg>
+    </span>
+    <span class="brand-text">
+      <strong class="brand-name">Grit<em>Shield</em></strong>
+      <span class="brand-tag">Async-First · Security-Hardened · Rust</span>
+    </span>
+  </div>
+  <nav class="hud-nav">
+    <button class="hud-link" data-scroll="docs">Docs</button>
+    <button class="hud-link" data-scroll="features">Features</button>
+    <a class="hud-link" href="https://github.com/digiator42/GritShield" target="_blank" rel="noopener">GitHub ↗</a>
+  </nav>
+</header>
+
+<section class="hud hud-center" id="hero">
+  <p class="eyebrow">A RUST WEB FRAMEWORK</p>
+  <h1 class="hero-title">Built to <span class="grad">protect</span>.<br />Made to <span class="grad2">perform</span>.</h1>
+  <p class="hero-sub">
+    <code class="inline-code">gritshield</code> is an async-first, security-hardened web framework.
+    Spring-Boot-style ergonomics — with <strong>all the magic happening at compile time</strong>, and zero runtime overhead.
+  </p>
+  <div class="hero-cta">
+    <a class="btn btn-primary" href="#features"><span>Explore the modules</span><span class="btn-arrow">↓</span></a>
+    <a class="btn btn-ghost" href="https://github.com/digiator42/GritShield#readme" target="_blank" rel="noopener">Get started</a>
+  </div>
+</section>
+
+<footer class="hud hud-bottom" id="hint-bar">
+  <div class="hint">
+    <span class="hint-icon">🖱</span> Drag to orbit
+    <span class="hint-sep">·</span> Scroll to zoom
+    <span class="hint-sep">·</span> <strong>Click a node</strong> to inspect
+  </div>
+  <div class="stats" id="stats">
+    <span class="stat"><strong>0</strong> runtime reflection</span>
+    <span class="stat"><strong>10/10</strong> OWASP covered by design</span>
+    <span class="stat"><strong>O(n)</strong> trie router</span>
+  </div>
+</footer>
+
+<!-- ============ Feature detail panel ============ -->
+<aside class="panel" id="panel" aria-hidden="true">
+  <button class="panel-close" id="panel-close" aria-label="Close">&times;</button>
+  <div class="panel-body">
+    <span class="panel-cat" id="p-cat">MODULE</span>
+    <h2 class="panel-title" id="p-title"></h2>
+    <p class="panel-tagline" id="p-tagline"></p>
+    <p class="panel-desc" id="p-desc"></p>
+    <div class="panel-snippet">
+      <div class="snippet-head">
+        <span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span>
+        <span class="snippet-file" id="p-file"></span>
+      </div>
+      <pre><code id="p-code"></code></pre>
+    </div>
+  </div>
+</aside>
+
+<!-- Scroll content sections -->
+<main id="content">
+  <section class="section" id="features">
+    <div class="section-inner">
+      <p class="eyebrow">UNDER THE SHIELD</p>
+      <h2 class="section-title">One framework.<br />Everything you ship.</h2>
+      <div class="feature-grid" id="feature-grid"></div>
+    </div>
+  </section>
+
+  <section class="section section-dark" id="docs">
+    <div class="section-inner">
+      <p class="eyebrow">DOCUMENTATION</p>
+      <h2 class="section-title">Read the full docs.</h2>
+      <p class="section-sub">
+        Deep dives on routing, the macro library, dual-engine DI, RBAC &amp; capabilities,
+        the auto-generated admin panel, event bus &amp; job queue, WebSockets, migrations and more.
+      </p>
+      <div class="docs-actions">
+        <a class="btn btn-primary" href="./docs/index.html">Open the documentation →</a>
+        <a class="btn btn-ghost" href="https://github.com/digiator42/GritShield#readme" target="_blank" rel="noopener">View the source</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- ============ Scripts ============ -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module" src="./js/main.js"></script>
+</body>
+</html>

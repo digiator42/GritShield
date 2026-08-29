@@ -7,7 +7,7 @@ src = "docs_content"
 build-dir = "book"
 
 [output.html]
-site-url = "/gritshield/"
+site-url = "/docs/"
 
 [output.html.playground]
 editable = false
