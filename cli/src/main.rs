@@ -12,7 +12,7 @@ use crate::migration_runner::MigrationRunner;
 
 #[derive(Parser)]
 #[command(name = "gritshield")]
-#[command(about = "🛡️  GritShield Framework Command Line Interface", long_about = None)]
+#[command(about = "ProtectionEngine Firewall & CLI", long_about = None)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -21,9 +21,18 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Scaffold a brand new production-ready Gritshield application
-    New { name: String },
+    New {
+        /// Application name
+        name: String,
+        /// Enable the admin panel feature
+        #[arg(short, long)]
+        admin: bool,
+        /// Enable the swagger/OpenAPI feature
+        #[arg(short, long)]
+        swagger: bool,
+    },
 
-    /// Generate framework structures (controllers, models, migrations)
+    /// Generate framework structures (controllers, models, migrations, events, jobs, etc.)
     #[command(alias = "gen")]
     Generate {
         #[command(subcommand)]
@@ -35,9 +44,19 @@ enum Commands {
         /// Migration direction: up or down
         #[arg(value_enum)]
         direction: MigrationDirection,
-        /// Optional migration file name (defaults to latest)
+        /// Optional migration file name (defaults to all)
         #[arg(short, long)]
         file: Option<String>,
+    },
+
+    /// Inspect the auto-discovered DI container and routing topology
+    Diag {
+        /// Export the dependency graph as Graphviz DOT
+        #[arg(short, long)]
+        dot: bool,
+        /// Export the dependency graph as Mermaid markdown
+        #[arg(short, long)]
+        mermaid: bool,
     },
 }
 
@@ -45,8 +64,22 @@ enum Commands {
 enum Blueprints {
     /// Generate a fresh controller with micro-route attributes
     Controller { name: String },
-    /// Generate a database model struct with structural query blocks
+    /// Generate a database model struct with GritModel derive and SeaORM entity
     Model { name: String },
+    /// Generate a GritAdmin-annotated repository for a model
+    Repository { name: String },
+    /// Generate a GritComponent struct with DI wiring
+    Component { name: String },
+    /// Generate a GritEvent struct and an event handler
+    Event { name: String },
+    /// Generate a GritJob struct and a job handler with retry config
+    Job { name: String },
+    /// Generate an AOP interceptor struct + impl
+    Interceptor { name: String },
+    /// Generate a #[catch] handler for a custom HTTP status code
+    Catch { status: u16 },
+    /// Generate a security capabilities module (declare_security_caps!)
+    Caps { name: String },
     /// Generate an empty raw SQL schema migration script
     Migration { description: String },
 }
@@ -59,18 +92,27 @@ enum MigrationDirection {
 
 fn main() {
     let cli = Cli::parse();
-
     match &cli.command {
-        Commands::New { name } => {
-            create_project(name);
+        Commands::New { name, admin, swagger } => {
+            create_project(name, *admin, *swagger);
         }
         Commands::Generate { blueprint } => match blueprint {
             Blueprints::Controller { name } => generate_controller(name),
             Blueprints::Model { name } => generate_model(name),
+            Blueprints::Repository { name } => generate_repository(name),
+            Blueprints::Component { name } => generate_component(name),
+            Blueprints::Event { name } => generate_event(name),
+            Blueprints::Job { name } => generate_job(name),
+            Blueprints::Interceptor { name } => generate_interceptor(name),
+            Blueprints::Catch { status } => generate_catch(*status),
+            Blueprints::Caps { name } => generate_caps(name),
             Blueprints::Migration { description } => generate_migration(description),
         },
         Commands::Migration { direction, file } => {
             run_migration(direction, file);
+        }
+        Commands::Diag { dot, mermaid } => {
+            run_diag(*dot, *mermaid);
         }
     }
 }
@@ -78,7 +120,7 @@ fn main() {
 // =========================================================================
 // COMMAND: NEW PROJECT SCAFFOLDER
 // =========================================================================
-fn create_project(name: &str) {
+fn create_project(name: &str, enable_admin: bool, enable_swagger: bool) {
     let base_path = Path::new(name);
 
     println!(
@@ -103,87 +145,100 @@ fn create_project(name: &str) {
         .unwrap();
 
     // Determine database configuration
-    let (db_url, db_feature, db_driver) = match db_selection {
-        0 => ("sqlite://app.db?mode=rwc", "sqlx-sqlite", "SQLite (File)"),
-        1 => (
-            "postgres://postgres:password@localhost:5432/app_db",
-            "sqlx-postgres",
-            "PostgreSQL",
-        ),
-        2 => (
-            "mysql://root:password@127.0.0.1:3306/app_db",
-            "sqlx-mysql",
-            "MySQL",
-        ),
-        3 => ("sqlite::memory:", "sqlx-sqlite", "SQLite (In-Memory)"),
-        _ => ("", "", "No Database"),
+    let (db_url, db_feature) = match db_selection {
+        0 => ("sqlite://app.db?mode=rwc", "sqlite"),
+        1 => ("postgres://postgres:postgres@localhost:5432/app_db", "postgres"),
+        2 => ("mysql://root:root@127.0.0.1:3306/app_db", "mysql"),
+        3 => ("sqlite::memory:", "sqlite"),
+        _ => ("", ""),
     };
 
     // Scaffold Directory Tree
     create_dir_all(base_path.join("src/controllers")).unwrap();
     create_dir_all(base_path.join("src/models")).unwrap();
+    create_dir_all(base_path.join("src/repositories")).unwrap();
+    create_dir_all(base_path.join("src/services")).unwrap();
     create_dir_all(base_path.join("migrations")).unwrap();
     create_dir_all(base_path.join("static/css")).unwrap();
+    create_dir_all(base_path.join("src/security")).unwrap();
 
     // Write .env file
+    let mut env_lines = vec![
+        "GRIT_LOG=info".to_string(),
+        "APP_ENV=development".to_string(),
+        "HOST=127.0.0.1".to_string(),
+        "PORT=8080".to_string(),
+        "JWT_SECRET=your-secret-key-change-in-production".to_string(),
+    ];
     if db_selection != 4 {
-        let env_content = format!(
-            r#"DATABASE_URL={}
-GRIT_LOG=info
-APP_ENV=development
-JWT_SECRET=your-secret-key-change-in-production
-"#,
-            db_url
-        );
-        write_file(&base_path.join(".env"), &env_content);
-    } else {
-        // No database - minimal .env
-        let env_content = r#"GRIT_LOG=info
-APP_ENV=development
-JWT_SECRET=your-secret-key-change-in-production
-"#;
-        write_file(&base_path.join(".env"), &env_content);
+        env_lines.push(format!("DATABASE_URL={}", db_url));
     }
+    write_file(
+        &base_path.join(".env"),
+        &format!("{}\n", env_lines.join("\n")),
+    );
 
-    // Write updated Cargo.toml with dynamic engine feature bindings
-    let toml_package = if db_selection == 4 {
-        "sea-orm = { version = \"1.0\", features = [\"runtime-tokio-native-tls\", \"macros\"] }"
+    // Build feature list
+    let mut features = Vec::new();
+    if enable_admin {
+        features.push("admin");
+    }
+    if enable_swagger {
+        features.push("swagger");
+    }
+    let features_attr = if features.is_empty() {
+        String::new()
     } else {
-        &format!("sea-orm = {{ version = \"1.0\", features = [\"{}\", \"runtime-tokio-native-tls\", \"macros\"] }}", db_feature)
+        format!(", features = [{}]", features.iter().map(|f| format!("\"{}\"", f)).collect::<Vec<_>>().join(", "))
+    };
+
+    // Resolve crate dep line for sea-orm with proper feature
+    let sea_orm_dep = if db_selection == 4 {
+        // No database – still need sea-orm for the framework but no DB driver
+        "sea-orm = { version = \"1.1\", features = [\"runtime-tokio-native-tls\", \"macros\"] }"
+    } else {
+        &format!(
+            "sea-orm = {{ version = \"1.1\", features = [\"{}\", \"runtime-tokio-native-tls\", \"macros\", \"with-chrono\", \"with-json\"] }}",
+            db_feature
+        )
     };
 
     let cargo_toml = format!(
         r#"[package]
-name = "{}"
+name = "{name}"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-gritshield = "0.1.1"
+gritshield = {{ version = "0.2.2"{features_attr} }}
 tokio = {{ version = "1.0", features = ["full"] }}
 maud = "0.25"
 serde = {{ version = "1.0", features = ["derive"] }}
 serde_json = "1.0"
-ctor = "1.0.7"
+ctor = "1.0"
 dotenvy = "0.15"
-chrono = "0.4"
-{}
+chrono = {{ version = "0.4", features = ["serde"] }}
+{sea_orm_dep}
 "#,
-        name, toml_package
+        name = name,
+        features_attr = features_attr,
+        sea_orm_dep = sea_orm_dep,
     );
     write_file(&base_path.join("Cargo.toml"), &cargo_toml);
 
-    // Write base controller manifest file
-    write_file(&base_path.join("src/controllers/mod.rs"), "pub mod info;");
+    // Write boilerplate controller manifest + info controller
+    write_file(
+        &base_path.join("src/controllers/mod.rs"),
+        "pub mod info;\n",
+    );
 
-    // Write boilerplate info controller using the new impl syntax
     let info_ctrl = r#"use gritshield::prelude::*;
 
 pub struct ApiController;
 
 #[controller("/api")]
 impl ApiController {
-    
+
     #[get("/info")]
     pub async fn system_info(_ctx: RequestContext) -> Response {
         Response::ok("GritShield Engine Core Node Online.")
@@ -197,13 +252,41 @@ impl ApiController {
 "#;
     write_file(&base_path.join("src/controllers/info.rs"), info_ctrl);
 
+    // Write models/mod.rs
+    write_file(&base_path.join("src/models/mod.rs"), "");
+
+    // Write repositories/mod.rs
+    write_file(&base_path.join("src/repositories/mod.rs"), "");
+
+    // Write services/mod.rs
+    write_file(&base_path.join("src/services/mod.rs"), "");
+
+    // Write security/mod.rs
+    write_file(&base_path.join("src/security/mod.rs"), "pub mod caps;\n");
+
+    // Write placeholder security caps module
+    write_file(
+        &base_path.join("src/security/caps.rs"),
+        r#"use gritshield::declare_security_caps;
+
+// Define your capability tokens below, e.g. `pub struct ManageBilling;`
+
+declare_security_caps! {
+    // ViewDashboard => [Admin, Manager],
+}
+"#,
+    );
+
     // Write main.rs with appropriate database configuration
     let main_rs = if db_selection == 4 {
         // No database mode
-        r#"
-use gritshield::prelude::*;
+        r#"use gritshield::prelude::*;
 
 mod controllers;
+mod models;
+mod repositories;
+mod services;
+mod security;
 
 #[get("/static/:*path")]
 async fn serve_static(ctx: RequestContext) -> Response {
@@ -211,20 +294,25 @@ async fn serve_static(ctx: RequestContext) -> Response {
     Response::static_file(&format!("static/{}", path))
 }
 
-#[tokio::main]
+#[launch]
 async fn main() {
     let router = Router::new();
-    ignite("127.0.0.1", "8080", router).await;
+    Shield::build()
+        .router(router)
+        .launch();
 }
 "#
     } else {
         // With database
-        r#"
-use gritshield::prelude::*;
-use gritshield::security::db::{DbManager, DbConfig};
+        r#"use gritshield::prelude::*;
+use gritshield::database::db::{DbConfig, DbManager};
 use std::sync::Arc;
 
 mod controllers;
+mod models;
+mod repositories;
+mod services;
+mod security;
 
 #[get("/")]
 async fn index(_ctx: RequestContext) -> Response {
@@ -233,7 +321,7 @@ async fn index(_ctx: RequestContext) -> Response {
     ))
 }
 
-#[tokio::main]
+#[launch]
 async fn main() {
     // Initialize the engine configuration setup matrix
     let db_config = DbConfig::default();
@@ -246,7 +334,10 @@ async fn main() {
         .mount_db(shared_db);
 
     // Run server
-    ignite("127.0.0.1", "8080", router).await;
+    Shield::build()
+        .mount_db(shared_db)
+        .router(router)
+        .launch();
 }
 "#
     };
@@ -261,16 +352,21 @@ async fn main() {
     println!("\n\x1b[32m✨ Project setup complete! Run the following to start cooking:\x1b[0m\n");
     println!("   cd {}", name);
     println!("   cargo run\n");
-    println!("   \x1b[36mUsing database: {}\x1b[0m", db_driver);
+    println!("   \x1b[36mUsing database: {}\x1b[0m", db_url);
 }
 
 // =========================================================================
 // 🛠️ BLUEPRINT GENERATOR HOOKS
 // =========================================================================
-
 fn generate_controller(name: &str) {
     let snake_name = format!("{}", AsSnakeCase(name));
     let pascal_name = format!("{}", AsPascalCase(name));
+    // Avoid double "Controller" suffix
+    let struct_name = if name.to_lowercase().ends_with("controller") {
+        pascal_name.clone()
+    } else {
+        format!("{}Controller", pascal_name)
+    };
     let file_path = format!("src/controllers/{}.rs", snake_name);
 
     // Ensure controllers directory exists
@@ -294,55 +390,49 @@ fn generate_controller(name: &str) {
     let template = format!(
         r#"use gritshield::prelude::*;
 
-pub struct {}Controller;
+pub struct {struct_name};
 
-#[controller("/{}")]
-impl {}Controller {{
-    
+#[controller("/{snake}")]
+impl {struct_name} {{
+
     #[get("/")]
     pub async fn list(_ctx: RequestContext) -> Response {{
-        Response::ok("List all {}")
+        Response::ok("List all {pascal}")
     }}
 
     #[post("/")]
     pub async fn create(_ctx: RequestContext) -> Response {{
-        Response::ok("Create new {}")
+        Response::ok("Create new {pascal}")
     }}
 
     #[get("/:id")]
     pub async fn show(ctx: RequestContext) -> Response {{
-        let id = ctx.params.get("*id").unwrap();
-        Response::ok(format!("Showing {{}} with id: {{}}", "{}", id))
+        let id = ctx.params.get(":id").unwrap();
+        Response::ok(format!("Showing {pascal} with id: {{}}", id))
     }}
 
     #[put("/:id")]
     pub async fn update(ctx: RequestContext) -> Response {{
-        let id = ctx.params.get("*id").unwrap();
-        Response::ok(format!("Updating {{}} with id: {{}}", "{}", id))
+        let id = ctx.params.get(":id").unwrap();
+        Response::ok(format!("Updating {pascal} with id: {{}}", id))
     }}
 
     #[patch("/:id")]
     pub async fn partial_update(ctx: RequestContext) -> Response {{
-        let id = ctx.params.get("*id").unwrap();
-        Response::ok(format!("Partially updating {{}} with id: {{}}", "{}", id))
+        let id = ctx.params.get(":id").unwrap();
+        Response::ok(format!("Partially updating {pascal} with id: {{}}", id))
     }}
 
     #[delete("/:id")]
     pub async fn delete(ctx: RequestContext) -> Response {{
-        let id = ctx.params.get("*id").unwrap();
-        Response::ok(format!("Deleting {{}} with id: {{}}", "{}", id))
+        let id = ctx.params.get(":id").unwrap();
+        Response::ok(format!("Deleting {pascal} with id: {{}}", id))
     }}
 }}
 "#,
-        pascal_name, // struct name
-        snake_name,  // parent route
-        pascal_name, // struct name
-        pascal_name, // list response
-        pascal_name, // create response
-        pascal_name, // show response first placeholder
-        pascal_name, // update response first placeholder
-        pascal_name, // partial_update response first placeholder
-        pascal_name, // delete response first placeholder
+        struct_name = struct_name,
+        pascal = pascal_name,
+        snake = snake_name,
     );
 
     write_file(Path::new(&file_path), &template);
@@ -355,7 +445,6 @@ impl {}Controller {{
 
 fn generate_model(name: &str) {
     let snake_name = format!("{}", AsSnakeCase(name));
-    let pascal_name = format!("{}", AsPascalCase(name));
     let file_path = format!("src/models/{}.rs", snake_name);
 
     // Ensure models directory exists
@@ -377,39 +466,27 @@ fn generate_model(name: &str) {
     }
 
     let template = format!(
-        r#"use serde::{{Serialize, Deserialize}};
-use gritshield::security::repository::GritRepository;
-use sea_orm::*;
-use sea_orm_migration::async_trait::async_trait;
+        r#"use chrono::NaiveDateTime;
+use gritshield::{{GritModel, GritRelation}};
+use sea_orm::entity::prelude::*;
+use serde::{{Serialize, Deserialize}};
 
-#[derive(Debug, Serialize, Deserialize, Clone, FromQueryResult, ModelTrait)]
-pub struct {} {{
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize, GritModel)]
+#[sea_orm(table_name = "{snake}s")]
+pub struct Model {{
+    #[sea_orm(primary_key)]
     pub id: i64,
-    pub created_at: i64,
-    pub updated_at: i64,
+    pub created_at: NaiveDateTime,
+    pub updated_at: NaiveDateTime,
 }}
 
-impl {} {{
-    // Implement data map queries here
-}}
+#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation, GritRelation)]
+#[grit(table = "{snake}s")]
+pub enum Relation {{}}
 
-#[async_trait]
-impl GritRepository for {}Repository {{
-    type Entity = ;
-    type Model = {};
-    type Column = ;
-    type ActiveModel = ;
-
-    fn get_db(&self) -> &DatabaseConnection {{
-        todo!()
-    }}
-
-    fn email_column() -> Self::Column {{
-        todo!()
-    }}
-}}
+impl ActiveModelBehavior for ActiveModel {{}}
 "#,
-        pascal_name, pascal_name, pascal_name, pascal_name
+        snake = snake_name,
     );
 
     write_file(Path::new(&file_path), &template);
@@ -420,32 +497,403 @@ impl GritRepository for {}Repository {{
     );
 }
 
+fn generate_repository(name: &str) {
+    let snake_name = format!("{}", AsSnakeCase(name));
+    // Derive the model module name: if name ends with "Repository", strip it
+    let model_name = if name.to_lowercase().ends_with("repository") {
+        let stripped = &name[..name.len() - "Repository".len()];
+        format!("{}", AsSnakeCase(stripped))
+    } else {
+        snake_name.clone()
+    };
+    let pascal_name = format!("{}", AsPascalCase(name));
+    let file_path = format!("src/repositories/{}.rs", snake_name);
+
+    // Ensure repositories directory exists
+    let repos_dir = Path::new("src/repositories");
+    if !repos_dir.exists() {
+        create_dir_all(repos_dir).unwrap();
+        let mod_path = repos_dir.join("mod.rs");
+        if !mod_path.exists() {
+            write_file(&mod_path, "");
+        }
+    }
+
+    if Path::new(&file_path).exists() {
+        println!(
+            "\x1b[31mError: Repository '{}' already exists.\x1b[0m",
+            file_path
+        );
+        return;
+    }
+
+    let template = format!(
+        r#"use crate::models::{model}::*;
+use gritshield::{{database::TxnRepository, GritAdmin, GritComponent}};
+use gritshield::database::repository::transaction::CURRENT_TXN;
+use sea_orm::{{ActiveModelTrait, ConnectionTrait, DatabaseConnection, DbErr, EntityTrait}};
+
+#[derive(Clone, GritAdmin, GritComponent)]
+#[repository(
+    searchable = ["id"],
+    grid_columns = ["id", "created_at", "updated_at"],
+    read_only = ["id", "created_at"],
+)]
+pub struct {pascal} {{
+    pub db: DatabaseConnection,
+}}
+
+impl {pascal} {{
+    pub async fn create(&self, model: ActiveModel) -> Result<Model, DbErr> {{
+        if let Ok(txn) = CURRENT_TXN.try_with(|t| t.clone()) {{
+            model.insert(txn.as_ref()).await
+        }} else {{
+            model.insert(&self.db).await
+        }}
+    }}
+
+    pub async fn find_all(&self) -> Result<Vec<Model>, DbErr> {{
+        Entity::find().all(&self.db).await
+    }}
+}}
+"#,
+        model = model_name,
+        pascal = pascal_name,
+    );
+
+    write_file(Path::new(&file_path), &template);
+    append_mod_registration("src/repositories/mod.rs", &snake_name);
+    println!(
+        "\x1b[32m[SCAFFOLD] Created repository: {}\x1b[0m",
+        file_path
+    );
+}
+
+fn generate_component(name: &str) {
+    let snake_name = format!("{}", AsSnakeCase(name));
+    let pascal_name = format!("{}", AsPascalCase(name));
+    let file_path = format!("src/services/{}.rs", snake_name);
+
+    // Ensure services directory exists
+    let services_dir = Path::new("src/services");
+    if !services_dir.exists() {
+        create_dir_all(services_dir).unwrap();
+        let mod_path = services_dir.join("mod.rs");
+        if !mod_path.exists() {
+            write_file(&mod_path, "");
+        }
+    }
+
+    if Path::new(&file_path).exists() {
+        println!(
+            "\x1b[31mError: Component '{}' already exists.\x1b[0m",
+            file_path
+        );
+        return;
+    }
+
+    let template = format!(
+        r#"use gritshield::{{GritComponent, prelude::*}};
+use std::sync::Arc;
+
+#[derive(Clone, GritComponent)]
+pub struct {pascal} {{}}
+
+impl {pascal} {{
+    pub fn new() -> Self {{
+        {pascal} {{}}
+    }}
+
+    pub async fn execute(&self, ctx: RequestContext) -> Response {{
+        Response::ok("Service {pascal} executed")
+    }}
+}}
+"#,
+        pascal = pascal_name,
+    );
+
+    write_file(Path::new(&file_path), &template);
+    append_mod_registration("src/services/mod.rs", &snake_name);
+    println!(
+        "\x1b[32m[SCAFFOLD] Created component: {}\x1b[0m",
+        file_path
+    );
+}
+
+fn generate_event(name: &str) {
+    let snake_name = format!("{}", AsSnakeCase(name));
+    let pascal_name = format!("{}", AsPascalCase(name));
+    let file_path = format!("src/events/{}.rs", snake_name);
+
+    // Ensure events directory exists
+    let events_dir = Path::new("src/events");
+    if !events_dir.exists() {
+        create_dir_all(events_dir).unwrap();
+        let mod_path = events_dir.join("mod.rs");
+        if !mod_path.exists() {
+            write_file(&mod_path, "");
+        }
+    }
+
+    if Path::new(&file_path).exists() {
+        println!(
+            "\x1b[31mError: Event '{}' already exists.\x1b[0m",
+            file_path
+        );
+        return;
+    }
+
+    let template = format!(
+        r#"use gritshield::{{event, GritEvent, prelude::*}};
+use serde::{{Deserialize, Serialize}};
+use std::sync::Arc;
+
+#[derive(GritEvent, Clone, Serialize, Deserialize)]
+pub struct {pascal} {{
+    pub aggregate_id: String,
+}}
+
+pub struct {pascal}Handler;
+
+#[event]
+impl {pascal}Handler {{
+    pub async fn handle(&self, event: Arc<{pascal}>) {{
+        // Handle the event here (e.g., send email, emit notifications)
+        println!("Handling event for: {{}}", event.aggregate_id);
+    }}
+}}
+"#,
+        pascal = pascal_name,
+    );
+
+    write_file(Path::new(&file_path), &template);
+    append_mod_registration("src/events/mod.rs", &snake_name);
+    println!(
+        "\x1b[32m[SCAFFOLD] Created event: {}\x1b[0m",
+        file_path
+    );
+}
+
+fn generate_job(name: &str) {
+    let snake_name = format!("{}", AsSnakeCase(name));
+    let pascal_name = format!("{}", AsPascalCase(name));
+    let file_path = format!("src/jobs/{}.rs", snake_name);
+
+    // Ensure jobs directory exists
+    let jobs_dir = Path::new("src/jobs");
+    if !jobs_dir.exists() {
+        create_dir_all(jobs_dir).unwrap();
+        let mod_path = jobs_dir.join("mod.rs");
+        if !mod_path.exists() {
+            write_file(&mod_path, "");
+        }
+    }
+
+    if Path::new(&file_path).exists() {
+        println!(
+            "\x1b[31mError: Job '{}' already exists.\x1b[0m",
+            file_path
+        );
+        return;
+    }
+
+    let template = format!(
+        r#"use gritshield::{{job, GritJob}};
+use serde::{{Deserialize, Serialize}};
+use std::time::Duration;
+
+#[derive(Serialize, Deserialize, GritJob)]
+pub struct {pascal} {{
+    pub payload: String,
+}}
+
+#[job(retries = 3)]
+impl {pascal} {{
+    pub async fn perform(&self) -> Result<(), String> {{
+        // Implement your background job logic here
+        println!("Running job with payload: {{}}", self.payload);
+        Ok(())
+    }}
+}}
+"#,
+        pascal = pascal_name,
+    );
+
+    write_file(Path::new(&file_path), &template);
+    append_mod_registration("src/jobs/mod.rs", &snake_name);
+    println!(
+        "\x1b[32m[SCAFFOLD] Created job: {}\x1b[0m",
+        file_path
+    );
+}
+
+fn generate_interceptor(name: &str) {
+    let snake_name = format!("{}", AsSnakeCase(name));
+    let pascal_name = format!("{}", AsPascalCase(name));
+    let file_path = format!("src/interceptors/{}.rs", snake_name);
+
+    // Ensure interceptors directory exists
+    let interceptors_dir = Path::new("src/interceptors");
+    if !interceptors_dir.exists() {
+        create_dir_all(interceptors_dir).unwrap();
+        let mod_path = interceptors_dir.join("mod.rs");
+        if !mod_path.exists() {
+            write_file(&mod_path, "");
+        }
+    }
+
+    if Path::new(&file_path).exists() {
+        println!(
+            "\x1b[31mError: Interceptor '{}' already exists.\x1b[0m",
+            file_path
+        );
+        return;
+    }
+
+    let template = format!(
+        r#"use gritshield::core::aop::{{Interceptor, InvocationContext, BoxFuture}};
+use sea_orm::{{DatabaseConnection, DbErr}};
+use sea_orm_migration::async_trait::async_trait;
+use std::time::Instant;
+
+pub struct {pascal};
+
+#[async_trait]
+impl Interceptor for {pascal} {{
+    async fn intercept<'a>(
+        &'a self,
+        ctx: InvocationContext<'a>,
+        next: Box<dyn FnOnce() -> BoxFuture<'a, Result<(), DbErr>> + Send + 'a>,
+    ) -> Result<(), DbErr> {{
+        let start = Instant::now();
+        println!("[{pascal}] Before: {{}}::{{}}", ctx.target_name, ctx.method_name);
+
+        let result = next().await;
+
+        let elapsed = start.elapsed();
+        match &result {{
+            Ok(_) => println!("[{pascal}] After: {{}}::{{}} completed in {{:?}}", ctx.target_name, ctx.method_name, elapsed),
+            Err(e) => println!("[{pascal}] After: {{}}::{{}} failed in {{:?}} - {{}}", ctx.target_name, ctx.method_name, elapsed, e),
+        }}
+
+        result
+    }}
+}}
+"#,
+        pascal = pascal_name,
+    );
+
+    write_file(Path::new(&file_path), &template);
+    append_mod_registration("src/interceptors/mod.rs", &snake_name);
+    println!(
+        "\x1b[32m[SCAFFOLD] Created interceptor: {}\x1b[0m",
+        file_path
+    );
+}
+
+fn generate_catch(status: u16) {
+    let file_path = format!("src/catch.rs");
+
+    if Path::new(&file_path).exists() {
+        println!(
+            "\x1b[31mError: catch.rs already exists. Manually add your #[catch] handler to: {}\x1b[0m",
+            file_path
+        );
+        return;
+    }
+
+    let template = format!(
+        r#"use gritshield::catch;
+use gritshield::prelude::*;
+
+#[catch(status = {status})]
+pub async fn handle_{status_lower}(ctx: RequestContext) -> Response {{
+    Response::{resp_method}(format!("{{}}", "Custom error page for {status}"))
+}}
+"#,
+        status = status,
+        status_lower = status.to_string().to_lowercase(),
+        resp_method = match status {
+            404 => "not_found",
+            500 => "internal_error",
+            403 => "forbidden",
+            401 => "unauthorized",
+            400 => "bad_request",
+            _ => "not_found",
+        },
+    );
+
+    write_file(Path::new(&file_path), &template);
+    println!(
+        "\x1b[32m[SCAFFOLD] Created catch handler: {}\x1b[0m",
+        file_path
+    );
+}
+
+fn generate_caps(name: &str) {
+    let file_path = "src/security/caps.rs";
+
+    // Ensure security directory exists
+    let security_dir = Path::new("src/security");
+    if !security_dir.exists() {
+        create_dir_all(security_dir).unwrap();
+    }
+
+    let template = format!(
+        r#"use gritshield::declare_security_caps;
+
+// Capability tokens — declare your security primitives here.
+// Each capability is backed by a zero-sized marker type.
+// Capabilities are verified at compile time via #[cap(...)] on route handlers.
+
+pub struct Admin;
+pub struct Manager;
+pub struct Editor;
+pub struct Viewer;
+
+// Your new capability token
+pub struct {pascal};
+
+declare_security_caps! {{
+    Admin    => [Admin],
+    {pascal} => [Admin, Manager],
+}}
+"#,
+        pascal = AsPascalCase(name),
+    );
+
+    write_file(Path::new(file_path), &template);
+    println!(
+        "\x1b[32m[SCAFFOLD] Created security caps module: {}\x1b[0m",
+        file_path
+    );
+}
+
 fn generate_migration(description: &str) {
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
+    let timestamp = chrono::Local::now()
+        .format("%Y%m%d_%H%M%S")
+        .to_string();
 
     let slug = format!("{}", AsSnakeCase(description));
     let file_path = format!("migrations/{}_{}.sql", timestamp, slug);
 
     let template = format!(
-        r#"-- Migration: {}
--- Created at: {}
+        r#"-- Migration: {desc}
+-- Created at: {ts}
 
 -- Up:
--- Write your migration SQL here
--- CREATE TABLE users (
---     id INTEGER PRIMARY KEY AUTOINCREMENT,
---     email VARCHAR(255) NOT NULL UNIQUE,
---     password_hash VARCHAR(255) NOT NULL,
---     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
--- );
+CREATE TABLE IF NOT EXISTS {table} (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
 -- Down:
--- DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS {table};
 "#,
-        description, timestamp
+        desc = description,
+        ts = timestamp,
+        table = slug,
     );
 
     write_file(Path::new(&file_path), &template);
@@ -458,7 +906,6 @@ fn generate_migration(description: &str) {
 // =========================================================================
 // 🛠️ MIGRATION COMMAND
 // =========================================================================
-
 fn run_migration(direction: &MigrationDirection, file: &Option<String>) {
     println!("\x1b[36m🔄 Running migration: {:?}\x1b[0m", direction);
 
@@ -524,9 +971,35 @@ fn run_migration(direction: &MigrationDirection, file: &Option<String>) {
 }
 
 // =========================================================================
+// 🔍 DIAGNOSTICS COMMAND
+// =========================================================================
+fn run_diag(dot: bool, mermaid: bool) {
+    println!("\x1b[36m🔍 GritShield Diagnostics\x1b[0m\n");
+
+    if dot {
+        println!("\x1b[33m[DOT] Dependency Injection Graph (Graphviz)\x1b[0m");
+        println!("   Run this in your project context where gritshield is a dependency:");
+        println!("     use gritshield::core::ioc::AutoWire;");
+        println!("     print!(\"{{}}\", AutoWire::export_dot());");
+    }
+
+    if mermaid {
+        println!("\x1b[33m[MERMAID] Dependency Injection Graph (Markdown)\x1b[0m");
+        println!("   Run this in your project context where gritshield is a dependency:");
+        println!("     use gritshield::core::ioc::AutoWire;");
+        println!("     print!(\"{{}}\", AutoWire::export_mermaid());");
+    }
+
+    if !dot && !mermaid {
+        println!("   Available diagnostic exporters:");
+        println!("     --dot      Export dependency graph as Graphviz DOT");
+        println!("     --mermaid  Export dependency graph as Mermaid markdown");
+    }
+}
+
+// =========================================================================
 // 🧰 HELPERS
 // =========================================================================
-
 fn write_file(path: &Path, content: &str) {
     let mut file = File::create(path).expect("Failed to create file resource target");
     file.write_all(content.as_bytes())
@@ -537,6 +1010,13 @@ fn append_mod_registration(manifest_path: &str, mod_name: &str) {
     let path = Path::new(manifest_path);
     if !path.exists() {
         write_file(path, "");
+    }
+
+    // Read existing content to check if mod already registered
+    let existing = std::fs::read_to_string(path).unwrap_or_default();
+    let registration = format!("pub mod {};", mod_name);
+    if existing.contains(&registration) {
+        return;
     }
 
     let mut file = OpenOptions::new().append(true).open(path).unwrap();
