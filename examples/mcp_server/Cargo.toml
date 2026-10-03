@@ -1,0 +1,14 @@
+[package]
+name = "mcp_server"
+version = "0.1.0"
+edition = "2021"
+description = "A worked example of GritShield's native MCP server, written as a developer guide."
+
+[dependencies]
+# `admin` adds the /admin/mcp capability manager.
+# `sqlite` supplies the driver for the in-memory database the example falls back
+# to when DATABASE_URL is unset, so `cargo run` needs no configuration at all.
+gritshield = { path = "../../", features = ["admin", "sqlite"] }
+tokio = { version = "1.0", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
