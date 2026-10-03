@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
+    http::sse::SseStream,
     security::xss::{SafeHtml, Sanitizer},
     utils::fs,
 };
@@ -85,11 +86,68 @@ impl HttpStatus {
     }
 }
 
+/// Map a status code to its canonical reason phrase.
+///
+/// The status line used to be emitted with a hardcoded `OK`, which meant every
+/// response on the wire — including 404s and 500s — was labelled `200 OK` in
+/// its reason phrase. Clients that key off the phrase (and every log reader)
+/// were being actively misled.
+pub fn reason_phrase(status: u16) -> &'static str {
+    match status {
+        100 => "Continue",
+        101 => "Switching Protocols",
+        200 => "OK",
+        201 => "Created",
+        202 => "Accepted",
+        203 => "Non-Authoritative Information",
+        204 => "No Content",
+        205 => "Reset Content",
+        206 => "Partial Content",
+        300 => "Multiple Choices",
+        301 => "Moved Permanently",
+        302 => "Found",
+        303 => "See Other",
+        304 => "Not Modified",
+        307 => "Temporary Redirect",
+        308 => "Permanent Redirect",
+        400 => "Bad Request",
+        401 => "Unauthorized",
+        402 => "Payment Required",
+        403 => "Forbidden",
+        404 => "Not Found",
+        405 => "Method Not Allowed",
+        406 => "Not Acceptable",
+        408 => "Request Timeout",
+        409 => "Conflict",
+        410 => "Gone",
+        411 => "Length Required",
+        413 => "Payload Too Large",
+        414 => "URI Too Long",
+        415 => "Unsupported Media Type",
+        418 => "I'm a Teapot",
+        422 => "Unprocessable Entity",
+        425 => "Too Early",
+        426 => "Upgrade Required",
+        429 => "Too Many Requests",
+        431 => "Request Header Fields Too Large",
+        500 => "Internal Server Error",
+        501 => "Not Implemented",
+        502 => "Bad Gateway",
+        503 => "Service Unavailable",
+        504 => "Gateway Timeout",
+        505 => "HTTP Version Not Supported",
+        _ => "Unknown",
+    }
+}
+
 #[derive(Clone)]
 pub enum ResponseBody {
     Html(SafeHtml),
     StaticFile(String),
     Json(String),
+    /// A long-lived Server-Sent Events body, pumped incrementally onto the
+    /// socket instead of being buffered behind a `Content-Length`.
+    Stream(SseStream),
 }
 
 // impl as_str to ResponseBody
@@ -99,7 +157,14 @@ impl ResponseBody {
             ResponseBody::Html(safe_html) => std::str::from_utf8(safe_html.as_bytes()).ok(),
             ResponseBody::StaticFile(_) => None,
             ResponseBody::Json(json_str) => Some(json_str.as_str()),
+            ResponseBody::Stream(_) => None,
         }
+    }
+
+    /// True when this body must be pumped onto the socket rather than written
+    /// in a single `write_all`.
+    pub fn is_streaming(&self) -> bool {
+        matches!(self, ResponseBody::Stream(_))
     }
 }
 
@@ -254,7 +319,7 @@ impl Response {
         // it grew past its starting capacity.
         let mut raw = Vec::with_capacity(256 + body_bytes.len());
 
-        let _ = write!(raw, "HTTP/1.1 {} OK\r\n", self.status);
+        let _ = write!(raw, "HTTP/1.1 {} {}\r\n", self.status, reason_phrase(self.status));
         let _ = write!(raw, "Content-Type: {}\r\n", content_type);
         let _ = write!(raw, "Content-Length: {}\r\n", body_bytes.len());
 
@@ -300,6 +365,77 @@ impl Response {
         raw
     }
 
+    /// Serializes only the response head for a streaming body.
+    ///
+    /// Deliberately omits `Content-Length`: an SSE stream has no knowable
+    /// length, so the body is delimited by connection close, which is what the
+    /// event-stream framing rules require.
+    pub fn to_stream_head_bytes(&self, content_type: &str) -> Vec<u8> {
+        use std::io::Write;
+
+        let mut raw = Vec::with_capacity(256);
+        let _ = write!(raw, "HTTP/1.1 {} {}\r\n", self.status, reason_phrase(self.status));
+        let _ = write!(raw, "Content-Type: {}\r\n", content_type);
+
+        for (key, value) in &self.headers {
+            if key.eq_ignore_ascii_case("content-type") || key.eq_ignore_ascii_case("content-length")
+            {
+                continue;
+            }
+            let _ = write!(raw, "{}: {}\r\n", key, value);
+        }
+
+        for cookie in &self.cookies {
+            let same_site_str = match cookie.same_site {
+                SameSite::Strict => "Strict",
+                SameSite::Lax => "Lax",
+                SameSite::None => "None",
+            };
+            let _ = write!(
+                raw,
+                "Set-Cookie: {}={}; Max-Age={}; SameSite={}; Path=/",
+                cookie.name, cookie.value, cookie.max_age, same_site_str
+            );
+            if cookie.http_only {
+                let _ = raw.write_all(b"; HttpOnly");
+            }
+            if cookie.secure {
+                let _ = raw.write_all(b"; Secure");
+            }
+            let _ = raw.write_all(b"\r\n");
+        }
+
+        let _ = raw.write_all(b"\r\n");
+        raw
+    }
+
+    /// Build a `text/event-stream` response backed by a live [`SseStream`].
+    ///
+    /// The header set is the one mandated for event streams: no caching, no
+    /// proxy buffering, and a connection that stays open. `X-Accel-Buffering`
+    /// is what stops nginx from coalescing frames and destroying the streaming
+    /// semantics.
+    pub fn sse(stream: SseStream) -> Self {
+        Response {
+            status: HttpStatus::Ok.code(),
+            headers: vec![
+                (
+                    "Content-Type".to_string(),
+                    "text/event-stream; charset=utf-8".to_string(),
+                ),
+                (
+                    "Cache-Control".to_string(),
+                    "no-cache, no-store, no-transform".to_string(),
+                ),
+                ("Connection".to_string(), "keep-alive".to_string()),
+                ("X-Accel-Buffering".to_string(), "no".to_string()),
+                ("X-Content-Type-Options".to_string(), "nosniff".to_string()),
+            ],
+            cookies: Vec::new(),
+            body: ResponseBody::Stream(stream),
+        }
+    }
+
     /// A premium API helper that serializes data structure payloads automatically
     pub fn json<T: serde::Serialize>(status: HttpStatus, data: &T) -> Self {
         let json_string = serde_json::to_string(data)
@@ -326,6 +462,9 @@ impl Response {
             ResponseBody::Json(json_str) => {
                 (json_str.as_bytes().to_vec(), "application/json".to_string())
             }
+            // Never reached: `handle_connection` intercepts streaming bodies and
+            // pumps them onto the socket instead of calling `resolve`.
+            ResponseBody::Stream(_) => (Vec::new(), "text/event-stream".to_string()),
             ResponseBody::StaticFile(path) => fs::serve_static(path).unwrap_or_else(|_| {
                 (
                     Sanitizer::trust("<h1>404 File Not Found</h1>")
@@ -335,6 +474,11 @@ impl Response {
                 )
             }),
         }
+    }
+
+    /// True when this response carries a live stream rather than a buffered body.
+    pub fn is_streaming(&self) -> bool {
+        self.body.is_streaming()
     }
 
     /// Creates an HTTP redirect response (typically 302 Found or 303 See Other)

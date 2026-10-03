@@ -75,6 +75,10 @@ impl Router {
         #[cfg(feature = "swagger")]
         router.register_swagger_routes();
 
+        // Register the MCP transport surface
+        #[cfg(feature = "mcp")]
+        router.register_mcp_routes();
+
         router
     }
 

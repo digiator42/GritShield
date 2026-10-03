@@ -9,6 +9,7 @@ mod core_parser;
 mod event;
 mod ioc;
 mod job;
+mod mcp;
 mod repository;
 mod routing;
 mod sanitizer;
@@ -108,6 +109,25 @@ pub fn action(attr: TokenStream, item: TokenStream) -> TokenStream {
 pub fn component(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let input_impl = parse_macro_input!(item as ItemImpl);
     ioc::component::expand_component(input_impl)
+}
+
+// ==========================================
+// ATTRIBUTE MACROS (Model Context Protocol)
+// ==========================================
+
+#[proc_macro_attribute]
+pub fn mcp_tool(attr: TokenStream, item: TokenStream) -> TokenStream {
+    mcp::tool::expand_mcp_tool(attr, item)
+}
+
+#[proc_macro_attribute]
+pub fn mcp_resource(attr: TokenStream, item: TokenStream) -> TokenStream {
+    mcp::expand_mcp_resource(attr, item)
+}
+
+#[proc_macro_attribute]
+pub fn mcp_prompt(attr: TokenStream, item: TokenStream) -> TokenStream {
+    mcp::expand_mcp_prompt(attr, item)
 }
 
 // ==========================================

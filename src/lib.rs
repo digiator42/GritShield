@@ -2,6 +2,7 @@ pub mod core;
 pub mod database;
 pub mod http;
 pub mod macros;
+pub mod mcp;
 pub mod middleware;
 pub mod routing;
 pub mod security;
@@ -29,6 +30,7 @@ pub use gritshield_macros::launch;
 pub use gritshield_macros::catch;
 pub use gritshield_macros::intercept;
 pub use gritshield_macros::transactional;
+pub use gritshield_macros::{mcp_prompt, mcp_resource, mcp_tool};
 #[cfg(feature = "admin")]
 pub use gritshield_macros::GritAdmin;
 pub use gritshield_macros::GritComponent;
