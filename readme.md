@@ -47,6 +47,22 @@ impl ApiController {
 
 Run with `cargo run` and open `http://localhost:8080/hello` / `http://localhost:8080/api/v1/hello`.
 
+## MCP Server (AI Agents)
+
+Native [Model Context Protocol](https://modelcontextprotocol.io) support: turn any function into an AI
+agent tool with `#[mcp_tool]`, `#[mcp_resource]` and `#[mcp_prompt]`. SSE, streamable HTTP and stdio
+transports are enabled by default, with per-capability RBAC, kill switches, and a capability manager
+at `/admin/mcp`.
+
+```rust
+#[mcp_tool(name = "lookup_user", service = "UserService", schema = r#"{"type":"object"}"#)]
+async fn lookup_user(ctx: &RequestContext, args: serde_json::Value) -> Result<Value, String> {
+    Ok(serde_json::json!({ "id": args["user_id"] }))
+}
+```
+
+Runs at `/mcp` out of the box. Guide: [MCP Server](https://digiator42.github.io/GritShield/docs/12_mcp_server/) · runnable example: [`examples/mcp_server`](examples/mcp_server)
+
 ## Documentation
 
 The full documentation is available [here](https://digiator42.github.io/GritShield/).
@@ -68,7 +84,9 @@ The full documentation is available [here](https://digiator42.github.io/GritShie
 
 * 🔐 **RBAC + Capabilities** – Fine‑grained role-based and capability-based access control with compile‑time verification.
 
-* 🧩 **Compile‑Time Macros** – All the magic happens at compile time. Zero runtime reflection, maximum performance.
+* 🧩 **Compile‑Time Macros** – All the magic happens at compile time. Zero runtime reflection, maximum performance.
+
+* 🤖 **Native MCP Server** – Turn any function into an AI agent tool with `#[mcp_tool]`, `#[mcp_resource]` and `#[mcp_prompt]`. Ships SSE, streamable HTTP and stdio transports, a per‑tool kill switch, and a capability manager at `/admin/mcp`.
 
 
 ## License
