@@ -4,3 +4,4 @@ pub mod matcher;
 pub mod middleware;
 pub mod fs;
 pub mod admin;
+pub mod mcp;

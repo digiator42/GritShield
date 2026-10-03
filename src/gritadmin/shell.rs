@@ -190,6 +190,13 @@ pub fn admin_shell(title: &str, content: Markup, is_htmx: bool) -> Response {
                                hx-indicator="body"
                                hx-push-url="true"
                                class="block p-2 hover:bg-gray-800 rounded transition text-gray-400" { "🔒 Security Settings" }
+
+                            a href="/admin/mcp"
+                               hx-get="/admin/mcp"
+                               hx-target="#main-content"
+                               hx-indicator="body"
+                               hx-push-url="true"
+                               class="block p-2 hover:bg-gray-800 rounded transition text-gray-400" { "🤖 MCP Capabilities" }
                             
                             hr class="border-gray-800 my-4";
 

@@ -1,7 +1,9 @@
 use crate::{
     database::repository::transaction::{CURRENT_EVENT_BUS, CURRENT_JOB_QUEUE},
     error,
-    http::{request::HttpMethod, request::Request, response::Response, FormData},
+    http::{
+        request::HttpMethod, request::Request, response::Response, sse, FormData, ResponseBody,
+    },
     middleware::MiddlewareResult,
     routing::{
         engine::{RequestContext, Router, RoutingResult},
@@ -282,6 +284,37 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
 
                 if let Ok(locked_jar) = jar.lock() {
                     response = locked_jar.clone().commit(response);
+                }
+
+                // A streaming body (SSE) is pumped incrementally and holds the
+                // socket open for its whole lifetime, so it bypasses both the
+                // buffered `resolve()` path and the keep-alive loop below.
+                if response.is_streaming() {
+                    // Serialize the head while `response` is still whole, then
+                    // take ownership of the stream body.
+                    let head = response.to_stream_head_bytes("text/event-stream; charset=utf-8");
+
+                    if let ResponseBody::Stream(sse) = response.body {
+                        let keep_alive = sse.keep_alive();
+
+                        if stream.write_all(&head).await.is_err() {
+                            break;
+                        }
+
+                        // `response` is consumed here, so the only remaining
+                        // sender is whatever long-lived producer owns the
+                        // session. When `pump` returns, that producer has
+                        // genuinely gone away.
+                        if sse::pump(&mut stream, sse, keep_alive).await.is_err() {
+                            break;
+                        }
+                    }
+
+                    router
+                        .telemetry
+                        .active_connections
+                        .fetch_sub(1, Ordering::Relaxed);
+                    return;
                 }
 
                 let (bytes, mime) = response.resolve();

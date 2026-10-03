@@ -13,9 +13,10 @@ categories = ["web-programming::http-server"]
 
 [features]
 # Users default opt-in.
-default = []
+default = ["mcp"]
 admin = []
 swagger = []
+mcp = []
 validator = ["dep:validator"]
 
 # Database driver features mapping to both SeaORM core and migration crates
@@ -34,7 +35,8 @@ serde_json = "1.0"
 uuid = { version = "1.0", features = ["v4"] }
 pulldown-cmark = "0.9"
 maud = "0.25"
-gritshield_macros = { version = "0.2.2" }
+# The macro crate lives in-tree; `version` is retained so publishing still works.
+gritshield_macros = { version = "0.2.2", path = "src/gritshield_macros" }
 inventory = "0.3"
 notify = "4.0"
 

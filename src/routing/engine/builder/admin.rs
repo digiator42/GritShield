@@ -25,14 +25,14 @@ use {
     },
     crate::gritadmin::{
         admin_metrics_api_handler, admin_metrics_html_handler, admin_security_matrix_view_handler,
-        dashboard::handle_create_table_dynamic, dashboard::responses::*,
+        dashboard::handle_create_table_dynamic, dashboard::responses::*, mcp::*,
     },
     crate::log_route,
     crate::prelude::*,
     std::sync::Arc,
 };
 
-fn method_color(method: &str) -> colored::ColoredString {
+pub fn method_color(method: &str) -> colored::ColoredString {
     match method {
         "GET" => method.green(),
         "POST" => method.blue(),
@@ -114,6 +114,9 @@ impl Router {
             "/admin/login",
             "/admin/api/login",
             "/admin/api/logout",
+            "/admin/mcp",
+            "/admin/api/mcp",
+            TOGGLE_PATH,
         ];
         all_paths.extend(static_routes.iter().map(|s| s.to_string()));
 
@@ -344,6 +347,26 @@ impl Router {
             HttpMethod::GET,
             "/admin/settings/security",
             admin_security_matrix_view_handler,
+            None,
+        );
+
+        // MCP capability manager
+        log_route!("/admin/mcp", max_len, "GET");
+        self.add_route(HttpMethod::GET, "/admin/mcp", admin_mcp_page_handler, None);
+
+        log_route!("/admin/api/mcp", max_len, "GET");
+        self.add_route(
+            HttpMethod::GET,
+            "/admin/api/mcp",
+            admin_mcp_api_handler,
+            None,
+        );
+
+        log_route!(TOGGLE_PATH, max_len, "POST");
+        self.add_route(
+            HttpMethod::POST,
+            TOGGLE_PATH,
+            admin_mcp_toggle_handler,
             None,
         );
 

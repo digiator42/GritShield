@@ -4,6 +4,7 @@ pub mod repositories;
 pub mod metrics_render;
 pub mod auth;
 pub mod dashboard;
+pub mod mcp;
 
 pub use shell::admin_shell;
 pub use dashboard::*;
