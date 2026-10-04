@@ -105,10 +105,21 @@ pub fn expand_admin(input: DeriveInput) -> syn::Result<TokenStream> {
         .map(|s| LitStr::new(s, proc_macro2::Span::call_site()))
         .collect();
 
+    // One route path, built from the repository-derived slug, shared by the
+    // runtime model registry and the schema registry below. The admin handlers
+    // build their links from the same slug, so deriving the path from the
+    // (usually plural) table name anywhere in here would leave the grid
+    // pointing at routes that were never registered.
+    let route_path_lit = LitStr::new(
+        &format!("/admin/{}", route_slug),
+        proc_macro2::Span::call_site(),
+    );
+
     let ctor_registration_block = ctor_registry::generate_registration(
         name,
         &entity_module,
         &route_slug,
+        &route_path_lit,
         &searchable_literals,
         is_internal,
     );
@@ -135,11 +146,6 @@ pub fn expand_admin(input: DeriveInput) -> syn::Result<TokenStream> {
         .iter()
         .map(|s| LitStr::new(s, proc_macro2::Span::call_site()))
         .collect();
-
-    let route_path_lit = LitStr::new(
-        &format!("/admin/{}", route_slug),
-        proc_macro2::Span::call_site(),
-    );
 
     let register_fn_name = Ident::new(
         &format!("register_repository_{}", route_slug),

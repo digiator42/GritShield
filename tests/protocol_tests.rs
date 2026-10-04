@@ -254,9 +254,63 @@ fn test_parsed_request_content_type_is_reachable() {
         HashMap::new(),
     );
 
-    assert_eq!(
+assert_eq!(
         req.header("content-type").and_then(|v| v.first()),
         Some(&"application/json".to_string()),
         "connection.rs builds ctx.content_type through this lookup"
     );
+}
+
+fn head_of(response: &Response) -> String {
+    let (bytes, mime) = response.resolve();
+    let raw = String::from_utf8(response.to_bytes(&bytes, &mime)).unwrap();
+    raw.lines().take_while(|l| !l.is_empty()).collect::<Vec<_>>().join("\n")
+}
+
+/// `resolve()` only knows the body variant, so an `Html` body always implies
+/// `text/html`. The admin CSV export sets `Content-Type: text/csv` on such a
+/// response, and `to_bytes` used to skip every `content-type` header while
+/// emitting the variant's mime -- so the download was served as HTML.
+#[test]
+fn test_explicit_content_type_header_is_not_discarded() {
+    let mut response = Response::new(200, Sanitizer::trust("Id,Sku\n1,BOLT-001\n"));
+    response
+        .headers
+        .push(("Content-Type".to_string(), "text/csv; charset=utf-8".to_string()));
+
+    let head = head_of(&response);
+
+    assert_eq!(
+        head.matches("Content-Type:").count(),
+        1,
+        "one Content-Type only, or the browser picks one at random:\n{head}"
+    );
+    assert!(
+        head.contains("Content-Type: text/csv; charset=utf-8"),
+        "the handler's declared type must win over the body variant:\n{head}"
+    );
+    assert!(
+        !head.contains("text/html"),
+        "text/html is the variant default and must not reappear:\n{head}"
+    );
+}
+
+/// Same rule, matched without regard to case -- `parse` lowercases incoming
+/// header names, so a handler reading a value back out of `ctx.req` and pushing
+/// it back onto the response produces a lowercase key.
+#[test]
+fn test_lowercase_content_type_header_is_honoured() {
+    let mut response = Response::new(200, Sanitizer::trust("{}"));
+    response
+        .headers
+        .push(("content-type".to_string(), "application/json".to_string()));
+
+    assert!(head_of(&response).contains("Content-Type: application/json"));
+}
+
+/// The fallback must still work: no explicit header means the variant's mime.
+#[test]
+fn test_resolved_content_type_is_used_when_no_header_is_set() {
+    let response = Response::new(200, Sanitizer::trust("<h1>hi</h1>"));
+    assert!(head_of(&response).contains("Content-Type: text/html"));
 }

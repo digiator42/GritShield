@@ -1,0 +1,33 @@
+[package]
+name = "admin_panel"
+version = "0.1.0"
+edition = "2021"
+description = "GritShield admin panel developer guide: exposing models for CRUD, auth, and what the dashboard reads."
+
+[dependencies]
+# `admin` mounts the /admin surface -- see the note in src/main.rs about how
+# little wiring that actually requires.
+# `sqlite` supplies the driver for the in-memory database the example falls back
+# to when DATABASE_URL is unset, so `cargo run` needs no configuration at all.
+gritshield = { path = "../../", features = ["admin", "sqlite"] }
+
+tokio = { version = "1.0", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+
+# The entity is a normal SeaORM entity, so the example drives SeaORM directly
+# rather than through `gritshield::deps`, which is not a public re-export.
+sea-orm = { version = "1.1.0", features = [
+    "runtime-tokio-native-tls",
+    "sqlx-sqlite",
+    "with-chrono",
+    "with-json",
+] }
+
+# `#[derive(GritAdmin)]` expands to a `#[ctor]` startup registration, and a
+# `#[ctor]` attribute resolves against the crate being compiled. Without this
+# in *your* Cargo.toml the derive fails with `cannot find 'ctor' in the crate
+# root`, which points nowhere near the cause. `examples/routing` hits the same
+# thing through `#[catch]`.
+ctor = "1.0.7"
