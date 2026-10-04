@@ -519,12 +519,15 @@ impl ApiController {
     pub async fn test_swagger(ctx: RequestContext) -> Response {
         let db = ctx.db.as_deref().unwrap().clone();
 
-        let data = ctx.form.fields;
-
         let user_repo = UserRepository { db: db.clone() };
 
+        let email = match ctx.form.get_plain_str("email") {
+            Some(email) => email.to_string(),
+            None => return Response::bad_request("Missing email"),
+        };
+
         let sea_user_with_posts = user_repo
-            .find_by_email(data["email"].as_str())
+            .find_by_email(email)
             .with_posts()
             .await
             .unwrap();

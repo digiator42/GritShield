@@ -5,6 +5,12 @@ use colored::*;
 // shared dependency if EITHER feature is enabled
 #[cfg(any(feature = "swagger", feature = "admin"))]
 use crate::database::repository::registry::AdminHandlerFn;
+// `register_swagger_routes` builds a `Response` and logs its two routes, so
+// these two are not admin-only. Leaving them inside the `admin` gate made the
+// `swagger` feature fail to compile on its own with `cannot find type Response`
+// and `cannot find macro log_route`.
+#[cfg(any(feature = "swagger", feature = "admin"))]
+use {crate::log_route, crate::prelude::*};
 // Swagger-specific items
 #[cfg(feature = "swagger")]
 use {
@@ -27,8 +33,6 @@ use {
         admin_metrics_api_handler, admin_metrics_html_handler, admin_security_matrix_view_handler,
         dashboard::handle_create_table_dynamic, dashboard::responses::*, mcp::*,
     },
-    crate::log_route,
-    crate::prelude::*,
     std::sync::Arc,
 };
 

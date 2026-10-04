@@ -13,6 +13,7 @@
 - [Routing](04_routing/index.md)
   - [Dynamic Routes](04_routing/dynamic-routes.md)
   - [Middleware](04_routing/middleware.md)
+  - [OpenAPI / Swagger](04_routing/openapi_swagger.md)
 
 - [Admin Panel](06_admin_panel/index.md)
 

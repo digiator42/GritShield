@@ -14,8 +14,8 @@ pub struct IssueCreate;
 pub struct IssueDelete;
 pub struct ProjectAdmin;
 pub struct ViewBoard;
-pub struct ManageBilling;  // ✅ Add this
-pub struct ViewLogs;       // ✅ Add this
+pub struct ManageBilling;  
+pub struct ViewLogs;       
 pub struct SystemAdmin; 
 
 // One single source of truth grouped by capability matching your endpoint attributes!
