@@ -35,6 +35,7 @@
 - [Database](10_database/index.md)
   - [Migrations](10_database/migrations.md)
 
+- [MCP Server](12_mcp_server/index.md)
+
 - [Deployment](11_deployment/index.md)
 
-- [MCP Server](12_mcp_server/index.md)
