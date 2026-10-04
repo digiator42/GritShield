@@ -204,3 +204,26 @@ pub async fn admin_panel(ctx: RequestContext) -> Response {
 ```
 
 Gritshield checks dyncamically for inheritance roles first if defined, falling back to fixed role checks, giving you zero boilerplate rbac helper.
+
+The `role` attribute is enforced in the connection loop *before* your handler is
+called (`src/http/connection.rs`), so a handler cannot forget it. A failure is
+answered with:
+
+```json
+{ "error": "Access Denied: Missing required operational role clearance 'Admin'." }
+```
+
+## Runnable example
+
+[`examples/rbac_caps`](https://github.com/digiator42/GritShield/tree/main/examples/rbac_caps)
+logs in as five roles and measures the whole matrix - role attribute, inline
+`require_role` guard and capability tokens - with no database:
+
+```bash
+cargo run --manifest-path examples/rbac_caps/Cargo.toml
+```
+
+Note that `has_fixed_role` above is *not* the tree: it applies a fixed
+`Admin > Operator > Auditor` ladder compiled into the framework. Prefer
+`has_role` with an explicit `add_role_inheritance` tree, which you can read in
+`main.rs`.

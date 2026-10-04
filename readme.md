@@ -61,11 +61,12 @@ Each guide is a standalone crate that prints what it is doing as it starts.
 | [routing](examples/routing) | 8081 | nothing | Controllers, params, middleware, custom 404/405 |
 | [admin_panel](examples/admin_panel) | 8082 | nothing | Generated CRUD UI, admin login, audit log, CSV export |
 | [openapi_swagger](examples/openapi_swagger) | 8083 | nothing | Generated OpenAPI spec and Swagger UI from your routes |
+| [rbac_caps](examples/rbac_caps) | 8084 | nothing | Roles, inheritance tree, capability tokens |
 | [basic_crud](examples/basic_crud) | 8080 | Redis | Repository layer, query DSL, dependency injection |
 | [mcp_server](examples/mcp_server) | 8080 | nothing | Exposing functions as AI agent tools |
 
-The first four use separate ports and can run at the same time; the last two also
-bind 8080, so stop whichever is already there.
+The first five use separate ports and can run at the same time; the last two
+also bind 8080, so stop whichever is already there.
 
 ```bash
 cargo run --manifest-path examples/routing/Cargo.toml

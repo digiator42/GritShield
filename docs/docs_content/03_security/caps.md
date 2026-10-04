@@ -63,13 +63,22 @@ pub struct ViewLogs;
 
 ```rust
 // Declare the single source of truth for capability authorizations.
-// Call this exactly ONCE in your application `ROOT` (main/lib).
+// One invocation per application; a dedicated module (src/security.rs) works
+// as well as main.rs, and keeps the matrix out of your wiring.
 declare_security_caps! {
     ManageBilling => [Admin, Manager, Operator],
     DeleteUser    => [Admin],
     ViewLogs      => [Admin, Manager, Auditor],
 }
 ```
+
+> [!IMPORTANT]
+> - `#[cap(A, B)]` is **OR** logic: the session role only has to satisfy one of
+>   the listed capabilities. It is also the **only** `#[cap]` attribute allowed
+>   per handler - a second one fails to compile with `cannot find attribute
+>   `cap` in this scope`, so put every token in a single attribute.
+> - `#[cap(..)]` and `role = "..."` on the same route are independent checks,
+>   both of which must pass.
 
 create `src/controllers/billing.rs`
 
@@ -99,3 +108,13 @@ impl BillingController {
 > [!IMPORTANT]
 > - `Admin`, `Manager` and `Auditor` can check logs `/api/billing/audit-logs`, `Operator` can't.
 > - `Admin`, `Manager`, `Auditor` and `Operator` can process a refund, Access is granted if the user's role satisfies any of the declared capabilities:
+
+## Runnable example
+
+[`examples/rbac_caps`](https://github.com/digiator42/GritShield/tree/main/examples/rbac_caps)
+walks five roles across four authorization styles and prints the measured
+allow/deny matrix:
+
+```bash
+cargo run --manifest-path examples/rbac_caps/Cargo.toml
+```
