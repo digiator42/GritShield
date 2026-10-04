@@ -58,16 +58,10 @@ pub async fn post_handler(ctx: RequestContext) -> Response {
     };
 
     let form_data = ctx.req.parse_form_body();
-    let username = form_data
-        .fields
-        .get("username")
-        .map(|s| s.as_str().trim())
-        .unwrap_or("");
-    let password = form_data
-        .fields
-        .get("password")
-        .map(|s| s.as_str().trim())
-        .unwrap_or("");
+    // `fields` holds `Vec<UntrustedString>` -- one entry per repeated key --
+    // so read the first value through the accessor rather than indexing.
+    let username = form_data.get_plain_str("username").unwrap_or("").trim();
+    let password = form_data.get_plain_str("password").unwrap_or("").trim();
 
     // Crypto confirmation sequence matches hash validation
     if password.trim() == "letmein" {

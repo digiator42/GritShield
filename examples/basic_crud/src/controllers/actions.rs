@@ -10,8 +10,8 @@ use sea_orm::ConnectionTrait;
     color = "text-emerald-400"
 )]
 async fn publish_posts(ctx: RequestContext) -> Response {
-    let ids = ctx.form.fields.get("ids").unwrap();
-    let ids: Vec<&str> = ids.as_str().split(',').filter(|s| !s.is_empty()).collect();
+    let raw_ids = ctx.form.get_plain_str("ids").unwrap_or_default();
+    let ids: Vec<&str> = raw_ids.split(',').filter(|s| !s.is_empty()).collect();
 
     let db = match ctx.db.clone() {
         Some(d) => d,
@@ -51,8 +51,8 @@ async fn publish_posts(ctx: RequestContext) -> Response {
     color = "text-amber-400"
 )]
 async fn archive_posts(ctx: RequestContext) -> Response {
-    let ids = ctx.form.fields.get("ids").unwrap();
-    let ids: Vec<&str> = ids.as_str().split(',').filter(|s| !s.is_empty()).collect();
+    let raw_ids = ctx.form.get_plain_str("ids").unwrap_or_default();
+    let ids: Vec<&str> = raw_ids.split(',').filter(|s| !s.is_empty()).collect();
 
     let db = match ctx.db.clone() {
         Some(d) => d,
@@ -85,8 +85,8 @@ async fn archive_posts(ctx: RequestContext) -> Response {
 /// Delete selected posts permanently
 #[action(table = "posts", label = "delete", icon = "🗑️", color = "text-red-400")]
 async fn delete_posts(ctx: RequestContext) -> Response {
-    let ids = ctx.form.fields.get("ids").unwrap();
-    let ids: Vec<&str> = ids.as_str().split(',').filter(|s| !s.is_empty()).collect();
+    let raw_ids = ctx.form.get_plain_str("ids").unwrap_or_default();
+    let ids: Vec<&str> = raw_ids.split(',').filter(|s| !s.is_empty()).collect();
 
     let db = match ctx.db.clone() {
         Some(d) => d,

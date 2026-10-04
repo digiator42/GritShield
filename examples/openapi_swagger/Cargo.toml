@@ -1,0 +1,22 @@
+[package]
+name = "openapi_swagger"
+version = "0.1.0"
+edition = "2021"
+description = "GritShield OpenAPI/Swagger developer guide: documenting routes and request bodies without writing a spec."
+
+[dependencies]
+# `swagger` is the only feature this example needs. It serves `/admin/docs`
+# (Swagger UI) and `/admin/docs/openapi.json` (the spec) from the route
+# registry, so there is no spec file to maintain and no annotation to add to
+# the routes you already have.
+gritshield = { path = "../../", features = ["swagger"] }
+
+tokio = { version = "1.0", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# `#[controller]` and the per-route `#[get]` / `#[post]` attributes register
+# themselves into an inventory at startup, which is what the spec generator
+# reads. Without this in *your* Cargo.toml the derive fails with `cannot find
+# 'ctor' in the crate root`.
+ctor = "1.0.7"
