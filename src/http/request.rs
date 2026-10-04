@@ -92,6 +92,32 @@ impl Request {
         }
     }
 
+    /// Case-insensitive header lookup.
+    ///
+    /// A plain `headers.get(..)` is a trap here, because the map is populated two
+    /// different ways:
+    ///
+    /// * `parse` lowercases every incoming name, so live traffic only ever has
+    ///   `content-type`.
+    /// * `fill` stores the caller's casing verbatim, so a `Request` built in a
+    ///   test with `"Content-Type"` keeps the capital letters.
+    ///
+    /// HTTP header names are case-insensitive (RFC 9110 §5.1), so neither casing
+    /// should be observable to a lookup. This checks the exact name first, then
+    /// the lowercased form, then falls back to a scan for anything that differs
+    /// only in case.
+    pub fn header(&self, name: &str) -> Option<&Vec<String>> {
+        self.headers
+            .get(name)
+            .or_else(|| self.headers.get(&name.to_lowercase()))
+            .or_else(|| {
+                self.headers
+                    .iter()
+                    .find(|(k, _)| k.eq_ignore_ascii_case(name))
+                    .map(|(_, v)| v)
+            })
+    }
+
     pub fn fill(
         method: HttpMethod,
         path: String,

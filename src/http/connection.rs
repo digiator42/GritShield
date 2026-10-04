@@ -55,9 +55,7 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
                 let start_time = std::time::Instant::now();
 
                 let keep_alive = req
-                    .headers
-                    .get("connection")
-                    .or_else(|| req.headers.get("Connection"))
+                    .header("connection")
                     // header values are Vec<String>, so check if any value equals "close" (case-insensitive)
                     .map_or(true, |v| !v.iter().any(|s| s.eq_ignore_ascii_case("close")));
 
@@ -74,16 +72,22 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
                     _ => req.parse_form_body(),
                 };
 
-                let cookie_header = req
-                    .headers
-                    .get("cookie")
-                    .or_else(|| req.headers.get("Cookie"))
-                    .and_then(|v| v.get(0));
+                let cookie_header = req.header("cookie").and_then(|v| v.get(0));
 
                 let jar = Arc::new(Mutex::new(CookieJar::new(
                     cookie_header,
                     router.secret_key.clone(),
                 )));
+
+                // Header names that arrived with the request. Request headers are
+                // lowercased during parsing (`Request::parse`), so normalising
+                // here makes the comparison below case-insensitive on both sides.
+                //
+                // This snapshot is what separates a header the *client* sent from
+                // one a *middleware* added while handling the request. Only the
+                // latter is eligible to be copied onto the response.
+                let request_header_names: std::collections::HashSet<String> =
+                    req.headers.keys().map(|k| k.to_lowercase()).collect();
 
                 let mut ctx = RequestContext {
                     params,
@@ -99,8 +103,7 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
                     db: router.db.clone(),
                     raw_body: req.body.clone(),
                     content_type: req
-                        .headers
-                        .get("content-type")
+                        .header("content-type")
                         .and_then(|v| v.first().cloned()),
                     req,
                     cookies: jar.clone(),
@@ -224,13 +227,10 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
                             let headers = ctx.headers.clone();
                             let mut response: Response = handler.call(ctx).await;
 
-                            for (key, values) in headers.iter() {
-                                for value in values.iter() {
-                                    if !response.headers.iter().any(|(k, _)| k == key) {
-                                        response.headers.push((key.clone(), value.clone()));
-                                    }
-                                }
-                            }
+                            // Carry forward the headers that middleware added while
+                            // handling this request — and only those. See
+                            // `Response::merge_middleware_headers`.
+                            response.merge_middleware_headers(&headers, &request_header_names);
 
                             response
                         }

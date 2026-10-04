@@ -69,6 +69,7 @@ pub enum HttpStatus {
     Unauthorized = 401,
     Forbidden = 403,
     NotFound = 404,
+    MethodNotAllowed = 405,
     Conflict = 409,
     UnprocessableEntity = 422,
     TooManyRequests = 429,
@@ -541,6 +542,49 @@ impl Response {
     pub fn with_headers(mut self, headers: Vec<(String, String)>) -> Self {
         self.headers.extend(headers);
         self
+    }
+
+    /// Merge in the headers a middleware added while handling the request.
+    ///
+    /// Middleware has no handle on the `Response` — the server builds it after the
+    /// handler returns — so the supported channel for a middleware to influence
+    /// the response is `ctx.headers`. This method turns that channel into actual
+    /// response headers, with two rules that the naive implementation got wrong:
+    ///
+    /// * **Client-sent headers are never reflected.** `request_header_names` is the
+    ///   set of names that arrived with the request. Copying the whole header map
+    ///   back would echo `Cookie` and `Authorization` into the response, putting a
+    ///   live session id or bearer token into any proxy or CDN cache that stores
+    ///   it. Only names *absent* from that set can have been added by middleware.
+    /// * **Existing headers win, case-insensitively.** HTTP header names are
+    ///   case-insensitive, so a handler that already set `X-Request-Id` must
+    ///   suppress a middleware's `x-request-id` rather than emit the pair.
+    ///
+    /// The collision check is per *name*, evaluated once before the values are
+    /// copied — checking inside the value loop would drop every value after the
+    /// first, since the first push would make the name look present.
+    ///
+    /// Comparison is done case-insensitively on both sides because request header
+    /// names are lowercased during parsing while middleware and handler code is
+    /// free to use any casing.
+    pub fn merge_middleware_headers(
+        &mut self,
+        middleware_headers: &std::collections::HashMap<String, Vec<String>>,
+        request_header_names: &std::collections::HashSet<String>,
+    ) {
+        for (key, values) in middleware_headers.iter() {
+            if request_header_names.contains(&key.to_lowercase()) {
+                continue;
+            }
+
+            if self.headers.iter().any(|(k, _)| k.eq_ignore_ascii_case(key)) {
+                continue;
+            }
+
+            for value in values {
+                self.headers.push((key.clone(), value.clone()));
+            }
+        }
     }
 
     /// Build a JSON response with a specific status code and data (returns the response)

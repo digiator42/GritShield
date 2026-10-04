@@ -124,10 +124,8 @@ impl RequestContext {
         // it out and left the active context session empty, it means the session expired!
         let had_cookie = self
             .req
-            .headers
-            .get("cookie")
-            .or_else(|| self.req.headers.get("Cookie"))
-            .map(|val| val.contains(&"GSESSION_ID".to_string()))
+            .header("cookie")
+            .map(|val| val.iter().any(|v| v.contains("GSESSION_ID")))
             .unwrap_or(false);
 
         had_cookie && self.session.is_none()
