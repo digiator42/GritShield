@@ -7,6 +7,7 @@ pub fn generate_registration(
     name: &Ident,
     entity_module: &TokenStream,
     route_slug: &str,
+    route_path_lit: &LitStr,
     searchable_literals: &[LitStr],
     is_internal: bool,
 ) -> TokenStream {
@@ -32,8 +33,13 @@ pub fn generate_registration(
 
             let table_slug: &'static str = #route_slug;
 
-            let route_path_str = format!("/admin/{}", table_name);
-            let route_path: &'static str = Box::leak(route_path_str.into_boxed_str());
+            // Supplied by the caller, which derives it from the repository name
+            // -- the same singular slug every handler uses to build its own
+            // links. Deriving it here from `table_name` instead registers the
+            // route at `/admin/products` while the grid points its search,
+            // export, update-cell and delete links at `/admin/product`, and the
+            // difference shows up as a 404 on the first cell edit.
+            let route_path: &'static str = #route_path_lit;
 
             let searchable_columns: Vec<&'static str> = vec![
                 #(

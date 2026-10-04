@@ -279,11 +279,12 @@ impl Response {
     pub fn new(status: u16, body: SafeHtml) -> Self {
         Response {
             status,
+            // No `Content-Type` here. The body variant already implies one and
+            // `resolve()` supplies it, so a default in `headers` would be a
+            // second source of truth -- and the earlier one, which silently won
+            // over any type a handler set explicitly (`to_bytes` takes the first
+            // matching header). Handlers that need a specific type push it.
             headers: vec![
-                (
-                    "Content-Type".to_string(),
-                    "text/html; charset=utf-8".to_string(),
-                ),
                 ("X-Content-Type-Options".to_string(), "nosniff".to_string()),
                 ("X-Frame-Options".to_string(), "DENY".to_string()),
             ],
@@ -313,6 +314,19 @@ impl Response {
     /// Serializes the response into raw bytes for the TCP stream safely
     pub fn to_bytes(&self, body_bytes: &[u8], content_type: &str) -> Vec<u8> {
         use std::io::Write;
+
+        // An explicit `Content-Type` header wins over the one implied by the
+        // body variant. `content_type` comes from `resolve()`, which only knows
+        // the variant -- an `Html` body is `text/html` regardless of intent, so
+        // a handler serving CSV or plain text from one has to be able to say so.
+        // Without this the header is skipped below and the declared type is
+        // silently lost.
+        let content_type = self
+            .headers
+            .iter()
+            .find(|(key, _)| key.eq_ignore_ascii_case("content-type"))
+            .map(|(_, value)| value.as_str())
+            .unwrap_or(content_type);
 
         // Write straight into the final buffer instead of building an intermediate
         // `String` through a chain of `format!`/`push_str` calls — each `format!`
