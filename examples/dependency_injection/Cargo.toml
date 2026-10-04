@@ -1,0 +1,17 @@
+[package]
+name = "dependency_injection"
+version = "0.1.0"
+edition = "2021"
+description = "GritShield dependency injection guide: the dynamic container and the compile-time container."
+
+[dependencies]
+# No features: both DI engines live in the core crate. Nothing here needs a
+# database driver, and the components are plain structs.
+gritshield = { path = "../../", default-features = false }
+
+tokio = { version = "1.0", features = ["full"] }
+serde_json = "1.0"
+
+# `#[component]` and the other inventory-backed macros register themselves
+# through a ctor hook at startup.
+ctor = "1.0.7"
