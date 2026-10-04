@@ -27,6 +27,7 @@ pub fn expand_grit_wire(input: DeriveInput) -> Result<TokenStream> {
 
     let mut trait_bounds = vec![];
     let mut static_resolutions = vec![];
+    let mut bindings = vec![];
 
     for field in fields {
         let field_name = field.ident.unwrap();
@@ -38,13 +39,25 @@ pub fn expand_grit_wire(input: DeriveInput) -> Result<TokenStream> {
             C: ::gritshield::core::ioc::HasComponent<#inner_type>
         });
 
+        // Bind every component through an explicitly typed local before the
+        // struct literal. Calling `container.get_component()` inline is
+        // ambiguous as soon as `C` has more than one `HasComponent<_>` bound:
+        // nothing in the expected type of a non-Arc field tells the compiler
+        // which trait's method to pick, and the derive failed with
+        // "type annotations needed" for any struct mixing Arc and plain fields.
+        let binding = quote::format_ident!("__wired_{}", field_name);
+        bindings.push(quote! {
+            let #binding: ::std::sync::Arc<#inner_type> =
+                <C as ::gritshield::core::ioc::HasComponent<#inner_type>>::get_component(container);
+        });
+
         if is_arc {
             static_resolutions.push(quote! {
-                #field_name: container.get_component()
+                #field_name: #binding
             });
         } else {
             static_resolutions.push(quote! {
-                #field_name: (*container.get_component()).clone()
+                #field_name: (*#binding).clone()
             });
         }
     }
@@ -60,6 +73,7 @@ pub fn expand_grit_wire(input: DeriveInput) -> Result<TokenStream> {
                 C: ::gritshield::core::ioc::StrictContainer,
                 #(#trait_bounds),*
             {
+                #(#bindings)*
                 std::sync::Arc::new(Self {
                     #(#static_resolutions),*
                 })
