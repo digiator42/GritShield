@@ -18,6 +18,9 @@ pub struct BroadcastMessage {
     pub from: String,
     pub content: String,
     pub timestamp: String,
+    /// Connection that published the message. It is skipped while fanning out so
+    /// the author does not receive their own message back.
+    pub origin: Option<usize>,
 }
 
 static BROADCAST: std::sync::OnceLock<broadcast::Sender<BroadcastMessage>> = std::sync::OnceLock::new();
@@ -29,32 +32,27 @@ fn get_broadcast() -> broadcast::Sender<BroadcastMessage> {
 }
 
 type ConnId = usize;
-static CONN_COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 static CONNECTIONS: std::sync::OnceLock<DashMap<ConnId, WsSink>> = std::sync::OnceLock::new();
 
 fn get_connections() -> &'static DashMap<ConnId, WsSink> {
     CONNECTIONS.get_or_init(DashMap::new)
 }
 
-fn broadcast_to_all(msg: &ChatMessage) {
+fn broadcast_to_all(msg: &ChatMessage, skip: Option<ConnId>) {
     let conns = get_connections();
     for entry in conns.iter() {
+        if Some(*entry.key()) == skip {
+            continue;
+        }
         let _ = entry.value().send(msg);
     }
 }
 
-fn register_conn(sink: WsSink) -> ConnId {
-    let id = CONN_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    get_connections().insert(id, sink);
-    id
+fn register_conn(sink: &WsSink) {
+    get_connections().insert(sink.id(), sink.clone());
 }
 
 fn unregister_conn(id: ConnId) {
-    get_connections().remove(&id);
-}
-
-#[allow(dead_code)]
-fn unregister_conn_unused(id: ConnId) {
     get_connections().remove(&id);
 }
 
@@ -69,7 +67,7 @@ fn start_broadcast_listener() {
                     text: broadcast_msg.content.clone(),
                     room: None,
                 };
-                broadcast_to_all(&msg);
+                broadcast_to_all(&msg, broadcast_msg.origin);
             }
         });
     });
@@ -80,9 +78,10 @@ struct EchoHandler;
 impl WebSocketHandler for EchoHandler {
     type Message = ChatMessage;
 
-    fn on_connect(&self, ctx: &RequestContext) -> BoxedWsFuture {
+    fn on_connect(&self, ctx: &RequestContext, ws: &WsSink) -> BoxedWsFuture {
         let peer = ctx.peer_addr;
         info!("[WS] New echo connection from: {}", peer);
+        register_conn(ws);
         start_broadcast_listener();
         Box::pin(async move {})
     }
@@ -92,9 +91,9 @@ impl WebSocketHandler for EchoHandler {
         let text = msg.text.clone();
         let room = msg.room.clone();
         let peer = ctx.peer_addr;
-        let conn_id = register_conn(ws.clone());
 
         let broadcast_tx = get_broadcast();
+        let origin = ws.id();
 
         Box::pin(async move {
             info!("[WS] {} from {}: {}", text, user, peer);
@@ -110,14 +109,16 @@ impl WebSocketHandler for EchoHandler {
                 from: user,
                 content: text,
                 timestamp: chrono::Utc::now().to_rfc3339(),
+                origin: Some(origin),
             };
             let _ = broadcast_tx.send(broadcast_msg);
         })
     }
 
-    fn on_close(&self, ctx: &RequestContext) -> BoxedWsFuture {
+    fn on_close(&self, ctx: &RequestContext, ws: &WsSink) -> BoxedWsFuture {
         let peer = ctx.peer_addr;
         info!("[WS] Echo connection closed: {}", peer);
+        unregister_conn(ws.id());
         Box::pin(async move {})
     }
 
@@ -133,22 +134,24 @@ struct BroadcastHandler;
 impl WebSocketHandler for BroadcastHandler {
     type Message = ChatMessage;
 
-    fn on_connect(&self, ctx: &RequestContext) -> BoxedWsFuture {
+    fn on_connect(&self, ctx: &RequestContext, ws: &WsSink) -> BoxedWsFuture {
         let peer = ctx.peer_addr;
         info!("[WS] Broadcast connection from: {}", peer);
+        register_conn(ws);
         start_broadcast_listener();
         Box::pin(async move {})
     }
 
     fn on_message(&self, msg: ChatMessage, _ctx: &RequestContext, ws: WsSink) -> BoxedWsFuture {
-        let conn_id = register_conn(ws.clone());
         let broadcast_tx = get_broadcast();
+        let origin = ws.id();
 
         Box::pin(async move {
             let broadcast_msg = BroadcastMessage {
                 from: msg.user,
                 content: msg.text,
                 timestamp: chrono::Utc::now().to_rfc3339(),
+                origin: Some(origin),
             };
             let _ = broadcast_tx.send(broadcast_msg);
 
@@ -161,9 +164,10 @@ impl WebSocketHandler for BroadcastHandler {
         })
     }
 
-    fn on_close(&self, ctx: &RequestContext) -> BoxedWsFuture {
+    fn on_close(&self, ctx: &RequestContext, ws: &WsSink) -> BoxedWsFuture {
         let peer = ctx.peer_addr;
         info!("[WS] Broadcast connection closed: {}", peer);
+        unregister_conn(ws.id());
         Box::pin(async move {})
     }
 }
@@ -173,17 +177,18 @@ struct RoomHandler;
 impl WebSocketHandler for RoomHandler {
     type Message = ChatMessage;
 
-    fn on_connect(&self, ctx: &RequestContext) -> BoxedWsFuture {
+    fn on_connect(&self, ctx: &RequestContext, ws: &WsSink) -> BoxedWsFuture {
         let room = ctx.ws_param("room").map(|s| s.to_string()).unwrap_or_else(|| "default".into());
         let peer = ctx.peer_addr;
         info!("[WS] Room '{}' connection from: {}", room, peer);
+        register_conn(ws);
         start_broadcast_listener();
         Box::pin(async move {})
     }
 
     fn on_message(&self, msg: ChatMessage, ctx: &RequestContext, ws: WsSink) -> BoxedWsFuture {
         let room = ctx.ws_param("room").map(|s| s.to_string()).unwrap_or_else(|| "default".into());
-        let conn_id = register_conn(ws.clone());
+        let origin = ws.id();
 
         Box::pin(async move {
             info!("[WS] Room '{}' message from {}: {}", room, msg.user, msg.text);
@@ -195,18 +200,22 @@ impl WebSocketHandler for RoomHandler {
             };
             let _ = ws.send(&response);
 
-            broadcast_to_all(&ChatMessage {
-                user: "broadcast".into(),
-                text: format!("[room:{}] {}", room, msg.text),
-                room: Some(room),
-            });
+            broadcast_to_all(
+                &ChatMessage {
+                    user: "broadcast".into(),
+                    text: format!("[room:{}] {}", room, msg.text),
+                    room: Some(room),
+                },
+                Some(origin),
+            );
         })
     }
 
-    fn on_close(&self, ctx: &RequestContext) -> BoxedWsFuture {
+    fn on_close(&self, ctx: &RequestContext, ws: &WsSink) -> BoxedWsFuture {
         let room = ctx.ws_param("room").map(|s| s.to_string()).unwrap_or_else(|| "default".into());
         let peer = ctx.peer_addr;
         info!("[WS] Room '{}' connection closed: {}", room, peer);
+        unregister_conn(ws.id());
         Box::pin(async move {})
     }
 }

@@ -158,9 +158,13 @@ macro_rules! ws_handler {
         impl $crate::routing::websocket::WebSocketHandler for $name {
             type Message = $msg_type;
 
-            fn on_connect(&self, ctx: &$crate::routing::engine::RequestContext) -> $crate::routing::websocket::BoxedWsFuture {
+            fn on_connect(
+                &self,
+                ctx: &$crate::routing::engine::RequestContext,
+                ws: &$crate::routing::websocket::WsSink,
+            ) -> $crate::routing::websocket::BoxedWsFuture {
                 $(
-                    Box::pin($on_connect(ctx))
+                    Box::pin($on_connect(ctx, ws))
                 )?
                 $(
                     Box::pin(async {})
@@ -171,7 +175,7 @@ macro_rules! ws_handler {
                 &self,
                 msg: Self::Message,
                 ctx: &$crate::routing::engine::RequestContext,
-                ws: &mut $crate::routing::websocket::WsSink
+                ws: $crate::routing::websocket::WsSink,
             ) -> $crate::routing::websocket::BoxedWsFuture {
                 $(
                     Box::pin($on_message(msg, ctx, ws))
@@ -181,9 +185,13 @@ macro_rules! ws_handler {
                 )?
             }
 
-            fn on_close(&self, ctx: &$crate::routing::engine::RequestContext) -> $crate::routing::websocket::BoxedWsFuture {
+            fn on_close(
+                &self,
+                ctx: &$crate::routing::engine::RequestContext,
+                ws: &$crate::routing::websocket::WsSink,
+            ) -> $crate::routing::websocket::BoxedWsFuture {
                 $(
-                    Box::pin($on_close(ctx))
+                    Box::pin($on_close(ctx, ws))
                 )?
                 $(
                     Box::pin(async {})

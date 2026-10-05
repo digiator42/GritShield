@@ -5,7 +5,9 @@ use serde::{de::DeserializeOwned, Serialize};
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
+use std::time::Duration;
 use thiserror::Error;
 use tokio::net::TcpStream;
 use tokio_tungstenite::{tungstenite::Message, WebSocketStream};
@@ -26,13 +28,13 @@ pub fn register_ws_route(path: &str, handler: WsHandlerFn) {
 pub trait WebSocketHandler: Send + Sync + 'static {
     type Message: Serialize + DeserializeOwned + Send + 'static;
 
-    fn on_connect(&self, _ctx: &RequestContext) -> BoxedWsFuture {
+    fn on_connect(&self, _ctx: &RequestContext, _ws: &WsSink) -> BoxedWsFuture {
         Box::pin(async {})
     }
 
     fn on_message(&self, msg: Self::Message, ctx: &RequestContext, ws: WsSink) -> BoxedWsFuture;
 
-    fn on_close(&self, _ctx: &RequestContext) -> BoxedWsFuture {
+    fn on_close(&self, _ctx: &RequestContext, _ws: &WsSink) -> BoxedWsFuture {
         Box::pin(async {})
     }
 
@@ -41,14 +43,26 @@ pub trait WebSocketHandler: Send + Sync + 'static {
     }
 }
 
+static NEXT_CONN_ID: AtomicUsize = AtomicUsize::new(0);
+
 #[derive(Clone)]
 pub struct WsSink {
+    id: usize,
     sender: tokio::sync::mpsc::UnboundedSender<WsOutgoing>,
 }
 
 impl WsSink {
     pub fn new(sender: tokio::sync::mpsc::UnboundedSender<WsOutgoing>) -> Self {
-        Self { sender }
+        Self {
+            id: NEXT_CONN_ID.fetch_add(1, Ordering::Relaxed),
+            sender,
+        }
+    }
+
+    /// Stable identity of the connection this sink writes to. Use it to key a
+    /// registry of live connections: register on `on_connect`, drop on `on_close`.
+    pub fn id(&self) -> usize {
+        self.id
     }
 
     pub fn send<T: Serialize + Send + 'static>(&self, msg: &T) -> Result<(), WsError> {
@@ -96,37 +110,56 @@ pub struct WsConnection<H: WebSocketHandler> {
     handler: H,
     ctx: RequestContext,
     sink: WsSink,
-    rx: tokio::sync::mpsc::UnboundedReceiver<WsIncoming>,
-    incoming_tx: tokio::sync::mpsc::UnboundedSender<WsIncoming>,
     out_rx: Option<tokio::sync::mpsc::UnboundedReceiver<WsOutgoing>>,
 }
 
 impl<H: WebSocketHandler> WsConnection<H> {
     pub fn new(handler: H, ctx: RequestContext) -> (Self, WsSink) {
-        let (incoming_tx, rx) = tokio::sync::mpsc::unbounded_channel();
         let (out_tx, out_rx) = tokio::sync::mpsc::unbounded_channel();
         let sink = WsSink::new(out_tx);
         let conn = Self {
             handler,
             ctx,
             sink: sink.clone(),
-            rx,
-            incoming_tx,
             out_rx: Some(out_rx),
         };
         (conn, sink)
     }
 
-    pub async fn run(mut self, mut ws_stream: WebSocketStream<TcpStream>) {
-        self.handler.on_connect(&self.ctx).await;
+    async fn dispatch(&self, incoming: WsIncoming) {
+        match incoming {
+            WsIncoming::Message(msg) => match serde_json::from_str::<H::Message>(&msg) {
+                Ok(parsed) => {
+                    self.handler
+                        .on_message(parsed, &self.ctx, self.sink.clone())
+                        .await;
+                }
+                Err(e) => {
+                    self.handler
+                        .on_error(WsError::Serialize(e), &self.ctx)
+                        .await;
+                }
+            },
+            WsIncoming::Close => {}
+            WsIncoming::Error(e) => {
+                self.handler
+                    .on_error(WsError::Protocol(e), &self.ctx)
+                    .await;
+            }
+        }
+    }
+
+    pub async fn run(mut self, ws_stream: WebSocketStream<TcpStream>) {
+        self.handler.on_connect(&self.ctx, &self.sink).await;
 
         let (mut ws_tx, mut ws_rx) = ws_stream.split();
 
         let out_rx = self.out_rx.take().unwrap();
-        let out_tx = self.sink.sender.clone();
-        let sender_task = tokio::spawn(async move {
+        let writer_tx = self.sink.sender.clone();
+        let mut writer = tokio::spawn(async move {
             let mut out_rx = out_rx;
             while let Some(outgoing) = out_rx.recv().await {
+                let is_close = matches!(outgoing, WsOutgoing::Close);
                 let msg = match outgoing {
                     WsOutgoing::Text(t) => Message::Text(t.into()),
                     WsOutgoing::Binary(b) => Message::Binary(b.into()),
@@ -135,59 +168,49 @@ impl<H: WebSocketHandler> WsConnection<H> {
                     WsOutgoing::InternalPong(d) => Message::Pong(d.into()),
                     WsOutgoing::Close => Message::Close(None),
                 };
-                if ws_tx.send(msg).await.is_err() {
+                if ws_tx.send(msg).await.is_err() || is_close {
                     break;
                 }
             }
         });
 
-        let incoming_tx = self.incoming_tx.clone();
-        while let Some(msg) = ws_rx.next().await {
-            match msg {
-                Ok(Message::Text(t)) => {
-                    let _ = incoming_tx.send(WsIncoming::Message(t.to_string()));
-                }
+        // Reading and dispatching overlap on purpose: a handler only ever sees a
+        // frame after it has been read off the socket, so parking frames in a
+        // queue and only processing them once the peer went away leaves the
+        // client waiting on a reply that never arrives.
+        while let Some(frame) = ws_rx.next().await {
+            match frame {
+                Ok(Message::Text(t)) => self.dispatch(WsIncoming::Message(t.to_string())).await,
                 Ok(Message::Binary(b)) => {
-                    let _ = incoming_tx.send(WsIncoming::Message(String::from_utf8_lossy(&b).to_string()));
+                    let text = String::from_utf8_lossy(&b).into_owned();
+                    self.dispatch(WsIncoming::Message(text)).await;
                 }
-                Ok(Message::Close(_)) => {
-                    let _ = incoming_tx.send(WsIncoming::Close);
-                    break;
+                Ok(Message::Ping(payload)) => {
+                    let _ = writer_tx.send(WsOutgoing::InternalPong(payload));
                 }
-                Ok(Message::Ping(d)) => {
-                    let _ = out_tx.send(WsOutgoing::InternalPong(d));
-                }
-                Ok(Message::Pong(_)) => {}
-                Ok(Message::Frame(_)) => {}
+                Ok(Message::Pong(_)) | Ok(Message::Frame(_)) => {}
+                Ok(Message::Close(_)) => break,
                 Err(e) => {
-                    let _ = incoming_tx.send(WsIncoming::Error(e.to_string()));
+                    self.handler
+                        .on_error(WsError::Protocol(e.to_string()), &self.ctx)
+                        .await;
                     break;
                 }
             }
         }
 
-        while let Some(incoming) = self.rx.recv().await {
-            match incoming {
-                WsIncoming::Message(msg) => {
-                    match serde_json::from_str::<H::Message>(&msg) {
-                        Ok(parsed) => {
-                            self.handler.on_message(parsed, &self.ctx, self.sink.clone()).await;
-                        }
-                        Err(e) => {
-                            self.handler.on_error(WsError::Serialize(e), &self.ctx).await;
-                        }
-                    }
-                }
-                WsIncoming::Close => break,
-                WsIncoming::Error(e) => {
-                    self.handler.on_error(WsError::Protocol(e), &self.ctx).await;
-                    break;
-                }
-            }
-        }
+        let _ = writer_tx.send(WsOutgoing::Close);
+        self.handler.on_close(&self.ctx, &self.sink).await;
 
-        self.handler.on_close(&self.ctx).await;
-        let _ = sender_task.await;
+        // `WsSink` is cloneable, so a handler may still hold copies in a
+        // long-lived registry. Wait for the close frame to flush, then reclaim
+        // the writer instead of leaving it parked on a channel nobody drains.
+        if tokio::time::timeout(Duration::from_millis(500), &mut writer)
+            .await
+            .is_err()
+        {
+            writer.abort();
+        }
     }
 }
 
