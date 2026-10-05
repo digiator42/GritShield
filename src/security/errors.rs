@@ -2,6 +2,7 @@ use crate::http::response::Response;
 use crate::routing::engine::RequestContext;
 use crate::security::xss::Sanitizer;
 use futures::future::{BoxFuture, FutureExt};
+use core::fmt;
 use std::backtrace::Backtrace;
 use std::collections::HashMap;
 use std::sync::OnceLock;
@@ -85,6 +86,23 @@ impl ShieldError {
         Self::FormParsingError {
             message: msg,
             backtrace: Backtrace::capture(),
+        }
+    }
+}
+
+impl fmt::Display for ShieldError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ShieldError::Panic { message, .. } => write!(f, "Panic: {}", message),
+            ShieldError::DatabaseFailure { message, .. } => write!(f, "Database Failure: {}", message),
+            ShieldError::FormParsingError { message, .. } => write!(f, "Form Parsing Error: {}", message),
+            ShieldError::MethodNotAllowed => write!(f, "Method Not Allowed"),
+            ShieldError::UnauthorizedAccess => write!(f, "Unauthorized Access"),
+            ShieldError::BadRequest(reason) => write!(f, "Bad Request: {}", reason),
+            ShieldError::Forbidden => write!(f, "Forbidden"),
+            ShieldError::NotFound => write!(f, "Not Found"),
+            ShieldError::InternalError(reason) => write!(f, "Internal Error: {}", reason),
+            ShieldError::Custom { status, message } => write!(f, "Custom Error {}: {}", status, message),
         }
     }
 }

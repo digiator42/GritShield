@@ -59,6 +59,7 @@ pub mod deps {
     pub use futures;
     pub use futures_util;
     pub use once_cell;
+    pub use paste;
     pub use rust_decimal;
     pub use rust_decimal::Decimal;
     pub use sea_orm;
@@ -82,6 +83,7 @@ pub mod prelude {
     pub use crate::macros;
     pub use crate::routing::engine::{RequestContext, Router};
     pub use crate::routing::templates::TemplateEngine;
+    pub use crate::routing::websocket::{WebSocketHandler, WsError, WsSink, WsOutgoing, WsIncoming, WsConnection, BoxedWsFuture, path_matches, extract_ws_params};
     pub use crate::security::xss::Sanitizer;
 
     // Critical functions
@@ -94,6 +96,10 @@ pub mod prelude {
     pub use crate::action;
     pub use crate::controller;
     pub use crate::launch;
+    pub use crate::ws_handler;
+    pub use crate::ws_message;
+    pub use crate::register_ws;
+    pub use crate::{info, error, warn, debug, trace};
     #[cfg(feature = "admin")]
     pub use crate::GritAdmin;
     pub use crate::GritModel;
