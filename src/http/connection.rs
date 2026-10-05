@@ -7,11 +7,12 @@ use crate::{
     middleware::MiddlewareResult,
     routing::{
         engine::{RequestContext, Router, RoutingResult},
-        websocket::WS_REGISTRY,
+        websocket::{WS_REGISTRY, extract_ws_params},
     },
-    security::{cookies::CookieJar, errors::ShieldError, xss::Sanitizer},
+    security::{cookies::CookieJar, errors::ShieldError, xss::{Sanitizer, UntrustedString}},
     warn,
 };
+use futures_util::{SinkExt, StreamExt};
 use futures::future::FutureExt;
 use std::{
     collections::HashMap,
@@ -155,52 +156,70 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
                     .get("upgrade")
                     .map_or(false, |v| v.iter().any(|val| val == "websocket"))
                 {
-                    let target_ws_handler = {
+                    let ws_handler = {
                         let ws_routes = WS_REGISTRY.lock().unwrap();
-                        ws_routes.get(&ctx.req.path).cloned()
-                    };
+                        let mut matched_handler: Option<crate::routing::websocket::WsHandlerFn> = None;
+                        let mut matched_path = String::new();
 
-                    if let Some(ws_handler) = target_ws_handler {
-                        if let Some(keys) = ctx.req.headers.get("sec-websocket-key") {
-                                if let Some(key) = keys.get(0) {
-                                    let accept_hash = tokio_tungstenite::tungstenite::handshake::derive_accept_key(
-                                        key.as_bytes(),
-                                    );
-
-                            let handshake_response = format!(
-                                "HTTP/1.1 101 Switching Protocols\r\n\
-                                Upgrade: websocket\r\n\
-                                Connection: Upgrade\r\n\
-                                Sec-WebSocket-Accept: {}\r\n\r\n",
-                                accept_hash
-                            );
-
-                            if stream
-                                .write_all(handshake_response.as_bytes())
-                                .await
-                                .is_err()
-                            {
+                        for (path, handler) in ws_routes.iter() {
+                            if crate::routing::websocket::path_matches(&ctx.req.path, path) {
+                                matched_handler = Some(*handler);
+                                matched_path = path.clone();
                                 break;
                             }
+                        }
 
-                            let ws_stream = tokio_tungstenite::WebSocketStream::from_raw_socket(
-                                stream,
-                                tokio_tungstenite::tungstenite::protocol::Role::Server,
-                                None,
-                            )
-                            .await;
-
-                            tokio::spawn(async move {
-                                ws_handler(ws_stream, ctx).await;
-                            });
-
+                        if let Some(h) = matched_handler {
+                            let ws_params = extract_ws_params(&ctx.req.path, &matched_path);
+                            for (k, v) in ws_params {
+                                ctx.params.insert(k, UntrustedString::new(v));
                             }
+                            Some(h)
+                        } else {
+                            None
+                        }
+                    };
 
-                            router
-                                .telemetry
-                                .active_connections
-                                .fetch_sub(1, Ordering::Relaxed);
-                            return;
+                    if let Some(ws_handler) = ws_handler {
+                        if let Some(keys) = ctx.req.headers.get("sec-websocket-key") {
+                            if let Some(key) = keys.get(0) {
+                                let accept_hash = tokio_tungstenite::tungstenite::handshake::derive_accept_key(
+                                    key.as_bytes(),
+                                );
+
+                                let handshake_response = format!(
+                                    "HTTP/1.1 101 Switching Protocols\r\n\
+                                    Upgrade: websocket\r\n\
+                                    Connection: Upgrade\r\n\
+                                    Sec-WebSocket-Accept: {}\r\n\r\n",
+                                    accept_hash
+                                );
+
+                                if stream
+                                    .write_all(handshake_response.as_bytes())
+                                    .await
+                                    .is_err()
+                                {
+                                    break;
+                                }
+
+                                let ws_stream = tokio_tungstenite::WebSocketStream::from_raw_socket(
+                                    stream,
+                                    tokio_tungstenite::tungstenite::protocol::Role::Server,
+                                    None,
+                                )
+                                .await;
+
+                                tokio::spawn(async move {
+                                    ws_handler(ws_stream, ctx).await;
+                                });
+
+                                router
+                                    .telemetry
+                                    .active_connections
+                                    .fetch_sub(1, Ordering::Relaxed);
+                                return;
+                            }
                         }
                     }
                 }

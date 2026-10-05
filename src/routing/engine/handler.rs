@@ -1,4 +1,4 @@
-use crate::http::response::Response;
+use crate::http::{IntoResponseBody, response::Response};
 use crate::security::errors::ShieldError;
 use crate::security::xss::Sanitizer;
 use super::context::RequestContext;
@@ -63,6 +63,22 @@ impl IntoResponse for ShieldResult<Response> {
                 Response::new(status, Sanitizer::trust(&msg_string))
             }
         }
+    }
+}
+
+impl IntoResponseBody for ShieldError {
+    fn convert(self) -> (crate::http::ResponseBody, String) {
+        let status = self.status_code();
+        let body = format!("Error {}: {}", status, self);
+        (crate::http::ResponseBody::Html(Sanitizer::trust(&body)), body)
+    }
+}
+
+impl IntoResponse for ShieldError {
+    fn into_response(self) -> Response {
+        let status = self.status_code();
+        let (_, message) = self.convert();
+        Response::new(status, Sanitizer::trust(&message))
     }
 }
 

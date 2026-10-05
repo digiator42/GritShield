@@ -135,10 +135,79 @@ macro_rules! register_page {
 macro_rules! register_ws {
     ($path:expr, $handler:expr) => {
         #[$crate::ctor::ctor(unsafe)]
-        fn init_ws_route() {
+        fn __gritshield_ws_route_init() {
             let wrapped: $crate::routing::websocket::WsHandlerFn =
                 |stream, ctx| Box::pin($handler(stream, ctx));
             $crate::routing::websocket::register_ws_route($path, wrapped);
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! ws_handler {
+    (
+        $name:ident,
+        message = $msg_type:ty,
+        $(on_connect = $on_connect:expr,)?
+        $(on_message = $on_message:expr,)?
+        $(on_close = $on_close:expr,)?
+        $(on_error = $on_error:expr,)?
+    ) => {
+        struct $name;
+
+        impl $crate::routing::websocket::WebSocketHandler for $name {
+            type Message = $msg_type;
+
+            fn on_connect(&self, ctx: &$crate::routing::engine::RequestContext) -> $crate::routing::websocket::BoxedWsFuture {
+                $(
+                    Box::pin($on_connect(ctx))
+                )?
+                $(
+                    Box::pin(async {})
+                )?
+            }
+
+            fn on_message(
+                &self,
+                msg: Self::Message,
+                ctx: &$crate::routing::engine::RequestContext,
+                ws: &mut $crate::routing::websocket::WsSink
+            ) -> $crate::routing::websocket::BoxedWsFuture {
+                $(
+                    Box::pin($on_message(msg, ctx, ws))
+                )?
+                $(
+                    Box::pin(async {})
+                )?
+            }
+
+            fn on_close(&self, ctx: &$crate::routing::engine::RequestContext) -> $crate::routing::websocket::BoxedWsFuture {
+                $(
+                    Box::pin($on_close(ctx))
+                )?
+                $(
+                    Box::pin(async {})
+                )?
+            }
+
+            fn on_error(&self, err: $crate::routing::websocket::WsError, ctx: &$crate::routing::engine::RequestContext) -> $crate::routing::websocket::BoxedWsFuture {
+                $(
+                    Box::pin($on_error(err, ctx))
+                )?
+                $(
+                    Box::pin(async {})
+                )?
+            }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! ws_message {
+    ($name:ident { $( $field:ident: $type:ty ),* $(,)? }) => {
+        #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+        pub struct $name {
+            $( pub $field: $type, )*
         }
     };
 }
