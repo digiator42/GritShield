@@ -49,33 +49,7 @@ Run with `cargo run` and open `http://localhost:8080/hello` / `http://localhost:
 
 ## Documentation
 
-The full documentation is available [here](https://digiator42.github.io/GritShield/).
-
-## Runnable Examples
-
-Each guide is a standalone crate that prints what it is doing as it starts.
-
-| Example | Port | Needs | What it covers |
-|---------|------|-------|----------------|
-| [security](examples/security) | 8080 | nothing | XSS sanitization, CSRF, rate limiting, IP blacklisting |
-| [routing](examples/routing) | 8081 | nothing | Controllers, params, middleware, custom 404/405 |
-| [admin_panel](examples/admin_panel) | 8082 | nothing | Generated CRUD UI, admin login, audit log, CSV export |
-| [openapi_swagger](examples/openapi_swagger) | 8083 | nothing | Generated OpenAPI spec and Swagger UI from your routes |
-| [rbac_caps](examples/rbac_caps) | 8084 | nothing | Roles, inheritance tree, capability tokens |
-| [dependency_injection](examples/dependency_injection) | 8085 | nothing | Both DI engines: container components and compile-time wiring |
-| [basic_crud](examples/basic_crud) | 8080 | Redis | Repository layer, query DSL, dependency injection |
-| [mcp_server](examples/mcp_server) | 8080 | nothing | Exposing functions as AI agent tools |
-
-The first six use separate ports and can run at the same time; the last two
-also bind 8080, so stop whichever is already there.
-
-```bash
-cargo run --manifest-path examples/routing/Cargo.toml
-```
-
-Each guide's `README.md` starts with what it demonstrates and ends with what it
-does *not* do yet, which is usually the more useful half.
-
+The full documentation is available [here](https://digiator42.github.io/GritShield/docs/).
 
 ## Quick Features Brief
 
