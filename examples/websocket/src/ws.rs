@@ -3,6 +3,7 @@ use gritshield::routing::websocket::{WebSocketHandler, WsSink, WsError, BoxedWsF
 use gritshield::routing::engine::RequestContext;
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
+use dashmap::DashMap;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ChatMessage {
@@ -26,6 +27,31 @@ fn get_broadcast() -> broadcast::Sender<BroadcastMessage> {
         .clone()
 }
 
+type ConnId = usize;
+static CONN_COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static CONNECTIONS: std::sync::OnceLock<DashMap<ConnId, WsSink>> = std::sync::OnceLock::new();
+
+fn get_connections() -> &'static DashMap<ConnId, WsSink> {
+    CONNECTIONS.get_or_init(DashMap::new)
+}
+
+fn broadcast_to_all(msg: &ChatMessage) {
+    let conns = get_connections();
+    for entry in conns.iter() {
+        let _ = entry.value().send(msg);
+    }
+}
+
+fn register_conn(sink: WsSink) -> ConnId {
+    let id = CONN_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    get_connections().insert(id, sink);
+    id
+}
+
+fn unregister_conn(id: ConnId) {
+    get_connections().remove(&id);
+}
+
 struct EchoHandler;
 
 impl WebSocketHandler for EchoHandler {
@@ -44,6 +70,7 @@ impl WebSocketHandler for EchoHandler {
         let peer = ctx.peer_addr;
 
         let broadcast_tx = get_broadcast();
+        let conn_id = register_conn(ws.clone());
 
         Box::pin(async move {
             info!("[WS] {} from {}: {}", text, user, peer);
@@ -55,12 +82,21 @@ impl WebSocketHandler for EchoHandler {
             };
             let _ = ws.send(&echo);
 
+            let text_clone = text.clone();
             let broadcast_msg = BroadcastMessage {
                 from: user,
                 content: text,
                 timestamp: chrono::Utc::now().to_rfc3339(),
             };
             let _ = broadcast_tx.send(broadcast_msg);
+
+            broadcast_to_all(&ChatMessage {
+                user: "broadcast".into(),
+                text: format!("[broadcast] {}", text_clone),
+                room: None,
+            });
+
+            unregister_conn(conn_id);
         })
     }
 
@@ -90,8 +126,10 @@ impl WebSocketHandler for BroadcastHandler {
 
     fn on_message(&self, msg: ChatMessage, _ctx: &RequestContext, ws: WsSink) -> BoxedWsFuture {
         let broadcast_tx = get_broadcast();
+        let conn_id = register_conn(ws.clone());
 
         Box::pin(async move {
+            let text_clone = msg.text.clone();
             let broadcast_msg = BroadcastMessage {
                 from: msg.user,
                 content: msg.text,
@@ -105,6 +143,14 @@ impl WebSocketHandler for BroadcastHandler {
                 room: None,
             };
             let _ = ws.send(&ack);
+
+            broadcast_to_all(&ChatMessage {
+                user: "broadcast".into(),
+                text: format!("[broadcast] {}", text_clone),
+                room: None,
+            });
+
+            unregister_conn(conn_id);
         })
     }
 
@@ -129,6 +175,7 @@ impl WebSocketHandler for RoomHandler {
 
     fn on_message(&self, msg: ChatMessage, ctx: &RequestContext, ws: WsSink) -> BoxedWsFuture {
         let room = ctx.ws_param("room").map(|s| s.to_string()).unwrap_or_else(|| "default".into());
+        let conn_id = register_conn(ws.clone());
 
         Box::pin(async move {
             info!("[WS] Room '{}' message from {}: {}", room, msg.user, msg.text);
@@ -139,6 +186,14 @@ impl WebSocketHandler for RoomHandler {
                 room: Some(room.clone()),
             };
             let _ = ws.send(&response);
+
+            broadcast_to_all(&ChatMessage {
+                user: "broadcast".into(),
+                text: format!("[room:{}] {}", room, msg.text),
+                room: Some(room),
+            });
+
+            unregister_conn(conn_id);
         })
     }
 
