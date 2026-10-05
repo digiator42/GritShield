@@ -53,6 +53,11 @@ fn unregister_conn(id: ConnId) {
     get_connections().remove(&id);
 }
 
+#[allow(dead_code)]
+fn unregister_conn_unused(id: ConnId) {
+    get_connections().remove(&id);
+}
+
 fn start_broadcast_listener() {
     static STARTED: std::sync::Once = std::sync::Once::new();
     STARTED.call_once(|| {
