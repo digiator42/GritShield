@@ -16,6 +16,7 @@ async fn index_handler(_ctx: RequestContext) -> Response {
     <style>
       body { font-family: monospace; padding: 2rem; background: #111827; color: #e5e7eb; }
       pre { background: #1f2937; padding: 1rem; border-radius: 4px; height: 300px; overflow-y: auto; }
+      .sent { color: #34d399; }
       input { width: 60%; padding: 0.5rem; }
       button { padding: 0.5rem 1rem; margin: 0.25rem; }
       select { padding: 0.5rem; }
@@ -46,8 +47,13 @@ async fn index_handler(_ctx: RequestContext) -> Response {
       const userInput = document.getElementById('user');
       const endpointSel = document.getElementById('endpoint');
       let ws = null;
-      
-      function log(s) { logEl.textContent += s + '\n'; logEl.scrollTop = logEl.scrollHeight; }
+      function log(s) {
+        const line = document.createElement('span');
+        if (s.includes('[send]')) line.className = 'sent';
+        line.textContent = s + '\n';
+        logEl.appendChild(line);
+        logEl.scrollTop = logEl.scrollHeight; 
+      }
       
       function connect() {
         if (ws) ws.close();
