@@ -1,0 +1,19 @@
+[package]
+name = "job_queue"
+version = "0.1.0"
+edition = "2021"
+description = "GritShield background guide: the event bus, the job queue, retries and cron."
+
+[dependencies]
+# No features at all. The event bus and the job queue are core, and the default
+# storage is an in-process channel, so there is no database to point at.
+gritshield = { path = "../../", default-features = false }
+
+tokio = { version = "1.0", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = "0.4"
+
+# `#[controller]`, `#[event]` and `#[job]` all register themselves through
+# inventory submissions and ctor hooks at startup.
+ctor = "1.0.7"
