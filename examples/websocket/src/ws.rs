@@ -2,6 +2,7 @@ use gritshield::prelude::*;
 use gritshield::routing::websocket::{WebSocketHandler, WsSink, WsError, BoxedWsFuture};
 use gritshield::routing::engine::RequestContext;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use tokio::sync::broadcast;
 use dashmap::DashMap;
 
@@ -52,6 +53,23 @@ fn unregister_conn(id: ConnId) {
     get_connections().remove(&id);
 }
 
+fn start_broadcast_listener() {
+    static STARTED: std::sync::Once = std::sync::Once::new();
+    STARTED.call_once(|| {
+        let mut rx = get_broadcast().subscribe();
+        tokio::spawn(async move {
+            while let Ok(broadcast_msg) = rx.recv().await {
+                let msg = ChatMessage {
+                    user: broadcast_msg.from.clone(),
+                    text: broadcast_msg.content.clone(),
+                    room: None,
+                };
+                broadcast_to_all(&msg);
+            }
+        });
+    });
+}
+
 struct EchoHandler;
 
 impl WebSocketHandler for EchoHandler {
@@ -60,6 +78,7 @@ impl WebSocketHandler for EchoHandler {
     fn on_connect(&self, ctx: &RequestContext) -> BoxedWsFuture {
         let peer = ctx.peer_addr;
         info!("[WS] New echo connection from: {}", peer);
+        start_broadcast_listener();
         Box::pin(async move {})
     }
 
@@ -68,9 +87,9 @@ impl WebSocketHandler for EchoHandler {
         let text = msg.text.clone();
         let room = msg.room.clone();
         let peer = ctx.peer_addr;
+        let conn_id = register_conn(ws.clone());
 
         let broadcast_tx = get_broadcast();
-        let conn_id = register_conn(ws.clone());
 
         Box::pin(async move {
             info!("[WS] {} from {}: {}", text, user, peer);
@@ -82,21 +101,12 @@ impl WebSocketHandler for EchoHandler {
             };
             let _ = ws.send(&echo);
 
-            let text_clone = text.clone();
             let broadcast_msg = BroadcastMessage {
                 from: user,
                 content: text,
                 timestamp: chrono::Utc::now().to_rfc3339(),
             };
             let _ = broadcast_tx.send(broadcast_msg);
-
-            broadcast_to_all(&ChatMessage {
-                user: "broadcast".into(),
-                text: format!("[broadcast] {}", text_clone),
-                room: None,
-            });
-
-            unregister_conn(conn_id);
         })
     }
 
@@ -121,15 +131,15 @@ impl WebSocketHandler for BroadcastHandler {
     fn on_connect(&self, ctx: &RequestContext) -> BoxedWsFuture {
         let peer = ctx.peer_addr;
         info!("[WS] Broadcast connection from: {}", peer);
+        start_broadcast_listener();
         Box::pin(async move {})
     }
 
     fn on_message(&self, msg: ChatMessage, _ctx: &RequestContext, ws: WsSink) -> BoxedWsFuture {
-        let broadcast_tx = get_broadcast();
         let conn_id = register_conn(ws.clone());
+        let broadcast_tx = get_broadcast();
 
         Box::pin(async move {
-            let text_clone = msg.text.clone();
             let broadcast_msg = BroadcastMessage {
                 from: msg.user,
                 content: msg.text,
@@ -143,14 +153,6 @@ impl WebSocketHandler for BroadcastHandler {
                 room: None,
             };
             let _ = ws.send(&ack);
-
-            broadcast_to_all(&ChatMessage {
-                user: "broadcast".into(),
-                text: format!("[broadcast] {}", text_clone),
-                room: None,
-            });
-
-            unregister_conn(conn_id);
         })
     }
 
@@ -170,6 +172,7 @@ impl WebSocketHandler for RoomHandler {
         let room = ctx.ws_param("room").map(|s| s.to_string()).unwrap_or_else(|| "default".into());
         let peer = ctx.peer_addr;
         info!("[WS] Room '{}' connection from: {}", room, peer);
+        start_broadcast_listener();
         Box::pin(async move {})
     }
 
@@ -192,8 +195,6 @@ impl WebSocketHandler for RoomHandler {
                 text: format!("[room:{}] {}", room, msg.text),
                 room: Some(room),
             });
-
-            unregister_conn(conn_id);
         })
     }
 
