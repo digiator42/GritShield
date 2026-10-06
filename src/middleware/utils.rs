@@ -28,13 +28,13 @@ pub struct MiddlewareState {
 pub trait Middleware: Send + Sync {
     /// The request phase. Runs front-to-back before the handler; return
     /// `MiddlewareResult::Error` to short-circuit with your own response.
-    async fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult;
+    async fn on_request(&self, ctx: &mut RequestContext) -> MiddlewareResult;
 
     /// The response phase — mutate the `Response` before it is written.
     ///
     /// Invariants the server maintains for you:
     ///
-    /// * Runs for every request whose `execute` ran — including rejection
+    /// * Runs for every request whose `on_request` ran — including rejection
     ///   responses, 404/405, handler panics, and `MiddlewareResult::Error`
     ///   responses — and never for requests that bypassed middleware entirely
     ///   (malformed requests, WebSocket upgrades, which have no `Response`).
@@ -51,9 +51,9 @@ pub trait Middleware: Send + Sync {
 
 #[async_trait]
 impl Middleware for Box<dyn Middleware> {
-    async fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult {
+    async fn on_request(&self, ctx: &mut RequestContext) -> MiddlewareResult {
         // Delegate to the inner middleware
-        self.as_ref().execute(ctx).await
+        self.as_ref().on_request(ctx).await
     }
 
     // Must forward explicitly: a defaulted method is inherited here, so
@@ -66,8 +66,8 @@ impl Middleware for Box<dyn Middleware> {
 
 #[async_trait]
 impl Middleware for Arc<dyn Middleware> {
-    async fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult {
-        self.as_ref().execute(ctx).await
+    async fn on_request(&self, ctx: &mut RequestContext) -> MiddlewareResult {
+        self.as_ref().on_request(ctx).await
     }
 
     async fn on_response(&self, ctx: &RequestContext, res: &mut Response) {

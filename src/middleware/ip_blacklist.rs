@@ -28,7 +28,7 @@ impl IPBlacklistMiddleware {
 
 #[async_trait]
 impl Middleware for IPBlacklistMiddleware {
-    async fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult {
+    async fn on_request(&self, ctx: &mut RequestContext) -> MiddlewareResult {
         // Leverage your secure IP resolver from earlier
         let client_ip = ctx.resolve_client_ip();
 

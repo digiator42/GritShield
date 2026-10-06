@@ -19,7 +19,7 @@ impl CorsMiddleware {
 
 #[async_trait]
 impl Middleware for CorsMiddleware {
-    async fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult {
+    async fn on_request(&self, ctx: &mut RequestContext) -> MiddlewareResult {
         // Extract the origin the browser is currently calling from
         // headers may store multiple values; take the first origin if present
         let inbound_origin = ctx

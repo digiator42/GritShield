@@ -4,7 +4,7 @@
 //! Covered invariants: LIFO ordering over middlewares that executed, header
 //! merge on *every* response path (404/405/panic/rejection), short-circuit
 //! semantics via the `ran` count, status rewrites landing before the lifecycle
-//! hooks observe them, and source compatibility of an `execute`-only impl.
+//! hooks observe them, and source compatibility of an `on_request`-only impl.
 
 use gritshield::deps::async_trait;
 use gritshield::futures::future::FutureExt;
@@ -38,8 +38,8 @@ impl TestMiddleware {
         }
     }
 
-    /// Publishes a header through `ctx.headers`, the channel `execute` has for
-    /// influencing the response — only reaches the wire if the funnel merges it.
+    /// Publishes a header through `ctx.headers`, the channel `on_request` has
+    /// for influencing the response — only reaches the wire if the funnel merges it.
     fn with_ctx_header(mut self, key: &'static str, value: &'static str) -> Self {
         self.ctx_header = Some((key, value));
         self
@@ -58,7 +58,7 @@ impl TestMiddleware {
 
 #[async_trait]
 impl Middleware for TestMiddleware {
-    async fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult {
+    async fn on_request(&self, ctx: &mut RequestContext) -> MiddlewareResult {
         self.events
             .lock()
             .unwrap()
@@ -94,7 +94,7 @@ impl Middleware for TestMiddleware {
     }
 }
 
-/// Deliberately implements only `execute` — the shape every pre-`on_response`
+/// Deliberately implements only `on_request` — the shape every pre-`on_response`
 /// middleware has, plus the `#[async_trait]` every impl now needs. A defaulted
 /// `on_response` must not force a change here: this struct is the
 /// source-compatibility guard for the response phase.
@@ -102,7 +102,7 @@ struct LegacyMiddleware;
 
 #[async_trait]
 impl Middleware for LegacyMiddleware {
-    async fn execute(&self, _ctx: &mut RequestContext) -> MiddlewareResult {
+    async fn on_request(&self, _ctx: &mut RequestContext) -> MiddlewareResult {
         MiddlewareResult::Next(None)
     }
 }
@@ -168,7 +168,7 @@ fn assert_no_header(res: &gritshield::testing::WsHttpResponse, name: &str) {
 /// `on_response` the method is silently inherited as a no-op and no stamp
 /// ever reaches the wire. This test is that guard.
 #[tokio::test]
-async fn on_response_runs_after_execute_and_in_reverse_registration_order() {
+async fn on_response_runs_after_on_request_and_in_reverse_registration_order() {
     let events = events();
     let router = ok_route(Router::new())
         .add_middleware(TestMiddleware::new("a", &events))
@@ -279,9 +279,9 @@ async fn rejection_merges_headers_and_skips_unexecuted_middlewares() {
     assert!(!log.contains(&"resp:never".to_string()));
 }
 
-/// An `execute`-only middleware must keep working unchanged.
+/// An `on_request`-only middleware must keep working unchanged.
 #[tokio::test]
-async fn execute_only_middleware_still_works() {
+async fn on_request_only_middleware_still_works() {
     let router = ok_route(Router::new()).add_middleware(LegacyMiddleware);
 
     let server = WsTestServer::start_with_router(router).await;

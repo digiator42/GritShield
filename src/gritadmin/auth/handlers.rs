@@ -226,7 +226,7 @@ impl AdminAuthMiddleware {
 
 #[async_trait]
 impl Middleware for AdminAuthMiddleware {
-    async fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult {
+    async fn on_request(&self, ctx: &mut RequestContext) -> MiddlewareResult {
         // Narrow scope to admin routes
         if !ctx.req.path.starts_with("/admin") {
             return MiddlewareResult::Next(None);
