@@ -7,17 +7,15 @@ use crate::{
     middleware::MiddlewareResult,
     routing::{
         engine::{RequestContext, Router, RoutingResult},
-        websocket::{WS_REGISTRY, extract_ws_params},
+        websocket::{SUPPORTED_WS_VERSION, has_ws_route, match_ws_route},
     },
-    security::{cookies::CookieJar, errors::ShieldError, xss::{Sanitizer, UntrustedString}},
+    security::{cookies::CookieJar, errors::ShieldError, xss::Sanitizer},
     warn,
 };
-use futures_util::{SinkExt, StreamExt};
 use futures::future::FutureExt;
 use std::{
     collections::HashMap,
     net::SocketAddr,
-    sync::atomic::Ordering,
     sync::{Arc, Mutex},
 };
 use tokio::io::AsyncWriteExt;
@@ -26,10 +24,7 @@ use tokio::net::TcpStream;
 pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, router: Arc<Router>) {
     CURRENT_EVENT_BUS.scope(router.event_bus.clone(), {
         CURRENT_JOB_QUEUE.scope(router.job_queue.clone(), async move {
-            router
-                .telemetry
-                .active_connections
-                .fetch_add(1, Ordering::Relaxed);
+            router.telemetry.open_connection();
 
             let mut read_buf = vec![0u8; 16 * 1024];
             let _ = stream.set_nodelay(true);
@@ -150,78 +145,140 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
                     }
                 }
 
-                if ctx
+                let wants_upgrade = ctx
                     .req
                     .headers
                     .get("upgrade")
-                    .map_or(false, |v| v.iter().any(|val| val == "websocket"))
-                {
-                    let ws_handler = {
-                        let ws_routes = WS_REGISTRY.lock().unwrap();
-                        let mut matched_handler: Option<crate::routing::websocket::WsHandlerFn> = None;
-                        let mut matched_path = String::new();
+                    .map_or(false, |v| v.iter().any(|val| val.eq_ignore_ascii_case("websocket")));
 
-                        for (path, handler) in ws_routes.iter() {
-                            if crate::routing::websocket::path_matches(&ctx.req.path, path) {
-                                matched_handler = Some(*handler);
-                                matched_path = path.clone();
-                                break;
-                            }
-                        }
+                if wants_upgrade {
+                    let offered_subprotocols: Vec<String> = ctx
+                        .req
+                        .headers
+                        .get("sec-websocket-protocol")
+                        .map(|values| {
+                            values
+                                .iter()
+                                .flat_map(|value| value.split(','))
+                                .map(|token| token.trim().to_string())
+                                .filter(|token| !token.is_empty())
+                                .collect()
+                        })
+                        .unwrap_or_default();
 
-                        if let Some(h) = matched_handler {
-                            let ws_params = extract_ws_params(&ctx.req.path, &matched_path);
-                            for (k, v) in ws_params {
-                                ctx.params.insert(k, UntrustedString::new(v));
-                            }
-                            Some(h)
-                        } else {
-                            None
-                        }
-                    };
+                    let ws_match = match_ws_route(&ctx.req.path, &offered_subprotocols);
 
-                    if let Some(ws_handler) = ws_handler {
-                        if let Some(keys) = ctx.req.headers.get("sec-websocket-key") {
-                            if let Some(key) = keys.get(0) {
-                                let accept_hash = tokio_tungstenite::tungstenite::handshake::derive_accept_key(
+                    if let Some(matched) = ws_match {
+                        // RFC 6455 §4.2.1: a client speaking anything other than
+                        // version 13 gets 426, not a 101 it cannot speak.
+                        let version_ok = ctx
+                            .req
+                            .headers
+                            .get("sec-websocket-version")
+                            .and_then(|values| values.first())
+                            .map(|value| value.trim() == SUPPORTED_WS_VERSION)
+                            .unwrap_or(false);
+
+                        let key = ctx
+                            .req
+                            .headers
+                            .get("sec-websocket-key")
+                            .and_then(|values| values.first())
+                            .cloned();
+
+                        if let (true, Some(key)) = (version_ok, key) {
+                            let accept_hash =
+                                tokio_tungstenite::tungstenite::handshake::derive_accept_key(
                                     key.as_bytes(),
                                 );
 
-                                let handshake_response = format!(
-                                    "HTTP/1.1 101 Switching Protocols\r\n\
-                                    Upgrade: websocket\r\n\
-                                    Connection: Upgrade\r\n\
-                                    Sec-WebSocket-Accept: {}\r\n\r\n",
-                                    accept_hash
-                                );
+                            let mut handshake_response = format!(
+                                "HTTP/1.1 101 Switching Protocols\r\n\
+                                Upgrade: websocket\r\n\
+                                Connection: Upgrade\r\n\
+                                Sec-WebSocket-Accept: {}\r\n",
+                                accept_hash
+                            );
 
-                                if stream
-                                    .write_all(handshake_response.as_bytes())
-                                    .await
-                                    .is_err()
-                                {
-                                    break;
-                                }
-
-                                let ws_stream = tokio_tungstenite::WebSocketStream::from_raw_socket(
-                                    stream,
-                                    tokio_tungstenite::tungstenite::protocol::Role::Server,
-                                    None,
-                                )
-                                .await;
-
-                                tokio::spawn(async move {
-                                    ws_handler(ws_stream, ctx).await;
-                                });
-
-                                router
-                                    .telemetry
-                                    .active_connections
-                                    .fetch_sub(1, Ordering::Relaxed);
-                                return;
+                            if let Some(protocol) = matched.subprotocol.as_deref() {
+                                handshake_response.push_str(&format!(
+                                    "Sec-WebSocket-Protocol: {}\r\n",
+                                    protocol
+                                ));
                             }
+                            handshake_response.push_str("\r\n");
+
+                            if stream
+                                .write_all(handshake_response.as_bytes())
+                                .await
+                                .is_err()
+                            {
+                                break;
+                            }
+
+                            let ws_stream = tokio_tungstenite::WebSocketStream::from_raw_socket(
+                                stream,
+                                tokio_tungstenite::tungstenite::protocol::Role::Server,
+                                None,
+                            )
+                            .await;
+
+                            let handler = matched.handler;
+                            ctx.params.extend(matched.params);
+
+                            let telemetry = router.telemetry.clone();
+                            tokio::spawn(async move {
+                                handler(ws_stream, ctx).await;
+                                // The connection is only really over once the
+                                // WebSocket session ends, so the gauge is
+                                // released here rather than at upgrade time.
+                                telemetry.close_connection();
+                            });
+
+                            return;
                         }
+
+                        let (status, body) = if version_ok {
+                            warn!("{}", "WebSocket upgrade rejected: missing Sec-WebSocket-Key");
+                            (400, "<h1>Bad Request</h1>")
+                        } else {
+                            warn!(
+                                "{}",
+                                format!(
+                                    "WebSocket upgrade rejected: unsupported Sec-WebSocket-Version (expected {})",
+                                    SUPPORTED_WS_VERSION
+                                )
+                            );
+                            (426, "<h1>Upgrade Required</h1>")
+                        };
+
+                        let mut reject_res = Response::new(status, Sanitizer::trust(body));
+                        reject_res
+                            .headers
+                            .push(("Sec-WebSocket-Version".to_string(), SUPPORTED_WS_VERSION.to_string()));
+                        reject_res.headers.push((
+                            "Connection".to_string(),
+                            "Upgrade".to_string(),
+                        ));
+                        let (bytes, mime) = reject_res.resolve();
+                        let _ = stream.write_all(&reject_res.to_bytes(&bytes, &mime)).await;
+                        break;
+                    } else {
+                        warn!(
+                            "{}",
+                            format!("WebSocket upgrade requested for unregistered path: {}", ctx.req.path)
+                        );
                     }
+                } else if has_ws_route(&ctx.req.path) {
+                    // A plain request to a WebSocket endpoint should say so,
+                    // rather than looking like a missing route.
+                    let upgrade_res = Response::new(
+                        426,
+                        Sanitizer::trust("<h1>Upgrade Required</h1>"),
+                    );
+                    let (bytes, mime) = upgrade_res.resolve();
+                    let _ = stream.write_all(&upgrade_res.to_bytes(&bytes, &mime)).await;
+                    break;
                 }
 
                 let error_handler_ptr = router.global_error_handler.handler;
@@ -329,10 +386,7 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
                         }
                     }
 
-                    router
-                        .telemetry
-                        .active_connections
-                        .fetch_sub(1, Ordering::Relaxed);
+                    router.telemetry.close_connection();
                     return;
                 }
 
@@ -351,10 +405,7 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
                 }
             }
 
-            router
-                .telemetry
-                .active_connections
-                .fetch_sub(1, Ordering::Relaxed);
+            router.telemetry.close_connection();
         })
     }).await;
 }

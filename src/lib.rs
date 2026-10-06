@@ -6,6 +6,7 @@ pub mod mcp;
 pub mod middleware;
 pub mod routing;
 pub mod security;
+pub mod testing;
 pub mod utils;
 
 pub use ctor;
@@ -83,7 +84,10 @@ pub mod prelude {
     pub use crate::macros;
     pub use crate::routing::engine::{RequestContext, Router};
     pub use crate::routing::templates::TemplateEngine;
-    pub use crate::routing::websocket::{WebSocketHandler, WsError, WsSink, WsOutgoing, WsIncoming, WsConnection, BoxedWsFuture, path_matches, extract_ws_params};
+    pub use crate::routing::websocket::{
+        BoxedWsFuture, WsClose, WsConnection, WsError, WsHandlerFn, WsIncoming, WsOutgoing,
+        WsSink, WebSocketHandler, register_ws_route, register_ws_route_with_subprotocols,
+    };
     pub use crate::security::xss::Sanitizer;
 
     // Critical functions

@@ -136,13 +136,33 @@ macro_rules! register_ws {
     ($path:expr, $handler:expr) => {
         #[$crate::ctor::ctor(unsafe)]
         fn __gritshield_ws_route_init() {
-            let wrapped: $crate::routing::websocket::WsHandlerFn =
-                |stream, ctx| Box::pin($handler(stream, ctx));
-            $crate::routing::websocket::register_ws_route($path, wrapped);
+            // Registered through the generic form so the closure is boxed into a
+// `WsHandlerFn` inside the framework. Naming the type here would hand
+// `register_ws_route` an `Arc<dyn Fn..>`, which does not satisfy an `Fn` bound.
+$crate::routing::websocket::register_ws_route($path, |stream, ctx| {
+                Box::pin($handler(stream, ctx))
+            });
         }
     };
 }
 
+/// Declares a [`WebSocketHandler`] impl from closures instead of a manual `impl`.
+///
+/// Every hook but `on_message` is optional. Each is emitted as "start from the
+/// default, then overwrite it if the caller supplied one" — a single `$(...)?`
+/// per method, which is what `macro_rules` actually accepts. (Chaining a second
+/// `$(Box::pin(async {}))?` for the fallback, as this macro used to, is a
+/// repetition with no metavariables and fails to expand at all.)
+///
+/// ```ignore
+/// ws_handler!(
+///     Echo,
+///     message = String,
+///     on_message = |msg: String, _ctx: &RequestContext, ws: WsSink| Box::pin(async move {
+///         let _ = ws.send_text(msg).await;
+///     }),
+/// );
+/// ```
 #[macro_export]
 macro_rules! ws_handler {
     (
@@ -163,12 +183,13 @@ macro_rules! ws_handler {
                 ctx: &$crate::routing::engine::RequestContext,
                 ws: &$crate::routing::websocket::WsSink,
             ) -> $crate::routing::websocket::BoxedWsFuture {
+                #[allow(unused_mut, unused_variables)]
+                let mut hook: $crate::routing::websocket::BoxedWsFuture =
+                    $crate::routing::websocket::ws_noop(ctx, ws);
                 $(
-                    Box::pin($on_connect(ctx, ws))
+                    hook = Box::pin($on_connect(ctx, ws));
                 )?
-                $(
-                    Box::pin(async {})
-                )?
+                hook
             }
 
             fn on_message(
@@ -177,12 +198,13 @@ macro_rules! ws_handler {
                 ctx: &$crate::routing::engine::RequestContext,
                 ws: $crate::routing::websocket::WsSink,
             ) -> $crate::routing::websocket::BoxedWsFuture {
+                #[allow(unused_mut, unused_variables)]
+                let mut hook: $crate::routing::websocket::BoxedWsFuture =
+                    $crate::routing::websocket::ws_noop_message(&msg, ctx, &ws);
                 $(
-                    Box::pin($on_message(msg, ctx, ws))
+                    hook = Box::pin($on_message(msg, ctx, ws));
                 )?
-                $(
-                    Box::pin(async {})
-                )?
+                hook
             }
 
             fn on_close(
@@ -190,21 +212,28 @@ macro_rules! ws_handler {
                 ctx: &$crate::routing::engine::RequestContext,
                 ws: &$crate::routing::websocket::WsSink,
             ) -> $crate::routing::websocket::BoxedWsFuture {
+                #[allow(unused_mut, unused_variables)]
+                let mut hook: $crate::routing::websocket::BoxedWsFuture =
+                    $crate::routing::websocket::ws_noop(ctx, ws);
                 $(
-                    Box::pin($on_close(ctx, ws))
+                    hook = Box::pin($on_close(ctx, ws));
                 )?
-                $(
-                    Box::pin(async {})
-                )?
+                hook
             }
 
-            fn on_error(&self, err: $crate::routing::websocket::WsError, ctx: &$crate::routing::engine::RequestContext) -> $crate::routing::websocket::BoxedWsFuture {
+            fn on_error(
+                &self,
+                err: $crate::routing::websocket::WsError,
+                ctx: &$crate::routing::engine::RequestContext,
+                ws: &$crate::routing::websocket::WsSink,
+            ) -> $crate::routing::websocket::BoxedWsFuture {
+                #[allow(unused_mut, unused_variables)]
+                let mut hook: $crate::routing::websocket::BoxedWsFuture =
+                    $crate::routing::websocket::ws_noop_err(&err, ctx, ws);
                 $(
-                    Box::pin($on_error(err, ctx))
+                    hook = Box::pin($on_error(err, ctx, ws));
                 )?
-                $(
-                    Box::pin(async {})
-                )?
+                hook
             }
         }
     };

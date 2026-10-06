@@ -38,6 +38,26 @@ impl SystemTelemetry {
         }
     }
 
+    /// Opens a tracked connection slot.
+    pub fn open_connection(&self) {
+        self.active_connections.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Closes a tracked connection slot.
+    ///
+    /// Saturating on purpose: the gauge is a diagnostic, and a plain
+    /// `fetch_sub` on an already-zero counter wraps to `u64::MAX`, which then
+    /// reports an absurd active-connection count for the rest of the process
+    /// lifetime. Any imbalance between opens and closes is a bug worth seeing
+    /// as "stuck at 0", not as four quintillion sockets.
+    pub fn close_connection(&self) {
+        self.active_connections
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |count| {
+                Some(count.saturating_sub(1))
+            })
+            .ok();
+    }
+
     /// Record request execution from logger.rs
     pub fn record_request(&self, path: &str, status: u16, duration: Duration) {
         self.total_allowed_reqs.fetch_add(1, Ordering::Relaxed);

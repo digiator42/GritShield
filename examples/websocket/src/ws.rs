@@ -2,7 +2,6 @@ use gritshield::prelude::*;
 use gritshield::routing::websocket::{WebSocketHandler, WsSink, WsError, BoxedWsFuture};
 use gritshield::routing::engine::RequestContext;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use tokio::sync::broadcast;
 use dashmap::DashMap;
 
@@ -32,28 +31,56 @@ fn get_broadcast() -> broadcast::Sender<BroadcastMessage> {
 }
 
 type ConnId = usize;
-static CONNECTIONS: std::sync::OnceLock<DashMap<ConnId, WsSink>> = std::sync::OnceLock::new();
 
-fn get_connections() -> &'static DashMap<ConnId, WsSink> {
+/// Identifies a connection within a broadcast scope.
+///
+/// Scoping matters: without it every connection in the process shares one
+/// registry, so a message sent to `/ws/room/general` also lands in the tab
+/// connected to `/ws/broadcast`, and rooms see each other's traffic.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct ConnKey {
+    scope: String,
+    id: ConnId,
+}
+
+static CONNECTIONS: std::sync::OnceLock<DashMap<ConnKey, WsSink>> = std::sync::OnceLock::new();
+
+fn get_connections() -> &'static DashMap<ConnKey, WsSink> {
     CONNECTIONS.get_or_init(DashMap::new)
 }
 
-fn broadcast_to_all(msg: &ChatMessage, skip: Option<ConnId>) {
+fn broadcast_to(scope: &str, msg: &ChatMessage, skip: Option<ConnId>) {
     let conns = get_connections();
     for entry in conns.iter() {
-        if Some(*entry.key()) == skip {
+        if entry.key().scope != scope || Some(entry.key().id) == skip {
             continue;
         }
+        // A client that stopped reading will back-pressure here rather than
+        // stall the sender; the failed send is the back-pressure signal.
         let _ = entry.value().send(msg);
     }
 }
 
-fn register_conn(sink: &WsSink) {
-    get_connections().insert(sink.id(), sink.clone());
+fn register_conn(scope: &str, sink: &WsSink) {
+    get_connections().insert(
+        ConnKey {
+            scope: scope.to_string(),
+            id: sink.id(),
+        },
+        sink.clone(),
+    );
 }
 
-fn unregister_conn(id: ConnId) {
-    get_connections().remove(&id);
+fn unregister_conn(scope: &str, id: ConnId) {
+    get_connections().remove(&ConnKey {
+        scope: scope.to_string(),
+        id,
+    });
+}
+
+/// Turns a `:room` path parameter into a broadcast scope.
+fn room_scope(room: &str) -> String {
+    format!("room:{}", room)
 }
 
 fn start_broadcast_listener() {
@@ -67,7 +94,7 @@ fn start_broadcast_listener() {
                     text: broadcast_msg.content.clone(),
                     room: None,
                 };
-                broadcast_to_all(&msg, broadcast_msg.origin);
+                broadcast_to("broadcast", &msg, broadcast_msg.origin);
             }
         });
     });
@@ -81,7 +108,7 @@ impl WebSocketHandler for EchoHandler {
     fn on_connect(&self, ctx: &RequestContext, ws: &WsSink) -> BoxedWsFuture {
         let peer = ctx.peer_addr;
         info!("[WS] New echo connection from: {}", peer);
-        register_conn(ws);
+        register_conn("echo", ws);
         start_broadcast_listener();
         Box::pin(async move {})
     }
@@ -118,13 +145,13 @@ impl WebSocketHandler for EchoHandler {
     fn on_close(&self, ctx: &RequestContext, ws: &WsSink) -> BoxedWsFuture {
         let peer = ctx.peer_addr;
         info!("[WS] Echo connection closed: {}", peer);
-        unregister_conn(ws.id());
+        unregister_conn("echo", ws.id());
         Box::pin(async move {})
     }
 
-    fn on_error(&self, err: WsError, ctx: &RequestContext) -> BoxedWsFuture {
+    fn on_error(&self, err: WsError, ctx: &RequestContext, ws: &WsSink) -> BoxedWsFuture {
         let peer = ctx.peer_addr;
-        error!("[WS] Echo error for {}: {}", peer, err);
+        error!("[WS] Echo error for {} (conn {}): {}", peer, ws.id(), err);
         Box::pin(async move {})
     }
 }
@@ -137,7 +164,7 @@ impl WebSocketHandler for BroadcastHandler {
     fn on_connect(&self, ctx: &RequestContext, ws: &WsSink) -> BoxedWsFuture {
         let peer = ctx.peer_addr;
         info!("[WS] Broadcast connection from: {}", peer);
-        register_conn(ws);
+        register_conn("broadcast", ws);
         start_broadcast_listener();
         Box::pin(async move {})
     }
@@ -167,7 +194,7 @@ impl WebSocketHandler for BroadcastHandler {
     fn on_close(&self, ctx: &RequestContext, ws: &WsSink) -> BoxedWsFuture {
         let peer = ctx.peer_addr;
         info!("[WS] Broadcast connection closed: {}", peer);
-        unregister_conn(ws.id());
+        unregister_conn("broadcast", ws.id());
         Box::pin(async move {})
     }
 }
@@ -181,7 +208,8 @@ impl WebSocketHandler for RoomHandler {
         let room = ctx.ws_param("room").map(|s| s.to_string()).unwrap_or_else(|| "default".into());
         let peer = ctx.peer_addr;
         info!("[WS] Room '{}' connection from: {}", room, peer);
-        register_conn(ws);
+        let scope = room_scope(&room);
+        register_conn(&scope, ws);
         start_broadcast_listener();
         Box::pin(async move {})
     }
@@ -189,6 +217,7 @@ impl WebSocketHandler for RoomHandler {
     fn on_message(&self, msg: ChatMessage, ctx: &RequestContext, ws: WsSink) -> BoxedWsFuture {
         let room = ctx.ws_param("room").map(|s| s.to_string()).unwrap_or_else(|| "default".into());
         let origin = ws.id();
+        let scope = room_scope(&room);
 
         Box::pin(async move {
             info!("[WS] Room '{}' message from {}: {}", room, msg.user, msg.text);
@@ -200,7 +229,8 @@ impl WebSocketHandler for RoomHandler {
             };
             let _ = ws.send(&response);
 
-            broadcast_to_all(
+            broadcast_to(
+                &scope,
                 &ChatMessage {
                     user: "broadcast".into(),
                     text: format!("[room:{}] {}", room, msg.text),
@@ -215,7 +245,7 @@ impl WebSocketHandler for RoomHandler {
         let room = ctx.ws_param("room").map(|s| s.to_string()).unwrap_or_else(|| "default".into());
         let peer = ctx.peer_addr;
         info!("[WS] Room '{}' connection closed: {}", room, peer);
-        unregister_conn(ws.id());
+        unregister_conn(&room_scope(&room), ws.id());
         Box::pin(async move {})
     }
 }
