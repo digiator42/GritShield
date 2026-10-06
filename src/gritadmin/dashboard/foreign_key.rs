@@ -1,5 +1,4 @@
 use crate::database::repository::registry::ADMIN_REGISTRY;
-use crate::core::schema::SCHEMA_REGISTRY;
 
 /// Check if a column name looks like a foreign key.
 pub fn is_foreign_key_column(col_name: &str) -> bool {

@@ -172,7 +172,7 @@ impl RequestContext {
     where
         T: serde::de::DeserializeOwned + GritSanitizable + validator::Validate,
     {
-        let mut payload = self.json::<T>().await?;
+        let payload = self.json::<T>().await?;
 
         // Validator after sanitization
         payload

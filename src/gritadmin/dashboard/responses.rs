@@ -1,7 +1,6 @@
 use crate::http::response::Response;
 use crate::security::errors::ShieldError;
 use crate::security::xss::Sanitizer;
-use crate::prelude::*;
 
 pub fn error_response(msg: impl ToString) -> Response {
     let msg = msg.to_string();

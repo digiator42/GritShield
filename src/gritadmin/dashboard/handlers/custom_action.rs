@@ -1,8 +1,7 @@
-use crate::database::repository::registry::{AdminHandlerFn, ACTIONS_REGISTRY};
-use crate::gritadmin::dashboard::{error_response, success_response};
+use crate::database::repository::registry::ACTIONS_REGISTRY;
+use crate::gritadmin::dashboard::error_response;
 use crate::http::response::IntoResponseBody;
 use crate::prelude::*;
-use std::collections::HashMap;
 
 /// Execute a custom action on selected records (type-erased)
 pub async fn handle_custom_action(ctx: RequestContext) -> Response {

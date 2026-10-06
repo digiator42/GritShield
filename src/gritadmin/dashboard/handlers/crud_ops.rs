@@ -1,18 +1,12 @@
-use crate::database::repository::jql::DynamicColumnSpec;
-use crate::database::repository::registry::ADMIN_REGISTRY;
 use crate::database::repository::GritRepository;
-use crate::gritadmin::dashboard::{
-    error_response, render_grid_rows, render_results_grid, success_response,
-};
+use crate::gritadmin::dashboard::error_response;
 use crate::gritadmin::handle_list;
 use crate::prelude::*;
 use crate::security::xss::{Sanitizer, UntrustedString};
 use maud::html;
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait, PaginatorTrait, QueryOrder,
-    Statement, TransactionTrait,
+    EntityTrait, TransactionTrait,
 };
-use std::collections::HashMap;
 
 /// Generic database record removal handler matching HTMX asynchronous delete operations.
 pub async fn handle_delete<R>(ctx: RequestContext, repo: R, _table_slug: &'static str) -> Response

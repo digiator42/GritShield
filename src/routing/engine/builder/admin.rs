@@ -12,10 +12,6 @@ use crate::database::repository::registry::AdminHandlerFn;
 #[cfg(any(feature = "swagger", feature = "admin"))]
 use {crate::log_route, crate::prelude::*};
 // Swagger-specific items
-#[cfg(feature = "swagger")]
-use {
-    crate::core::swagger::spec::generate_openapi_spec, crate::core::swagger::ui::render_swagger_ui,
-};
 
 // Admin-specific items
 #[cfg(feature = "admin")]

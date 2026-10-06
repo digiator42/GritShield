@@ -1,18 +1,16 @@
 use crate::database::repository::registry::ADMIN_REGISTRY;
-use crate::gritadmin::dashboard::{error_response};
 use crate::gritadmin::shell;
 use crate::gritadmin::metrics_render::{
     gather_all_metrics, render_hardening_matrix, render_metrics_dashboard, HardeningMatrix,
     InboundCookieDetails,
 };
 use crate::deps::sea_orm::{
-    ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait, PaginatorTrait, QueryOrder,
-    Statement, TransactionTrait,
+    ConnectionTrait, DbBackend,
+    Statement,
 };
 use crate::http::response::HttpStatus;
 use crate::prelude::*;
 use maud::html;
-use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 
 /// Dashboard view showing counts and recent records for all registered tables.

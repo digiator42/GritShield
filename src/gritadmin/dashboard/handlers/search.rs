@@ -3,17 +3,12 @@ use crate::database::repository::GritRepository;
 use crate::database::repository::registry::ADMIN_REGISTRY;
 use crate::database::repository::registry::AdminHandlerFn;
 use crate::database::repository::JqlCompiler;
-use crate::gritadmin::dashboard::{render_grid_rows, render_results_grid, render_empty_matrix_interface, error_response};
+use crate::gritadmin::dashboard::{render_grid_rows, render_results_grid, render_empty_matrix_interface};
 use crate::security::xss::UntrustedString;
 use crate::prelude::*;
 use maud::html;
 use sea_orm::QueryOrder;
 use sea_orm::EntityTrait;
-use sea_orm::sea_query::{Alias, ColumnDef, Table};
-use sea_orm::ColumnTrait;
-use sea_orm::QueryFilter;
-use sea_orm::QueryResult;
-use std::collections::HashMap;
 use sea_orm::ConnectionTrait;
 
 /// Generic search query processor handling dynamic query filters with inline drop capabilities.
