@@ -1,14 +1,5 @@
 GritShield is an **async-first, security-hardened** web framework for Rust that eliminates the majority of OWASP Top 10 vulnerabilities by design.
 
-## Installation
-
-Add to your `Cargo.toml`:
-
-```toml
-[dependencies]
-gritshield = { git = "https://github.com/digiator42/gritShield" }
-```
-
 ---
 
 ## Quick Start – Hello World
