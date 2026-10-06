@@ -34,7 +34,9 @@ No `APP_ENV` needed. If you set it to `production`, session cookies switch to
 ## The pipeline is ordered cheapest-first
 
 `add_middleware` pushes onto a list and the request walks it front to back, so
-order is a security property, not a style choice:
+order is a security property, not a style choice. If any layer rejects, the
+optional `on_response` phase walks the same list backwards over the layers that
+ran, so the outermost one has the last word on the response:
 
 ```text
 blacklisted IP?    ──▶ 403   no session touched, no crypto done

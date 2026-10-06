@@ -134,11 +134,13 @@ derives `Debug` but **not** `Serialize` or `Display`. Putting
 
 ## Middleware
 
-The trait is synchronous and returns a verdict:
+The trait is `async` (`#[async_trait]` on every impl) and has two phases:
 
 ```rust
+#[async_trait]
 pub trait Middleware: Send + Sync {
-    fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult;
+    async fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult;
+    async fn on_response(&self, ctx: &RequestContext, res: &mut Response) {}
 }
 
 enum MiddlewareResult {
@@ -152,6 +154,8 @@ your middleware clearing a session an earlier one established.
 
 Registration order is execution order, and every layer can reject — so the cheap
 and the broad go first, for the same reason as in the security guide.
+`on_response` is optional and unwinds the same list **backwards**, for the
+layers that actually ran.
 
 ### Rejecting
 
@@ -191,10 +195,16 @@ or a leak.
 Response::json(HttpStatus::Ok, &body).with_header("X-Request-Id", request_id)
 ```
 
-**Middleware owns it -> put it on `ctx.headers`.** The server builds the response
-*after* your handler returns, so a middleware never holds a `Response` to
-modify. `ctx.headers` is the channel, and the server promotes those names to
-real response headers afterwards (`Response::merge_middleware_headers`).
+**Middleware owns it before the handler runs -> put it on `ctx.headers`.** The
+server builds the response *after* your handler returns, and promotes the names
+middleware added to real response headers afterwards
+(`Response::merge_middleware_headers`) — on success, on 404/405, on a
+rejection, on a panic.
+
+**Middleware owns it after the response exists -> use `on_response`.** It hands
+you the actual `&mut Response`, runs in reverse registration order over the
+layers that ran, and executes before the lifecycle log, the after-hooks and the
+telemetry counters — so a status it rewrites is what gets logged.
 
 The promotion is deliberately narrow:
 
@@ -238,14 +248,18 @@ multi-valued middleware header forwards all of its values rather than only the
 first.
 
 The practical rule: if a handler decides the value, use the `Response`. If
-middleware decides it, use `ctx.headers`. Never treat `ctx.headers` as a general
-response-header bag -- it starts as a copy of the request, and it is no place to
-put anything sensitive.
+middleware decides it *before* the handler, use `ctx.headers`; if it needs the
+response itself to decide (a status override, a timing header), use
+`on_response`. Never treat `ctx.headers` as a general response-header bag --
+it starts as a copy of the request, and it is no place to put anything
+sensitive.
 
 ### After-request hooks
 
 `AfterRequestHook` is `async` (`#[async_trait]`) and runs once status and
-duration are known — the information a before-hook does not have:
+duration are known — the information a before-hook does not have. If you also
+need to *modify* the response, that is `Middleware::on_response`; hooks only
+observe:
 
 ```
 AUDIT GET /api/ping -> 200 in 0ms

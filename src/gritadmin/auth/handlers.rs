@@ -7,6 +7,7 @@ use crate::routing::engine::RequestContext;
 use crate::security::session::{Session, SessionStore};
 use crate::{debug, prelude::*, warn};
 use serde_json::json;
+use sea_orm_migration::async_trait::async_trait;
 use std::sync::{Arc, Mutex};
 
 /// Renders the secure administrative login viewport
@@ -223,8 +224,9 @@ impl AdminAuthMiddleware {
     }
 }
 
+#[async_trait]
 impl Middleware for AdminAuthMiddleware {
-    fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult {
+    async fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult {
         // Narrow scope to admin routes
         if !ctx.req.path.starts_with("/admin") {
             return MiddlewareResult::Next(None);

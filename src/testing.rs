@@ -83,13 +83,19 @@ pub struct WsTestServer {
 impl WsTestServer {
     /// Binds an ephemeral port on loopback and starts serving in the background.
     pub async fn start() -> Self {
+        Self::start_with_router(Router::new()).await
+    }
+
+    /// Like [`Self::start`], but serves `router` as given, so tests can
+    /// register routes, middleware and after-hooks before the first request.
+    pub async fn start_with_router(router: Router) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
             .expect("failed to bind an ephemeral test port");
         let addr = listener
             .local_addr()
             .expect("bound listener has no local address");
-        let router = Arc::new(Router::new());
+        let router = Arc::new(router);
 
         let accept_router = router.clone();
         tokio::spawn(async move {
@@ -186,22 +192,43 @@ impl WsTestServer {
         Err(WsHandshakeFailure::from_response(response))
     }
 
+    /// Sends a plain (non-upgrade) HTTP request and returns the raw response.
+    ///
+    /// This is a general-purpose HTTP harness, not WebSocket-specific: any
+    /// method, any extra request headers. `Connection: close` keeps the read
+    /// path trivial and matches how one-shot HTTP tests behave.
+    pub async fn request(
+        &self,
+        method: &str,
+        path: &str,
+        headers: &[(&str, &str)],
+    ) -> WsHttpResponse {
+        let mut stream = self.tcp_connect().await.expect("server is listening");
+
+        let mut request = format!(
+            "{} {} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n",
+            method, path, self.addr
+        );
+        for (name, value) in headers {
+            request.push_str(&format!("{}: {}\r\n", name, value));
+        }
+        request.push_str("\r\n");
+
+        write_request(&mut stream, &request)
+            .await
+            .expect("writing a plain request");
+
+        read_http_response(&mut stream)
+            .await
+            .expect("reading a plain request response")
+    }
+
     /// Sends a plain (non-upgrade) `GET` to a path and returns the raw response.
     ///
     /// Used to assert that a WebSocket route answers a browser navigation with
     /// `426 Upgrade Required` rather than pretending the route does not exist.
     pub async fn get(&self, path: &str) -> WsHttpResponse {
-        let mut stream = self.tcp_connect().await.expect("server is listening");
-
-        let request = format!(
-            "GET {} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n",
-            path, self.addr
-        );
-        write_request(&mut stream, &request).await.expect("writing a plain GET");
-
-        read_http_response(&mut stream)
-            .await
-            .expect("reading a plain GET response")
+        self.request("GET", path, &[]).await
     }
 
     async fn tcp_connect(&self) -> Result<TcpStream, WsHandshakeFailure> {
