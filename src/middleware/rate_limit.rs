@@ -3,13 +3,15 @@ use crate::routing::engine::RequestContext;
 use crate::security::rate_limit::RateLimiter;
 use crate::security::xss::Sanitizer;
 use crate::middleware::{Middleware, MiddlewareResult};
+use sea_orm_migration::async_trait::async_trait;
 
 pub struct RateLimitMiddleware {
     pub limiter: RateLimiter,
 }
 
+#[async_trait]
 impl Middleware for RateLimitMiddleware {
-    fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult {
+    async fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult {
         // SECURELY resolve the true user identity string
         let client_ip = ctx.resolve_client_ip();
 

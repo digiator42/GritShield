@@ -6,6 +6,7 @@ use crate::routing::engine::RequestContext;
 use crate::security::xss::Sanitizer;
 use crate::middleware::{Middleware, MiddlewareResult};
 use crate::error;
+use sea_orm_migration::async_trait::async_trait;
 
 pub struct IPBlacklistMiddleware {
     // Using HashSet for high-performance O(1) lookups
@@ -25,8 +26,9 @@ impl IPBlacklistMiddleware {
     }
 }
 
+#[async_trait]
 impl Middleware for IPBlacklistMiddleware {
-    fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult {
+    async fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult {
         // Leverage your secure IP resolver from earlier
         let client_ip = ctx.resolve_client_ip();
 

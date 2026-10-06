@@ -21,6 +21,48 @@ use std::{
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 
+/// The single funnel every buffered response passes through before being
+/// written, so middleware behaves identically on success, rejection, 404/405
+/// and handler panics:
+///
+/// 1. `merge_middleware_headers` — headers middleware put in `ctx.headers`
+/// 2. cookie commit — so `on_response` sees the final `Set-Cookie`
+/// 3. `Middleware::on_response`, registration order **reversed**, for the
+///    `ran` middlewares that actually executed
+/// 4. `log_lifecycle` → `AfterRequestHook`s → telemetry — after `on_response`,
+///    so a status rewritten there is what gets logged and counted
+///
+/// `ran` is the count from `Router::run_middlewares_counted`; `ctx` is the
+/// pre-handler snapshot on the normal path (`hook_ctx`) and the live context
+/// on early exits where the handler never consumed it.
+async fn finalize_response(
+    router: &Router,
+    ctx: &RequestContext,
+    response: Response,
+    request_header_names: &std::collections::HashSet<String>,
+    jar: &Arc<Mutex<CookieJar>>,
+    duration: std::time::Duration,
+    ran: usize,
+) -> Response {
+    let mut response = response;
+
+    response.merge_middleware_headers(&ctx.headers, request_header_names);
+
+    if let Ok(locked_jar) = jar.lock() {
+        response = locked_jar.clone().commit(response);
+    }
+
+    router.run_on_response(ctx, &mut response, ran).await;
+
+    router.log_lifecycle(ctx, response.status, duration).await;
+    router.run_after_hooks(ctx, response.status, duration).await;
+    router
+        .telemetry
+        .record_request(&ctx.req.path, response.status, duration);
+
+    response
+}
+
 pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, router: Arc<Router>) {
     CURRENT_EVENT_BUS.scope(router.event_bus.clone(), {
         CURRENT_JOB_QUEUE.scope(router.job_queue.clone(), async move {
@@ -107,7 +149,8 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
                     role_inheritance: router.role_inheritance.clone(),
                 };
 
-                match router.run_middlewares(&mut ctx) {
+                let (ran, middleware_result) = router.run_middlewares_counted(&mut ctx).await;
+                match middleware_result {
                     MiddlewareResult::Next(maybe_state) => {
                         if let Some(state) = maybe_state {
                             if state.session.is_some() {
@@ -118,14 +161,18 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
                             }
                         }
                     }
-                    MiddlewareResult::Error(mut err_res) => {
+                    MiddlewareResult::Error(err_res) => {
                         let duration = start_time.elapsed();
-                        ctx.telemetry
-                            .record_request(&ctx.req.path, err_res.status, duration);
-
-                        if let Ok(locked_jar) = jar.lock() {
-                            err_res = locked_jar.clone().commit(err_res);
-                        }
+                        let err_res = finalize_response(
+                            &router,
+                            &ctx,
+                            err_res,
+                            &request_header_names,
+                            &jar,
+                            duration,
+                            ran,
+                        )
+                        .await;
 
                         let (bytes, mime) = err_res.resolve();
                         if stream
@@ -135,8 +182,6 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
                         {
                             break;
                         }
-
-                        router.run_after_hooks(&ctx, err_res.status, duration).await;
 
                         if !keep_alive {
                             break;
@@ -282,7 +327,6 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
                 }
 
                 let error_handler_ptr = router.global_error_handler.handler;
-                let req_path = ctx.req.path.clone();
                 let hook_ctx = ctx.clone();
 
                 let response_future = async move {
@@ -300,15 +344,12 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
                                 }
                             }
 
-                            let headers = ctx.headers.clone();
-                            let mut response: Response = handler.call(ctx).await;
-
-                            // Carry forward the headers that middleware added while
-                            // handling this request — and only those. See
-                            // `Response::merge_middleware_headers`.
-                            response.merge_middleware_headers(&headers, &request_header_names);
-
-                            response
+                            // Middleware-added headers are merged onto the
+                            // response in `finalize_response`, alongside
+                            // `on_response`, so they also reach 404/405/panic
+                            // and rejection responses. `hook_ctx` holds the
+                            // same post-middleware snapshot `ctx` had here.
+                            handler.call(ctx).await
                         }
                         RoutingResult::NotFound => {
                             if let Some(err_handler) = error_handler_ptr {
@@ -327,7 +368,7 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
                     }
                 };
 
-                let mut response = match std::panic::AssertUnwindSafe(response_future)
+                let response = match std::panic::AssertUnwindSafe(response_future)
                     .catch_unwind()
                     .await
                 {
@@ -351,16 +392,16 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
 
                 let duration = start_time.elapsed();
 
-                router.log_lifecycle(&hook_ctx, response.status, duration);
-                router.run_after_hooks(&hook_ctx, response.status, duration).await;
-
-                router
-                    .telemetry
-                    .record_request(&req_path, response.status, duration);
-
-                if let Ok(locked_jar) = jar.lock() {
-                    response = locked_jar.clone().commit(response);
-                }
+                let response = finalize_response(
+                    &router,
+                    &hook_ctx,
+                    response,
+                    &request_header_names,
+                    &jar,
+                    duration,
+                    router.middlewares.len(),
+                )
+                .await;
 
                 // A streaming body (SSE) is pumped incrementally and holds the
                 // socket open for its whole lifetime, so it bypasses both the

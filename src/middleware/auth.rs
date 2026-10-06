@@ -7,6 +7,7 @@ use crate::security::jwt::JwtHandler;
 use crate::security::session::{Session, SessionStore};
 use crate::security::xss::Sanitizer;
 use crate::{debug, info};
+use sea_orm_migration::async_trait::async_trait;
 use std::sync::{Arc, Mutex, OnceLock};
 
 // global accessible, thread-safe cell for administrative/user auth session store
@@ -135,8 +136,9 @@ impl AuthMiddleware {
     }
 }
 
+#[async_trait]
 impl Middleware for AuthMiddleware {
-    fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult {
+    async fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult {
         // -----------------------------------------------------------------
         // STEP 1: ENHANCED PUBLIC ROUTE BYPASS & LOOP PREVENTION
         // -----------------------------------------------------------------

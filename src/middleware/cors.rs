@@ -2,6 +2,7 @@ use crate::http::request::HttpMethod;
 use crate::http::response::Response;
 use crate::routing::engine::RequestContext;
 use crate::middleware::{Middleware, MiddlewareResult};
+use sea_orm_migration::async_trait::async_trait;
 
 pub struct CorsMiddleware {
     allowed_origins: Vec<String>,
@@ -16,8 +17,9 @@ impl CorsMiddleware {
     }
 }
 
+#[async_trait]
 impl Middleware for CorsMiddleware {
-    fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult {
+    async fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult {
         // Extract the origin the browser is currently calling from
         // headers may store multiple values; take the first origin if present
         let inbound_origin = ctx

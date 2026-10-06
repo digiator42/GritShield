@@ -39,7 +39,12 @@ impl Router {
     }
 
     /// A framework-level diagnostic utility that prints highly optimized operational logs.
-    pub fn log_lifecycle(&self, ctx: &RequestContext, status: u16, duration: std::time::Duration) {
+    pub async fn log_lifecycle(
+        &self,
+        ctx: &RequestContext,
+        status: u16,
+        duration: std::time::Duration,
+    ) {
         // Zero-cost check: skip allocation and logging overhead entirely
         if !self.enable_lifecycle_logs {
             return;
