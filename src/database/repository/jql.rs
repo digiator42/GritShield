@@ -1,5 +1,5 @@
 use crate::deps::sea_orm::sea_query::extension::postgres::PgExpr;
-use crate::deps::sea_orm::sea_query::{Alias, Asterisk, Condition, Expr, JoinType, Query, SimpleExpr};
+use crate::deps::sea_orm::sea_query::{Alias, Asterisk, Condition, Expr, JoinType, Query};
 use crate::security::xss::Sanitizer;
 use sea_orm::{DbBackend, Statement};
 
