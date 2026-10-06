@@ -22,7 +22,7 @@ impl Router {
         };
 
         for (index, middleware) in self.middlewares.iter().enumerate() {
-            match middleware.execute(ctx).await {
+            match middleware.on_request(ctx).await {
                 MiddlewareResult::Next(maybe_state) => {
                     if let Some(state) = maybe_state {
                         // Merge fields dynamically without overwriting existing ones with None

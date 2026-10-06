@@ -142,7 +142,7 @@ struct RoleMiddleware {
 
 #[async_trait]
 impl Middleware for RoleMiddleware {
-    async fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult {
+    async fn on_request(&self, ctx: &mut RequestContext) -> MiddlewareResult {
 
         if let Some(role) = ctx.get_session_data("role") {
             if role == &self.required_role {

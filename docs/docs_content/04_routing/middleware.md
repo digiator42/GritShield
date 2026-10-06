@@ -1,5 +1,5 @@
 
-Middleware runs around handlers: `execute` sees the request before the handler runs, `on_response` sees the response after it — and both run on every response, rejections and 404s included.
+Middleware runs around handlers: `on_request` sees the request before the handler runs, `on_response` sees the response after it — and both run on every response, rejections and 404s included.
 
 
 ## Built-in Middleware
@@ -65,7 +65,7 @@ router = router.add_middleware(auth);
 ```rust
 #[async_trait]
 pub trait Middleware: Send + Sync {
-    async fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult;
+    async fn on_request(&self, ctx: &mut RequestContext) -> MiddlewareResult;
     async fn on_response(&self, ctx: &RequestContext, res: &mut Response) {}
 }
 ```
@@ -74,18 +74,18 @@ The two methods are the two phases, both `async` so they can await real I/O
 (a database session lookup, a remote key check) without blocking the runtime —
 a body with no `.await` compiles the same:
 
-- **`execute`** (required) runs before the handler, front to back in
+- **`on_request`** (required) runs before the handler, front to back in
   registration order. Return `MiddlewareResult::Error` to stop the pipeline
   with your own response.
 - **`on_response`** (optional — the default does nothing) runs once the
   response exists, in **reverse** registration order, for every request whose
-  `execute` ran: rejections, 404/405 and handler panics included, WebSocket
+  `on_request` ran: rejections, 404/405 and handler panics included, WebSocket
   upgrades excluded (there is no `Response`). It runs *before* the lifecycle
   log, the after-hooks and the telemetry counters, so a status you rewrite
   there is what gets logged.
 
 Every `impl Middleware` needs `#[async_trait]` above it (and the matching
-import). A struct that implements only `execute` needs no `on_response`.
+import). A struct that implements only `on_request` needs no `on_response`.
 
 For observation that has no business touching the `Response` (metrics, audit
 writes) implement `AfterRequestHook` (below) instead; it also hands you the
@@ -105,7 +105,7 @@ struct TimingMiddleware;
 
 #[async_trait]
 impl Middleware for TimingMiddleware {
-    async fn execute(&self, _ctx: &mut RequestContext) -> MiddlewareResult {
+    async fn on_request(&self, _ctx: &mut RequestContext) -> MiddlewareResult {
         // The frame the framework already set when the request arrived.
         MiddlewareResult::Next(None)
     }
@@ -123,7 +123,7 @@ struct AddHeaderMiddleware;
 
 #[async_trait]
 impl Middleware for AddHeaderMiddleware {
-    async fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult {
+    async fn on_request(&self, ctx: &mut RequestContext) -> MiddlewareResult {
         // Store data to be used later (values are multi-valued headers)
         ctx.headers
             .insert("X-Custom".to_string(), vec!["value".to_string()]);

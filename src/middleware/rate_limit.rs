@@ -11,7 +11,7 @@ pub struct RateLimitMiddleware {
 
 #[async_trait]
 impl Middleware for RateLimitMiddleware {
-    async fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult {
+    async fn on_request(&self, ctx: &mut RequestContext) -> MiddlewareResult {
         // SECURELY resolve the true user identity string
         let client_ip = ctx.resolve_client_ip();
 

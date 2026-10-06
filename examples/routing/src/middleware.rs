@@ -87,7 +87,7 @@ impl Default for RequestIdMiddleware {
 
 #[async_trait]
 impl Middleware for RequestIdMiddleware {
-    async fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult {
+    async fn on_request(&self, ctx: &mut RequestContext) -> MiddlewareResult {
         let n = self.counter.fetch_add(1, Ordering::Relaxed) + 1;
 
         // Downstream handlers see this through `ctx.header("x-request-id")`.
@@ -141,7 +141,7 @@ impl HeaderController {
 
 /// A middleware that can also say no.
 ///
-/// This is the half of the trait people forget: `execute` is not obliged to
+/// This is the half of the trait people forget: `on_request` is not obliged to
 /// continue. Rejecting here means the handler never runs, and — because
 /// middleware short-circuits — nothing registered after it runs either.
 ///
@@ -176,7 +176,7 @@ impl ApiKeyMiddleware {
 
 #[async_trait]
 impl Middleware for ApiKeyMiddleware {
-    async fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult {
+    async fn on_request(&self, ctx: &mut RequestContext) -> MiddlewareResult {
         // Outside the guarded subtree there is nothing to check.
         if !ctx.req.path.starts_with(&self.protected_prefix) {
             return MiddlewareResult::Next(None);

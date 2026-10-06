@@ -138,7 +138,7 @@ impl AuthMiddleware {
 
 #[async_trait]
 impl Middleware for AuthMiddleware {
-    async fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult {
+    async fn on_request(&self, ctx: &mut RequestContext) -> MiddlewareResult {
         // -----------------------------------------------------------------
         // STEP 1: ENHANCED PUBLIC ROUTE BYPASS & LOOP PREVENTION
         // -----------------------------------------------------------------

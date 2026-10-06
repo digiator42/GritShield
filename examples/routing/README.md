@@ -139,7 +139,7 @@ The trait is `async` (`#[async_trait]` on every impl) and has two phases:
 ```rust
 #[async_trait]
 pub trait Middleware: Send + Sync {
-    async fn execute(&self, ctx: &mut RequestContext) -> MiddlewareResult;
+    async fn on_request(&self, ctx: &mut RequestContext) -> MiddlewareResult;
     async fn on_response(&self, ctx: &RequestContext, res: &mut Response) {}
 }
 
