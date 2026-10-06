@@ -1,18 +1,15 @@
 use crate::admin_shell;
-use crate::database::repository::jql::DynamicColumnSpec;
-use crate::database::repository::registry::{ACTIONS_REGISTRY, ADMIN_REGISTRY};
+use crate::database::repository::registry::ACTIONS_REGISTRY;
 use crate::database::repository::GritRepository;
 use crate::gritadmin::dashboard::{
-    build_page_window, error_response, render_grid_rows, success_response,
+    build_page_window, render_grid_rows,
 };
 use crate::prelude::*;
 use crate::security::xss::Sanitizer;
 use maud::html;
-use sea_orm::sea_query::{Alias, ColumnDef, Table};
 use sea_orm::ColumnTrait;
 use sea_orm::QueryFilter;
-use sea_orm::QueryResult;
-use sea_orm::{Condition, EntityTrait, PaginatorTrait, QueryOrder};
+use sea_orm::{EntityTrait, PaginatorTrait, QueryOrder};
 use std::collections::HashMap;
 
 /// Generic dashboard view runner for listing data rows and handling infinite scrolls.

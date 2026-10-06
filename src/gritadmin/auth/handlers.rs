@@ -1,6 +1,6 @@
 use crate::gritadmin::auth::creds::get_admin_credentials;
 use crate::http::response::{Cookie, HttpStatus};
-use crate::http::response::{JsonPayload, SameSite};
+use crate::http::response::SameSite;
 use crate::middleware::auth::get_session_store;
 use crate::middleware::{Middleware, MiddlewareResult};
 use crate::routing::engine::RequestContext;

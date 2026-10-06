@@ -1,9 +1,6 @@
 use crate::database::repository::jql::DynamicColumnSpec;
-use crate::gritadmin::dashboard::{error_response, success_response};
-use crate::prelude::*;
 use sea_orm::sea_query::{Alias, ColumnDef, Table};
-use sea_orm::EntityTrait;
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
+use sea_orm::{ConnectionTrait, DatabaseConnection};
 
 pub async fn handle_create_table_dynamic(
     db: &DatabaseConnection,

@@ -1,11 +1,10 @@
 
 use crate::database::repository::GritRepository;
-use crate::database::repository::registry::{ACTIONS_REGISTRY, ADMIN_REGISTRY};
+use crate::database::repository::registry::ACTIONS_REGISTRY;
 use crate::prelude::*;
 use maud::Markup;
 use sea_orm::QueryResult;
 use super::{is_foreign_key_column, get_target_table_slug};
-use crate::database::GridColumn;
 
 /// Unified row renderer shared by the main matrix grid, quick search, and (via consistent
 /// styling) the JQL result viewer. Centralizing this means inline-edit inputs, FK links,
