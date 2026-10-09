@@ -2,8 +2,8 @@ use crate::routing::engine::Router;
 use crate::routing::AutoRoute;
 use crate::{http::HttpMethod, info};
 use colored::*;
-// shared dependency if EITHER feature is enabled
-#[cfg(any(feature = "swagger", feature = "admin"))]
+// admin-only helper; the swagger routes carry their own local import
+#[cfg(feature = "admin")]
 use crate::database::repository::registry::AdminHandlerFn;
 // `register_swagger_routes` builds a `Response` and logs its two routes, so
 // these two are not admin-only. Leaving them inside the `admin` gate made the
@@ -27,10 +27,13 @@ use {
     },
     crate::gritadmin::{
         admin_metrics_api_handler, admin_metrics_html_handler, admin_security_matrix_view_handler,
-        dashboard::handle_create_table_dynamic, dashboard::responses::*, mcp::*,
+        dashboard::handle_create_table_dynamic, dashboard::responses::*,
     },
     std::sync::Arc,
 };
+
+#[cfg(all(feature = "admin", feature = "mcp"))]
+use crate::gritadmin::mcp::*;
 
 pub fn method_color(method: &str) -> colored::ColoredString {
     match method {
@@ -116,6 +119,7 @@ impl Router {
             "/admin/api/logout",
             "/admin/mcp",
             "/admin/api/mcp",
+            #[cfg(feature = "mcp")]
             TOGGLE_PATH,
         ];
         all_paths.extend(static_routes.iter().map(|s| s.to_string()));
@@ -351,24 +355,27 @@ impl Router {
         );
 
         // MCP capability manager
-        log_route!("/admin/mcp", max_len, "GET");
-        self.add_route(HttpMethod::GET, "/admin/mcp", admin_mcp_page_handler, None);
+        #[cfg(feature = "mcp")]
+        {
+            log_route!("/admin/mcp", max_len, "GET");
+            self.add_route(HttpMethod::GET, "/admin/mcp", admin_mcp_page_handler, None);
 
-        log_route!("/admin/api/mcp", max_len, "GET");
-        self.add_route(
-            HttpMethod::GET,
-            "/admin/api/mcp",
-            admin_mcp_api_handler,
-            None,
-        );
+            log_route!("/admin/api/mcp", max_len, "GET");
+            self.add_route(
+                HttpMethod::GET,
+                "/admin/api/mcp",
+                admin_mcp_api_handler,
+                None,
+            );
 
-        log_route!(TOGGLE_PATH, max_len, "POST");
-        self.add_route(
-            HttpMethod::POST,
-            TOGGLE_PATH,
-            admin_mcp_toggle_handler,
-            None,
-        );
+            log_route!(TOGGLE_PATH, max_len, "POST");
+            self.add_route(
+                HttpMethod::POST,
+                TOGGLE_PATH,
+                admin_mcp_toggle_handler,
+                None,
+            );
+        }
 
         // Auth routes
         log_route!("/admin/login", max_len, "GET");

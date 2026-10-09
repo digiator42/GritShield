@@ -6,6 +6,7 @@ use std::str::FromStr;
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub struct UntrustedString(String);
 
+#[allow(clippy::inherent_to_string, clippy::inherent_to_string_shadow_display)]
 impl UntrustedString {
     /// Creates a new UntrustedString. Only the Kernel should do this
     /// during the Request Parsing phase.

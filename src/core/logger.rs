@@ -5,6 +5,7 @@ use crate::info;
 use crate::security::telemetry::TELEMETRY;
 use colored::*;
 use std::fmt;
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::mpsc::{self, Sender};
 use std::sync::OnceLock;
 use std::thread;
@@ -56,7 +57,7 @@ impl LogLevel {
 
 // --- Asynchronous Non-Blocking Logger ---
 pub struct Logger {
-    pub level: LogLevel,
+    level: AtomicU8,
     sender: Sender<String>,
 }
 
@@ -71,25 +72,48 @@ impl Logger {
             }
         });
 
-        Self { level, sender: tx }
+        Self {
+            level: AtomicU8::new(level as u8),
+            sender: tx,
+        }
+    }
+
+    pub fn current_level(&self) -> LogLevel {
+        match self.level.load(Ordering::Relaxed) {
+            0 => LogLevel::Off,
+            1 => LogLevel::Error,
+            2 => LogLevel::Warn,
+            3 => LogLevel::Info,
+            4 => LogLevel::Debug,
+            _ => LogLevel::Trace,
+        }
+    }
+
+    /// Raise the log level. The level is monotonic: a later, more verbose
+    /// configuration (e.g. a programmatic `mount_logger`) can always upgrade an
+    /// earlier one (e.g. the env-driven default of `Off`), but it is never
+    /// downgraded by a subsequent call.
+    fn raise(&self, level: LogLevel) {
+        self.level.fetch_max(level as u8, Ordering::Relaxed);
     }
 
     /// Log a message at the given level asynchronously
     pub fn log(&self, level: LogLevel, args: fmt::Arguments<'_>) {
-        if self.level != LogLevel::Off && level <= self.level {
-            let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
-            let level_str = format!("{:?}", level);
-            let colored_level = match level {
-                LogLevel::Error => level_str.red().bold(),
-                LogLevel::Warn => level_str.yellow().bold(),
-                LogLevel::Info => level_str.cyan(),
-                LogLevel::Debug => level_str.blue(),
-                LogLevel::Trace => level_str.magenta(),
-                LogLevel::Off => level_str.white(),
-            };
+        let current = self.current_level();
+        if level != LogLevel::Off && level <= current {
+                let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+                let level_str = format!("{:?}", level);
+                let colored_level = match level {
+                    LogLevel::Error => level_str.red().bold(),
+                    LogLevel::Warn => level_str.yellow().bold(),
+                    LogLevel::Info => level_str.cyan(),
+                    LogLevel::Debug => level_str.blue(),
+                    LogLevel::Trace => level_str.magenta(),
+                    LogLevel::Off => level_str.white(),
+                };
 
-            let formatted_msg = format!("[{}] {}: {}", timestamp, colored_level, args);
-            let _ = self.sender.send(formatted_msg);
+                let formatted_msg = format!("[{}] {}: {}", timestamp, colored_level, args);
+                let _ = self.sender.send(formatted_msg);
         }
     }
 }
@@ -98,7 +122,9 @@ impl Logger {
 static GLOBAL_LOGGER: OnceLock<Logger> = OnceLock::new();
 
 pub fn init(level: LogLevel) {
-    GLOBAL_LOGGER.get_or_init(|| Logger::new(level));
+    GLOBAL_LOGGER
+        .get_or_init(|| Logger::new(level))
+        .raise(level);
 }
 
 pub fn get_logger() -> &'static Logger {
