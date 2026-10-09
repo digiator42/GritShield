@@ -4,3 +4,6 @@
 [submodule "examples/cyperflow"]
 	path = examples/cyperflow
 	url = https://github.com/digiator42/CyberFlow
+[submodule "examples/gritjira"]
+	path = examples/gritjira
+	url = https://github.com/digiator42/GritJira.git
