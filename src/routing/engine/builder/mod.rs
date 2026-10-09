@@ -4,4 +4,5 @@ pub mod matcher;
 pub mod middleware;
 pub mod fs;
 pub mod admin;
+#[cfg(feature = "mcp")]
 pub mod mcp;

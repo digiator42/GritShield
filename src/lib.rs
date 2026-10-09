@@ -2,6 +2,7 @@ pub mod core;
 pub mod database;
 pub mod http;
 pub mod macros;
+#[cfg(feature = "mcp")]
 pub mod mcp;
 pub mod middleware;
 pub mod routing;

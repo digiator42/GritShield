@@ -13,8 +13,9 @@ impl Router {
     }
 
     /// Premium builder to switch on detailed diagnostic server logs
-    pub fn mount_logger(self, level: LogLevel) -> Self {
+    pub fn mount_logger(mut self, level: LogLevel) -> Self {
         logger::init(level);
+        self.enable_lifecycle_logs = level != LogLevel::Off;
         self
     }
 
