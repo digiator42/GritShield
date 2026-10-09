@@ -1,0 +1,12 @@
+[package]
+name = "formforge"
+version = "0.1.0"
+edition = "2021"
+description = "Multi-step form builder with conditional validation, built on gritshield 0.3"
+
+[dependencies]
+gritshield = "0.3"
+maud = "0.25"
+tokio = { version = "1.0", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
