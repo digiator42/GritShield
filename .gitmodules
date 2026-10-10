@@ -7,3 +7,6 @@
 [submodule "examples/gritjira"]
 	path = examples/gritjira
 	url = https://github.com/digiator42/GritJira.git
+[submodule "examples/LuxShield"]
+	path = examples/LuxShield
+	url = https://github.com/digiator42/LuxShield.git
