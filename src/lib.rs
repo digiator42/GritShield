@@ -23,6 +23,14 @@ pub mod gritadmin;
 #[cfg(feature = "admin")]
 pub use gritadmin::shell::admin_shell;
 
+/// The shared view AST: build a UI in Rust on the server, ship it to a browser
+/// that mounts it with live reactivity.
+///
+/// See the module documentation for the three ways in — building a view,
+/// rendering one, and reading existing Maud output back into a tree.
+#[cfg(feature = "ui")]
+pub mod ui;
+
 pub use gritshield_macros::action;
 pub use gritshield_macros::component;
 pub use gritshield_macros::controller;
