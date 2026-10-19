@@ -146,6 +146,13 @@ pub enum ResponseBody {
     Html(SafeHtml),
     StaticFile(String),
     Json(String),
+    /// Raw bytes with an explicit content type.
+    ///
+    /// Needed for anything that is neither text nor JSON — a `.wasm` module, a
+    /// font, an image. `Json` and `Html` cannot carry these: both are `String`,
+    /// so a binary payload would have to be transcoded to survive the trip, and
+    /// the browser would reject the result for having the wrong content type.
+    Bytes(Vec<u8>),
     /// A long-lived Server-Sent Events body, pumped incrementally onto the
     /// socket instead of being buffered behind a `Content-Length`.
     Stream(SseStream),
@@ -158,6 +165,8 @@ impl ResponseBody {
             ResponseBody::Html(safe_html) => std::str::from_utf8(safe_html.as_bytes()).ok(),
             ResponseBody::StaticFile(_) => None,
             ResponseBody::Json(json_str) => Some(json_str.as_str()),
+            // Not text by definition; callers that need text check the variant.
+            ResponseBody::Bytes(_) => None,
             ResponseBody::Stream(_) => None,
         }
     }
@@ -308,6 +317,30 @@ impl Response {
             ],
             cookies: Vec::new(),
             body: ResponseBody::StaticFile(path.to_string()),
+        }
+    }
+
+    /// Serve raw bytes with an explicit content type.
+    ///
+    /// The content type is mandatory rather than sniffed: a browser's decision
+    /// to compile a module with `WebAssembly.instantiateStreaming` depends on
+    /// `application/wasm` being exactly right, and a wrong type fails as a
+    /// confusing stream error rather than an obvious one. Being explicit here is
+    /// what keeps that decision in the handler's hands.
+    ///
+    /// ```ignore
+    /// // Serve a wasm module the browser will actually compile.
+    /// Response::asset(std::fs::read(path)?, "application/wasm")
+    /// ```
+    pub fn asset(body: impl Into<Vec<u8>>, content_type: &str) -> Self {
+        Response {
+            status: 200,
+            headers: vec![
+                ("Content-Type".to_string(), content_type.to_string()),
+                ("X-Content-Type-Options".to_string(), "nosniff".to_string()),
+            ],
+            cookies: Vec::new(),
+            body: ResponseBody::Bytes(body.into()),
         }
     }
 
@@ -477,6 +510,9 @@ impl Response {
             ResponseBody::Json(json_str) => {
                 (json_str.as_bytes().to_vec(), "application/json".to_string())
             }
+            // The caller supplied the type; it is authoritative here, so this
+            // branch contributes no `Content-Type` of its own.
+            ResponseBody::Bytes(bytes) => (bytes.clone(), String::new()),
             // Never reached: `handle_connection` intercepts streaming bodies and
             // pumps them onto the socket instead of calling `resolve`.
             ResponseBody::Stream(_) => (Vec::new(), "text/event-stream".to_string()),

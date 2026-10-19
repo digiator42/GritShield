@@ -18,6 +18,10 @@ admin = []
 swagger = []
 mcp = []
 validator = ["dep:validator"]
+# The shared view AST (`gritshield::ui`): build a UI in Rust on the server and
+# ship it to a browser that mounts it with fine-grained reactivity. Adds one
+# dependency and no browser code — the AST crate is pure data.
+ui = ["dep:velo_ast", "velo_ast/serde"]
 
 # Database driver features mapping to both SeaORM core and migration crates
 sqlite = ["sea-orm/sqlx-sqlite", "sea-orm-migration/sqlx-sqlite"]
@@ -73,3 +77,8 @@ rust_decimal = "1.39.0"
 urlencoding = "2.1"
 cron = "0.17.0"
 validator = { version = "0.18", optional = true }
+
+# The shared view AST. A path dependency for local development; swap to a git
+# dependency (`{ git = "https://github.com/digiator42/Veloasm", package = "velo_ast" }`)
+# when publishing.
+velo_ast = { version = "0.1.0", path = "../Veloasm/crates/ast", optional = true }

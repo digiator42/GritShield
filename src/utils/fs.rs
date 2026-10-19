@@ -13,13 +13,28 @@ pub fn serve_static(file_path: &str) -> Result<(Vec<u8>, String), String> {
     if path.exists() && path.is_file() {
         let content = fs::read(path).map_err(|_| "Read Error")?;
 
-        // Simple MIME detection
+        // Content types for the assets a modern front end actually loads.
+        // `wasm` is the one that cannot be approximated: a browser will only
+        // stream-compile a module served as `application/wasm`, and falls back
+        // to `text/plain` failing with an opaque stream error rather than a
+        // clear one.
         let content_type = match path.extension().and_then(|s| s.to_str()) {
             Some("css") => "text/css",
-            Some("js") => "application/javascript",
+            Some("js") | Some("mjs") => "text/javascript",
+            Some("json") => "application/json",
+            Some("html") | Some("htm") => "text/html; charset=utf-8",
+            Some("wasm") => "application/wasm",
+            Some("svg") => "image/svg+xml",
+            Some("ico") => "image/x-icon",
             Some("png") => "image/png",
             Some("jpg") | Some("jpeg") => "image/jpeg",
-            _ => "text/plain",
+            Some("gif") => "image/gif",
+            Some("webp") => "image/webp",
+            Some("woff2") => "font/woff2",
+            Some("woff") => "font/woff",
+            Some("txt") => "text/plain; charset=utf-8",
+            Some("map") => "application/json",
+            _ => "application/octet-stream",
         };
 
         Ok((content, content_type.to_string()))
