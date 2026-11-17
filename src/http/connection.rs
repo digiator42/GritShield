@@ -7,9 +7,11 @@ use crate::{
     middleware::MiddlewareResult,
     routing::{
         engine::{RequestContext, Router, RoutingResult},
-        websocket::{SUPPORTED_WS_VERSION, has_ws_route, match_ws_route},
+        websocket::{has_ws_route, match_ws_route, SUPPORTED_WS_VERSION},
     },
-    security::{cookies::CookieJar, errors::ShieldError, xss::Sanitizer},
+    security::{
+        cookies::CookieJar, errors::ShieldError, filter_chain::SecurityChainResult, xss::Sanitizer,
+    },
     warn,
 };
 use futures::future::FutureExt;
@@ -27,14 +29,21 @@ use tokio::net::TcpStream;
 ///
 /// 1. `merge_middleware_headers` — headers middleware put in `ctx.headers`
 /// 2. cookie commit — so `on_response` sees the final `Set-Cookie`
-/// 3. `Middleware::on_response`, registration order **reversed**, for the
+/// 3. security-chain filter `on_response` (innermost stage first)
+/// 4. `Middleware::on_response`, registration order **reversed**, for the
 ///    `ran` middlewares that actually executed
-/// 4. `log_lifecycle` → `AfterRequestHook`s → telemetry — after `on_response`,
+/// 5. `log_lifecycle` → `AfterRequestHook`s → telemetry — after `on_response`,
 ///    so a status rewritten there is what gets logged and counted
 ///
-/// `ran` is the count from `Router::run_middlewares_counted`; `ctx` is the
-/// pre-handler snapshot on the normal path (`hook_ctx`) and the live context
-/// on early exits where the handler never consumed it.
+/// `runs` records how far the middleware and security stages got. `ctx` is the
+/// post-middleware/post-security snapshot on the normal path (`hook_ctx`) and
+/// the live context on early exits where the handler never consumed it.
+#[derive(Clone, Copy)]
+struct PipelineRuns {
+    middleware: usize,
+    security: Option<(usize, usize)>,
+}
+
 async fn finalize_response(
     router: &Router,
     ctx: &RequestContext,
@@ -42,7 +51,7 @@ async fn finalize_response(
     request_header_names: &std::collections::HashSet<String>,
     jar: &Arc<Mutex<CookieJar>>,
     duration: std::time::Duration,
-    ran: usize,
+    runs: PipelineRuns,
 ) -> Response {
     let mut response = response;
 
@@ -52,7 +61,15 @@ async fn finalize_response(
         response = locked_jar.clone().commit(response);
     }
 
-    router.run_on_response(ctx, &mut response, ran).await;
+    if let Some((chain, filters)) = runs.security {
+        router
+            .run_security_on_response(ctx, &mut response, chain, filters)
+            .await;
+    }
+
+    router
+        .run_on_response(ctx, &mut response, runs.middleware)
+        .await;
 
     router.log_lifecycle(ctx, response.status, duration).await;
     router.run_after_hooks(ctx, response.status, duration).await;
@@ -170,13 +187,62 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
                             &request_header_names,
                             &jar,
                             duration,
-                            ran,
+                            PipelineRuns {
+                                middleware: ran,
+                                security: None,
+                            },
                         )
                         .await;
 
                         let (bytes, mime) = err_res.resolve();
                         if stream
                             .write_all(&err_res.to_bytes(&bytes, &mime))
+                            .await
+                            .is_err()
+                        {
+                            break;
+                        }
+
+                        if !keep_alive {
+                            break;
+                        }
+                        continue;
+                    }
+                }
+
+                // Security chains run after global middleware (so sessions,
+                // rate limits and blacklists are already applied) and before
+                // routing dispatch, route-role enforcement and WebSocket
+                // upgrades. The first matching chain governs the request.
+                let mut security_run = None;
+                match router.run_security_chains(&mut ctx).await {
+                    SecurityChainResult::NoChain => {}
+                    SecurityChainResult::Continue { chain, filters } => {
+                        security_run = Some((chain, filters));
+                    }
+                    SecurityChainResult::Respond {
+                        chain,
+                        filters,
+                        response,
+                    } => {
+                        let duration = start_time.elapsed();
+                        let response = finalize_response(
+                            &router,
+                            &ctx,
+                            response,
+                            &request_header_names,
+                            &jar,
+                            duration,
+                            PipelineRuns {
+                                middleware: ran,
+                                security: Some((chain, filters)),
+                            },
+                        )
+                        .await;
+
+                        let (bytes, mime) = response.resolve();
+                        if stream
+                            .write_all(&response.to_bytes(&bytes, &mime))
                             .await
                             .is_err()
                         {
@@ -399,7 +465,10 @@ pub async fn handle_connection(mut stream: TcpStream, peer_addr: SocketAddr, rou
                     &request_header_names,
                     &jar,
                     duration,
-                    router.middlewares.len(),
+                    PipelineRuns {
+                        middleware: router.middlewares.len(),
+                        security: security_run,
+                    },
                 )
                 .await;
 

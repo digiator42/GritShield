@@ -1,10 +1,11 @@
 use crate::core::event_bus::EventBus;
 use crate::core::job_queue::{JobStorage, MemoryJobQueue};
-use crate::core::{AutoWire, get_env, init_from_env};
+use crate::core::{get_env, init_from_env, AutoWire};
 use crate::middleware::{AfterRequestHook, Middleware};
 use crate::routing::engine::Node;
 use crate::routing::IntoHandler;
 use crate::security::errors::{default_framework_error_handler, GlobalErrorHandler};
+use crate::security::filter_chain::SecurityFilterChain;
 use crate::security::telemetry::SystemTelemetry;
 use crate::security::xss::UntrustedString;
 use sea_orm::DatabaseConnection;
@@ -25,6 +26,7 @@ pub enum RoutingResult<'a> {
 pub struct Router {
     pub root: Node,
     pub middlewares: Vec<Box<dyn Middleware>>,
+    pub security_chains: Vec<SecurityFilterChain>,
     pub db: Option<Arc<DatabaseConnection>>,
     pub after_hooks: Vec<Box<dyn AfterRequestHook>>,
     pub global_error_handler: GlobalErrorHandler,
@@ -48,6 +50,7 @@ impl Router {
         let mut router = Router {
             root: Node::new(),
             middlewares: Vec::new(),
+            security_chains: Vec::new(),
             db: None,
             after_hooks: Vec::new(),
             global_error_handler: GlobalErrorHandler {

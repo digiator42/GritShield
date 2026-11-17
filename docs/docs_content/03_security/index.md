@@ -32,6 +32,13 @@ GritShield includes these security headers by default:
 5. Monitor rate limit violations
 6. Keep dependencies updated
 
+## Security Filter Chains
+
+For per-path rules, composable filters and custom 401/403 responses, use a
+`SecurityFilterChain` instead of one global auth middleware. Chains are matched
+in order, fail closed when rules exist, and leave unclaimed requests untouched.
+See [Security Filter Chains](filter_chain.md).
+
 ## AuthMiddleware – Session vs JWT
 
 By using AuthMiddleware you have a full authentication system that exposes only `/login` & `/register` routes, sets signed `hmac cookies`, generates a new `CSRF` token immediately, logs out user automatically and redirects unauthenticated users to `/login`.

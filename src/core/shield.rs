@@ -3,6 +3,7 @@ use crate::{
     http::ignite,
     middleware::Middleware,
     routing::Router,
+    security::filter_chain::SecurityFilterChain,
 };
 use sea_orm::DatabaseConnection;
 use std::sync::Arc;
@@ -17,6 +18,7 @@ pub struct Shield {
     log_level: Option<LogLevel>,
     db: Option<Arc<DatabaseConnection>>,
     middlewares: Vec<Box<dyn Middleware>>,
+    security_chains: Vec<SecurityFilterChain>,
 }
 
 impl Shield {
@@ -77,6 +79,12 @@ impl Shield {
         self
     }
 
+    /// Add a Spring-style security filter chain.
+    pub fn add_security_chain(mut self, chain: SecurityFilterChain) -> Self {
+        self.security_chains.push(chain);
+        self
+    }
+
     /// Use a custom router instead of the default
     pub fn router(mut self, router: Router) -> Self {
         self.router = Some(router);
@@ -95,7 +103,7 @@ impl Shield {
 
     fn launch_with_defaults(self, host: &str, port: &str) {
         // Build router
-        let router = self.router.unwrap_or_else(|| {
+        let mut router = self.router.unwrap_or_else(|| {
             let mut r = Router::new();
             if let Some(level) = self.log_level {
                 r = r.mount_logger(level);
@@ -108,6 +116,10 @@ impl Shield {
             }
             r
         });
+
+        for chain in self.security_chains {
+            router = router.add_security_chain(chain);
+        }
 
         let final_host = if self.host.is_empty() {
             host

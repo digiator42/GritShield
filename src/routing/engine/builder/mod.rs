@@ -1,8 +1,9 @@
-pub mod builder;
-pub mod registerer;
-pub mod matcher;
-pub mod middleware;
-pub mod fs;
 pub mod admin;
+pub mod builder;
+pub mod fs;
+pub mod matcher;
 #[cfg(feature = "mcp")]
 pub mod mcp;
+pub mod middleware;
+pub mod registerer;
+pub mod security;

@@ -57,82 +57,14 @@ impl AuthMiddleware {
         }
     }
 
-    /// Internal helper to evaluate whether a path matches a whitelisted path rule
+    /// Internal helper to evaluate whether a path matches a whitelisted path rule.
+    ///
+    /// Delegates to the shared Ant-style matcher so public-path checks and
+    /// security-chain matchers cannot drift apart.
     fn is_public(&self, incoming_path: &str) -> bool {
-        let incoming_segments: Vec<&str> =
-            incoming_path.split('/').filter(|s| !s.is_empty()).collect();
-
-        for rule in &self.public_paths {
-            let rule_segments: Vec<&str> = rule.split('/').filter(|s| !s.is_empty()).collect();
-
-            // Handle explicit root match ("/")
-            if rule == "/" && incoming_path == "/" {
-                return true;
-            }
-
-            // Check for catch-all "**" FIRST
-            if rule_segments.len() >= 1 && (rule_segments[rule_segments.len() - 1] == "**") {
-                let rule_prefix_len = rule_segments.len() - 1;
-
-                if incoming_segments.len() >= rule_prefix_len {
-                    let mut all_match = true;
-                    for i in 0..rule_prefix_len {
-                        if rule_segments[i] != incoming_segments[i] {
-                            all_match = false;
-                            break;
-                        }
-                    }
-                    if all_match {
-                        return true;
-                    }
-                }
-                continue;
-            }
-
-            // Check for ":*" wildcard catch-all
-            if rule_segments.len() >= 1 && rule_segments[rule_segments.len() - 1].starts_with(":*")
-            {
-                let rule_prefix_len = rule_segments.len() - 1;
-
-                if incoming_segments.len() >= rule_prefix_len {
-                    let mut all_match = true;
-                    for i in 0..rule_prefix_len {
-                        if rule_segments[i] != incoming_segments[i] {
-                            all_match = false;
-                            break;
-                        }
-                    }
-                    if all_match {
-                        return true;
-                    }
-                }
-                continue;
-            }
-
-            // Exact path matching (no wildcards)
-            let mut matches = true;
-            for (i, rule_seg) in rule_segments.iter().enumerate() {
-                if i >= incoming_segments.len() {
-                    matches = false;
-                    break;
-                }
-
-                if *rule_seg == "*" {
-                    continue;
-                }
-
-                if rule_seg != &incoming_segments[i] {
-                    matches = false;
-                    break;
-                }
-            }
-
-            if matches && incoming_segments.len() == rule_segments.len() {
-                return true;
-            }
-        }
-
-        false
+        self.public_paths
+            .iter()
+            .any(|rule| crate::routing::path_matches(rule, incoming_path))
     }
 }
 
@@ -313,8 +245,10 @@ impl Middleware for AuthMiddleware {
                 || method == HttpMethod::DELETE
             {
                 let mut csrf_verified = false;
-                let mut incoming_token: Option<String> =
-                    ctx.headers.get("x-csrf-token").and_then(|vals| vals.first().cloned());
+                let mut incoming_token: Option<String> = ctx
+                    .headers
+                    .get("x-csrf-token")
+                    .and_then(|vals| vals.first().cloned());
 
                 if incoming_token.is_none() {
                     let form_data = ctx.req.parse_form_body();
@@ -392,7 +326,7 @@ impl Middleware for AuthMiddleware {
                                 debug!("[AUTH MIDDLEWARE] Token validation rejected: {}", e);
                             }
                         }
-                    }    
+                    }
                 }
             }
         }

@@ -32,15 +32,14 @@ pub use gritadmin::shell::admin_shell;
 pub mod ui;
 
 pub use gritshield_macros::action;
+pub use gritshield_macros::catch;
 pub use gritshield_macros::component;
 pub use gritshield_macros::controller;
 pub use gritshield_macros::event;
+pub use gritshield_macros::intercept;
 pub use gritshield_macros::job;
 pub use gritshield_macros::launch;
-pub use gritshield_macros::catch;
-pub use gritshield_macros::intercept;
 pub use gritshield_macros::transactional;
-pub use gritshield_macros::{mcp_prompt, mcp_resource, mcp_tool};
 #[cfg(feature = "admin")]
 pub use gritshield_macros::GritAdmin;
 pub use gritshield_macros::GritComponent;
@@ -54,6 +53,7 @@ pub use gritshield_macros::GritSchema;
 pub use gritshield_macros::GritWire;
 pub use gritshield_macros::WireContainer;
 pub use gritshield_macros::{delete, get, patch, post, put};
+pub use gritshield_macros::{mcp_prompt, mcp_resource, mcp_tool};
 
 // explicit module namespace for startup macros
 pub mod startup {
@@ -92,33 +92,40 @@ pub mod prelude {
     pub use crate::http::HttpMethod;
     pub use crate::macros;
     pub use crate::routing::engine::{RequestContext, Router};
+    pub use crate::routing::matcher::RequestMatcher;
     pub use crate::routing::templates::TemplateEngine;
     pub use crate::routing::websocket::{
-        BoxedWsFuture, WsClose, WsConnection, WsError, WsHandlerFn, WsIncoming, WsOutgoing,
-        WsSink, WebSocketHandler, register_ws_route, register_ws_route_with_subprotocols,
+        register_ws_route, register_ws_route_with_subprotocols, BoxedWsFuture, WebSocketHandler,
+        WsClose, WsConnection, WsError, WsHandlerFn, WsIncoming, WsOutgoing, WsSink,
     };
+    pub use crate::security::filter_chain::{
+        AccessDecision, AccessDeniedHandler, AccessRule, AuthenticationEntryPoint,
+        AuthenticationFilter, CsrfFilter, FilterResult, SecurityFilter, SecurityFilterChain,
+        SecurityFilterChainBuilder,
+    };
+    pub use crate::security::jwt::JwtHandler;
     pub use crate::security::xss::Sanitizer;
 
     // Critical functions
     pub use crate::core::env::get_env;
-    pub use crate::core::Shield;
     pub use crate::core::GritShield;
+    pub use crate::core::Shield;
     pub use crate::http::ignite;
 
     // Re-export macros for the prelude
     pub use crate::action;
     pub use crate::controller;
     pub use crate::launch;
+    pub use crate::register_ws;
     pub use crate::ws_handler;
     pub use crate::ws_message;
-    pub use crate::register_ws;
-    pub use crate::{info, error, warn, debug, trace};
     #[cfg(feature = "admin")]
     pub use crate::GritAdmin;
     pub use crate::GritModel;
     pub use crate::GritRelation;
     #[cfg(feature = "swagger")]
     pub use crate::GritSchema;
+    pub use crate::{debug, error, info, trace, warn};
     pub use crate::{delete, get, patch, post, put};
 
     // External essentials the developer will always need

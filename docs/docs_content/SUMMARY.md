@@ -9,6 +9,7 @@
   - [Data Sanitization](03_security/data_sanitization.md)
   - [RBAC](03_security/rbac.md)
   - [CAPS RBAC](03_security/caps.md)
+  - [Security Filter Chains](03_security/filter_chain.md)
 
 - [Routing](04_routing/index.md)
   - [Dynamic Routes](04_routing/dynamic-routes.md)
