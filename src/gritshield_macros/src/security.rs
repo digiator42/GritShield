@@ -71,6 +71,15 @@ fn expand_function(attr: ChainAttr, function: ItemFn) -> TokenStream {
         .into();
     }
 
+    if !function.sig.generics.params.is_empty() {
+        return syn::Error::new_spanned(
+            &function.sig.generics,
+            "#[security_chain] functions must not be generic",
+        )
+        .to_compile_error()
+        .into();
+    }
+
     let name = attr.name.unwrap_or_else(|| function.sig.ident.to_string());
     let order = attr.order;
     let builder = &function.sig.ident;
@@ -128,21 +137,13 @@ fn expand_impl(attr: ChainAttr, implementation: ItemImpl) -> TokenStream {
             return None;
         };
 
-        if method.sig.receiver().is_none()
-            && method.sig.inputs.is_empty()
-            && method.sig.asyncness.is_none()
-            && returns_security_chain(&method.sig.output)
-        {
-            Some(&method.sig.ident)
-        } else {
-            None
-        }
+        returns_security_chain(&method.sig.output).then_some(method)
     });
 
-    let Some(builder) = candidates.next() else {
+    let Some(builder_fn) = candidates.next() else {
         return syn::Error::new_spanned(
             &implementation,
-            "#[security_chain] needs one associated function such as `fn build() -> SecurityFilterChain` (no self, no arguments, not async)",
+            "#[security_chain] needs one associated function such as `fn build() -> SecurityFilterChain`",
         )
         .to_compile_error()
         .into();
@@ -150,13 +151,50 @@ fn expand_impl(attr: ChainAttr, implementation: ItemImpl) -> TokenStream {
 
     if let Some(extra) = candidates.next() {
         return syn::Error::new_spanned(
-            extra,
+            &extra.sig.ident,
             "#[security_chain] impl blocks may contain only one associated function that returns SecurityFilterChain",
         )
         .to_compile_error()
         .into();
     }
 
+    if builder_fn.sig.receiver().is_some() {
+        return syn::Error::new_spanned(
+            &builder_fn.sig,
+            "#[security_chain] associated functions must not take `self`; they run before any request exists",
+        )
+        .to_compile_error()
+        .into();
+    }
+
+    if !builder_fn.sig.inputs.is_empty() {
+        return syn::Error::new_spanned(
+            &builder_fn.sig.inputs,
+            "#[security_chain] associated functions must take no arguments; read configuration from the environment or a component",
+        )
+        .to_compile_error()
+        .into();
+    }
+
+    if builder_fn.sig.asyncness.is_some() {
+        return syn::Error::new_spanned(
+            &builder_fn.sig,
+            "#[security_chain] associated functions must be synchronous; SecurityFilterChain construction cannot await",
+        )
+        .to_compile_error()
+        .into();
+    }
+
+    if !builder_fn.sig.generics.params.is_empty() {
+        return syn::Error::new_spanned(
+            &builder_fn.sig.generics,
+            "#[security_chain] associated functions must not be generic",
+        )
+        .to_compile_error()
+        .into();
+    }
+
+    let builder = &builder_fn.sig.ident;
     let name = attr
         .name
         .unwrap_or_else(|| type_name(&implementation.self_ty));
