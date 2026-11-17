@@ -39,6 +39,7 @@ pub use gritshield_macros::event;
 pub use gritshield_macros::intercept;
 pub use gritshield_macros::job;
 pub use gritshield_macros::launch;
+pub use gritshield_macros::security_chain;
 pub use gritshield_macros::transactional;
 #[cfg(feature = "admin")]
 pub use gritshield_macros::GritAdmin;
@@ -117,6 +118,7 @@ pub mod prelude {
     pub use crate::controller;
     pub use crate::launch;
     pub use crate::register_ws;
+    pub use crate::security_chain;
     pub use crate::ws_handler;
     pub use crate::ws_message;
     #[cfg(feature = "admin")]

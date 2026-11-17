@@ -1,8 +1,25 @@
 use crate::http::response::Response;
 use crate::routing::engine::{RequestContext, Router};
-use crate::security::filter_chain::{ChainOutcome, SecurityChainResult, SecurityFilterChain};
+use crate::security::filter_chain::{
+    ChainOutcome, SecurityChainRegistration, SecurityChainResult, SecurityFilterChain,
+};
 
 impl Router {
+    /// Build every chain declared with `#[security_chain]`.
+    ///
+    /// Registrations are sorted by `order` (lower first) and then by `name`, so
+    /// the resulting order is deterministic across builds. Manually added
+    /// chains are appended afterwards.
+    pub(crate) fn register_security_chains(&mut self) {
+        let mut registrations: Vec<&SecurityChainRegistration> =
+            crate::inventory::iter::<SecurityChainRegistration>().collect();
+        registrations.sort_by_key(|registration| (registration.order, registration.name));
+
+        for registration in registrations {
+            self.security_chains.push((registration.build)());
+        }
+    }
+
     /// Append a security chain.
     ///
     /// Chains are evaluated in registration order and the first chain whose

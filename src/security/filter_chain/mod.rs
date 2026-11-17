@@ -55,6 +55,9 @@ mod filter;
 pub use access::{is_authenticated, AccessDecision, AccessRule, AuthorizationRule};
 pub use auth::{AuthMode, AuthenticationFilter, CsrfFilter};
 pub(crate) use chain::ChainOutcome;
-pub use chain::{SecurityChainResult, SecurityFilterChain, SecurityFilterChainBuilder};
+pub use chain::{
+    SecurityChainRegistration, SecurityChainResult, SecurityFilterChain,
+    SecurityFilterChainBuilder,
+};
 pub use entry::{AccessDeniedHandler, AuthenticationEntryPoint};
 pub use filter::{FilterResult, SecurityFilter};

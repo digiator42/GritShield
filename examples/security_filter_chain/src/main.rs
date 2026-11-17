@@ -8,9 +8,11 @@
 //! | `api` | `/api/**` | JWT bearer | public, Authenticated, Admin role, method-specific |
 //! | `web` | `/**` | signed session + CSRF | public, Authenticated, Admin role |
 //!
-//! The `api` chain is registered first, so `/api/**` never falls through to the
-//! catch-all `web` chain. That is the same "first matching chain wins" rule as
-//! Spring Security.
+//! Both chains are declared with `#[security_chain]`; `Router::new()` discovers
+//! them at startup, orders them by `order`, and applies them without the router
+//! being modified. The `api` chain runs first (`order = 10`), so `/api/**` never
+//! falls through to the catch-all `web` chain (`order = 20`). That is the same
+//! "first matching chain wins" rule as Spring Security.
 //!
 //! ## Run
 //!
@@ -81,6 +83,57 @@ impl SecurityFilter for ChainStamp {
         res.headers
             .push(("x-security-chain".to_string(), "web".to_string()));
     }
+}
+
+/// Declarative form 1: `#[security_chain]` on an inherent impl block.
+///
+/// The block must contain exactly one synchronous associated function with no
+/// receiver, no arguments, and a `SecurityFilterChain` return type. Lower
+/// `order` values run first.
+struct ApiChain;
+
+#[security_chain(name = "api", order = 10)]
+impl ApiChain {
+    fn build() -> SecurityFilterChain {
+        SecurityFilterChain::builder()
+            .matching("/api/**")
+            .jwt_auth(JwtHandler::new(JWT_SECRET))
+            // Rules are ordered and the first match wins. A public rule does
+            // not bypass authentication: a malformed token is still rejected
+            // by the filter above.
+            .authorize_public("/api/public/**")
+            .authorize(
+                RequestMatcher::path_and_method("/api/items", HttpMethod::POST),
+                AccessRule::has_role("Admin"),
+            )
+            .authorize_role("Admin", "/api/admin/**")
+            .any_request(AccessRule::authenticated())
+            .entry_point(AuthenticationEntryPoint::Bearer)
+            .access_denied(AccessDeniedHandler::Forbidden)
+            .build()
+    }
+}
+
+/// Declarative form 2: `#[security_chain]` on a free function.
+///
+/// Without `name`, the chain is labelled `web_chain`; setting it explicitly
+/// keeps the diagnostic label stable if the function is renamed.
+#[security_chain(name = "web", order = 20)]
+fn web_chain() -> SecurityFilterChain {
+    SecurityFilterChain::builder()
+        .matching("/**")
+        .session_auth()
+        .filter(ChainStamp)
+        .csrf_with(|csrf| csrf.ignore_path("/auth/login"))
+        .authorize_public("/health")
+        .authorize_public("/auth/**")
+        .authorize_authenticated("/account/**")
+        .authorize_role("Admin", "/admin/**")
+        // No catch-all rule: any path this chain matches but no rule covers
+        // is denied (fail-closed) instead of silently open.
+        .entry_point(AuthenticationEntryPoint::redirect("/auth/login"))
+        .access_denied(AccessDeniedHandler::Forbidden)
+        .build()
 }
 
 #[tokio::main]
@@ -209,49 +262,9 @@ async fn main() {
             |_ctx: RequestContext| async {
                 Response::json_ok(&json!({ "created": true, "items": ["alpha", "beta", "gamma"] }))
             },
-        ))
-        // =====================================================================
-        // API chain: registered first, so it owns every /api/** request.
-        // =====================================================================
-        .add_security_chain(
-            SecurityFilterChain::builder()
-                .name("api")
-                .matching("/api/**")
-                .jwt_auth(JwtHandler::new(JWT_SECRET))
-                // Rules are ordered and the first match wins. A public rule
-                // does not bypass authentication: a malformed token is still
-                // rejected by the filter above.
-                .authorize_public("/api/public/**")
-                .authorize(
-                    RequestMatcher::path_and_method("/api/items", HttpMethod::POST),
-                    AccessRule::has_role("Admin"),
-                )
-                .authorize_role("Admin", "/api/admin/**")
-                .any_request(AccessRule::authenticated())
-                .entry_point(AuthenticationEntryPoint::Bearer)
-                .access_denied(AccessDeniedHandler::Forbidden)
-                .build(),
-        )
-        // =====================================================================
-        // Web chain: catches everything the API chain did not claim.
-        // =====================================================================
-        .add_security_chain(
-            SecurityFilterChain::builder()
-                .name("web")
-                .matching("/**")
-                .session_auth()
-                .filter(ChainStamp)
-                .csrf_with(|csrf| csrf.ignore_path("/auth/login"))
-                .authorize_public("/health")
-                .authorize_public("/auth/**")
-                .authorize_authenticated("/account/**")
-                .authorize_role("Admin", "/admin/**")
-                // No catch-all rule: any path this chain matches but no rule
-                // covers is denied (fail-closed) instead of silently open.
-                .entry_point(AuthenticationEntryPoint::redirect("/auth/login"))
-                .access_denied(AccessDeniedHandler::Forbidden)
-                .build(),
-        );
+        ));
+    // No `.add_security_chain(...)` calls: `Router::new()` already discovered
+    // both `#[security_chain]` declarations above.
 
     println!("GritShield security filter chain example");
     println!("  http://{ADDRESS}:{PORT}/health");
@@ -262,7 +275,9 @@ async fn main() {
     println!("User bearer token (role User):");
     println!("  {user_token}");
     println!();
-    println!("Ordering: /api/** is registered before /**; first matching chain wins.");
+    println!(
+        "Ordering: #[security_chain(order = 10)] api runs before #[security_chain(order = 20)] web; first matching chain wins."
+    );
 
     ignite(ADDRESS, PORT, router).await;
 }

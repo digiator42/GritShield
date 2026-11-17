@@ -10,8 +10,8 @@ then applies authorization rules to what survived.
   `CsrfFilter`, or any type implementing `SecurityFilter`).
 - **Secure by default** — a chain with rules denies anything the rules did not
   explicitly cover.
-- **Ordered** — chains are tried in registration order; the first matching
-  chain wins.
+- **Ordered** — declarative chains run by `order`; manually added chains follow
+  in insertion order. The first matching chain wins.
 
 A runnable version with JWT, session, role, method and CSRF rules lives in
 `examples/security_filter_chain`.
@@ -43,6 +43,54 @@ Shield::new()
     .ignite()
     .await;
 ```
+
+## Declarative chains
+
+Instead of wiring every chain through the router, annotate builders with
+`#[security_chain]`. `Router::new()` discovers every annotated chain in the
+binary, sorts them by `order` (lower first, then by `name`), and installs them
+before any chain added with `.add_security_chain(...)`.
+
+```rust
+use gritshield::prelude::*;
+
+#[security_chain(name = "api", order = 10)]
+fn api() -> SecurityFilterChain {
+    SecurityFilterChain::builder()
+        .matching("/api/**")
+        .jwt_auth(JwtHandler::new(&secret))
+        .any_request(AccessRule::authenticated())
+        .build()
+}
+
+struct AdminChain;
+
+#[security_chain(name = "admin", order = 5)]
+impl AdminChain {
+    fn build() -> SecurityFilterChain {
+        SecurityFilterChain::builder()
+            .matching("/admin/**")
+            .session_auth()
+            .any_request(AccessRule::has_role("Admin"))
+            .build()
+    }
+}
+```
+
+- The function or associated function must be synchronous, take no arguments,
+  and return `SecurityFilterChain`.
+- An impl block must be inherent and may contain only that one associated
+  function.
+- `name` defaults to the function name (or the type name for the impl form) and
+  becomes the chain's diagnostic name.
+- `order` defaults to `0`; use it instead of editing the router when adding a
+  chain to a larger app.
+- Each integration-test binary gets its own registrations, so chains declared in
+  test files stay isolated.
+- `Shield::add_security_chain` still works for chains built from runtime values;
+  declarative chains always come first.
+
+The example (`examples/security_filter_chain`) uses both forms.
 
 ## Where chains run
 
@@ -79,14 +127,19 @@ SecurityFilterChain::builder()
     // ...
 ```
 
-Chains are evaluated in the order they are added. Register narrow chains before
-broad ones:
+Chains are evaluated in the order they are installed: declarative chains sorted
+by `order` (then `name`), followed by `.add_security_chain(...)` calls. Register
+narrow chains before broad ones:
 
 ```rust
-router = router
-    .add_security_chain(admin_chain)   // /admin/**
-    .add_security_chain(api_chain)     // /api/**
-    .add_security_chain(web_chain);    // /**
+#[security_chain(order = 10)] // /admin/**
+fn admin() -> SecurityFilterChain { /* ... */ }
+
+#[security_chain(order = 20)] // /api/**
+fn api() -> SecurityFilterChain { /* ... */ }
+
+#[security_chain(order = 30)] // /**
+fn web() -> SecurityFilterChain { /* ... */ }
 ```
 
 ## Filters

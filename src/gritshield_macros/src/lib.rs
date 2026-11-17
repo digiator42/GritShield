@@ -13,6 +13,7 @@ mod mcp;
 mod repository;
 mod routing;
 mod sanitizer;
+mod security;
 mod shield;
 
 #[proc_macro_derive(GritAdmin, attributes(repository))]
@@ -109,6 +110,15 @@ pub fn action(attr: TokenStream, item: TokenStream) -> TokenStream {
 pub fn component(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let input_impl = parse_macro_input!(item as ItemImpl);
     ioc::component::expand_component(input_impl)
+}
+
+// ==========================================
+// ATTRIBUTE MACROS (Security chains)
+// ==========================================
+
+#[proc_macro_attribute]
+pub fn security_chain(attr: TokenStream, item: TokenStream) -> TokenStream {
+    security::expand_security_chain(attr, item)
 }
 
 // ==========================================

@@ -26,6 +26,20 @@ pub(crate) enum ChainOutcome {
     Respond { filters: usize, response: Response },
 }
 
+/// A chain contributed through `#[security_chain]`.
+///
+/// `Router::new()` collects every registration in the binary, sorts them by
+/// `order` (lower runs first) and then by `name`, and builds the chains before
+/// any manually added chain. This is what makes declarative security chains
+/// auto-apply without touching the router.
+pub struct SecurityChainRegistration {
+    pub name: &'static str,
+    pub order: i32,
+    pub build: fn() -> SecurityFilterChain,
+}
+
+inventory::collect!(SecurityChainRegistration);
+
 /// An ordered group of filters plus authorization rules for the requests its
 /// matcher covers.
 ///
@@ -62,6 +76,14 @@ impl SecurityFilterChain {
 
     pub fn name(&self) -> &str {
         &self.name
+    }
+
+    /// Replace the diagnostic name.
+    ///
+    /// `#[security_chain]` uses this so the annotation's `name` (or the
+    /// function/type name) is what appears in router diagnostics.
+    pub fn set_name(&mut self, name: impl Into<String>) {
+        self.name = name.into();
     }
 
     pub fn matches(&self, ctx: &RequestContext) -> bool {

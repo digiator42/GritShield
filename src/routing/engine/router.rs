@@ -70,6 +70,9 @@ impl Router {
         // Register auto routes
         router.register_auto_routes();
 
+        // Build chains declared with #[security_chain]
+        router.register_security_chains();
+
         // Register admin routes
         #[cfg(feature = "admin")]
         router.register_admin_routes();
