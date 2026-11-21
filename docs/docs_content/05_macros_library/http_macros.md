@@ -279,17 +279,20 @@ Adds custom actions to the GritAdmin panel.
     color = "text-emerald-400"
 )]
 async fn publish_posts(ctx: RequestContext) -> Response {
-    let ids = ctx.form.fields.get("ids").unwrap().split(',');
-    let db = ctx.db.clone().unwrap();
+    let Some(db) = ctx.db.clone() else {
+        return Response::internal_error("Database not mounted");
+    };
+    let Some(ids) = ctx.form.fields.get("ids").and_then(|v| v.first()) else {
+        return Response::bad_request("Missing ids");
+    };
 
-    for id in ids {
-        let id = id.parse::<i64>()?;
+    for id in ids.split(',') {
+        let Ok(id) = id.trim().parse::<i64>() else { continue };
         let sql = format!("UPDATE posts SET status = 'published' WHERE id = {}", id);
-        let stmt = sea_orm::Statement::from_string(
-            sea_orm::DatabaseBackend::Sqlite,
-            sql,
-        );
-        db.execute(stmt).await?;
+        let stmt = sea_orm::Statement::from_string(db.get_database_backend(), sql);
+        if let Err(e) = db.execute(stmt).await {
+            return Response::internal_error(format!("Publish failed: {e}"));
+        }
     }
 
     Response::ok("Posts published successfully")

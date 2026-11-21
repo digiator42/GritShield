@@ -18,11 +18,13 @@ The panel is behind the `admin` cargo feature, plus a driver for your database:
 
 ```toml
 [dependencies]
-gritshield = { version = "0.2", features = ["admin", "sqlite"] }
+gritshield = { version = "0.3.1", features = ["admin", "sqlite"] }
 ```
 
 There is no `mount_admin()` to call. `Router::new()` mounts the panel routes when
-the feature is on.
+the feature is on. The `admin` feature implies `swagger`, so the API docs routes
+`GET /admin/docs` and `GET /admin/docs/openapi.json` are mounted too — no need to
+enable `swagger` separately.
 
 ### 1. Configure Admin Credentials
 
@@ -164,13 +166,29 @@ Per registered model:
 `UserRepository` gives `/admin/user`, even though the table is `users`. The same
 slug is what the grid uses for every link it renders.
 
-Plus the static surface: `/admin/dashboard`, `/admin/login`, `/admin/metrics`,
-`/admin/auditlog`, `/admin/rbac-matrix`, `/admin/settings/security`,
+An internal `auditlog` model is also registered by the framework, so
+`/admin/auditlog` and its sub-routes behave like any other model. The static
+surface is: `/admin/dashboard`, `/admin/login`, `/admin/metrics`,
+`/admin/rbac-matrix`, `/admin/settings/security`, `/admin/di/topology`,
+`/admin/jobs/topology`, `/admin/docs`, `/admin/docs/openapi.json`,
 `/admin/api/search-palette`, `/admin/api/create-table`,
 `/admin/api/alter-table/:table_slug/add-column`.
 
 These handlers go on the **global** middleware stack, so enabling `admin` adds a
 middleware layer to every request your app serves. It no-ops outside `/admin`.
+
+### Sidebar behavior
+
+- Registered tables live under a collapsible **📦 Tables (N)** group. It starts
+  expanded for six or fewer tables and collapsed beyond that; click the chevron
+  to fold/unfold it so the links below stay reachable.
+- The navigation area scrolls independently and the **Create Table** button is
+  pinned to the bottom of the sidebar, so a large table list never pushes the
+  core views off screen.
+- Every full-page view is rendered through `admin_shell`. Navigating with HTMX
+  swaps only the content fragment, but reloading `/admin/settings/security`,
+  `/admin/rbac-matrix`, `/admin/jobs/topology`, `/admin/di/topology` or
+  `/admin/metrics` directly still returns the complete styled page.
 
 ---
 

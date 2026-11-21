@@ -4,7 +4,7 @@ GritShield provides clean, declarative transaction management and AOP method int
 
 ## Key Features
 
-- **Zero Boilerplate:** The `#[transactional]` macro automatically handles `BEGIN`, commits on `Ok(())`, and triggers an automatic `ROLLBACK` on `Err(...)` or panic.
+- **Zero Boilerplate:** The `#[transactional]` macro automatically handles `BEGIN`, commits on `Ok(())`, and triggers an explicit `ROLLBACK` on `Err(...)`. A panic unwinds past the explicit rollback; correctness then relies on SeaORM's `Drop` behavior for the transaction handle.
     
 - **Method Interceptors (`#[intercept]`):** Easily wrap service methods with cross-cutting concerns like logging, audit trailing, or performance profiling using the `Interceptor` trait.
     
@@ -138,7 +138,7 @@ impl UserService {
             .unwrap();
 
         // 4. Queue Delayed Job (Runs 5 minutes post-commit!)
-        AnounceRelatedProduct { email: email.clone() }
+        AnnounceRelatedProduct { email: email.clone() }
             .enqueue_in(Duration::from_secs(300))
             .await
             .unwrap();
@@ -169,4 +169,25 @@ UserService::create_user()
 
 1. **Always execute queries using `.conn()`:** Calling raw queries directly against `&self.db` bypasses `CURRENT_TXN` and executes in auto-commit mode. Always pass `&self.repo.conn()` or `&self.conn()` to SeaORM executors.
     
-2. **Task Boundaries (`tokio::spawn`):** Task-local storage (`CURRENT_TXN`) does not cross `tokio::spawn` task boundaries. Avoid spawning detached background tasks inside a `#[transactional]` block if they rely on the active transaction context.
+ 2. **Task Boundaries (`tokio::spawn`):** Task-local storage (`CURRENT_TXN`) does not cross `tokio::spawn` task boundaries. Avoid spawning detached background tasks inside a `#[transactional]` block if they rely on the active transaction context.
+
+## Constraints
+
+`#[intercept]` and `#[transactional]` are **not** re-exported in the prelude:
+
+```rust
+use gritshield::{intercept, transactional};
+```
+
+Both macros only work on `async` methods of a struct that has a field named
+exactly `db` (the expansion builds `InvocationContext { db: &self.db, .. }`),
+and the method must return `Result<(), DbErr>`. Free functions, a differently
+named connection field, or other return types do not compile. An interceptor is
+a unit struct implementing `Interceptor`; stack multiple `#[intercept(...)]`
+attributes for multiple concerns — the topmost attribute runs outermost and
+sees the final `Result` last.
+
+Events published with `.publish()` must derive `Clone` (they are staged as
+clones), and jobs/events rely on the task-local bus and queue installed by
+`Router`/`ignite` — if those task-locals are absent at commit time the staged
+side effects are silently dropped.

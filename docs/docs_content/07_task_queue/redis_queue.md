@@ -23,7 +23,7 @@ Rust
 use async_trait::async_trait;
 use redis::AsyncCommands;
 use std::fmt::Debug;
-use gritshield::core::event_bus::{JobEnvelope, JobStorage};
+use gritshield::core::job_queue::{JobEnvelope, JobStorage};
 
 #[derive(Clone)]
 pub struct RedisJobQueue {
@@ -153,14 +153,12 @@ impl EmailController {
             template_id: "welcome_onboarding".to_string(),
         };
 
-        // call .enqueue_in using ctx.job_queue
-        if let Some(queue) = &ctx.job_queue {
-            match job.enqueue_in(queue, Duration::from_secs(5)).await {
-                Ok(job_id) => {
-                    println!(" [CONTROLLER] Enqueued job ID {} to Redis!", job_id);
-                }
-                Err(e) => eprintln!("Failed to enqueue: {}", e),
-            }
+        // `#[job]` generates enqueue()/enqueue_in(delay); the active queue is
+        // a task-local installed from `router.job_queue` (set in main.rs below).
+        // Both return Result<String, String> with the job id.
+        match job.enqueue_in(Duration::from_secs(5)).await {
+            Ok(job_id) => println!(" [CONTROLLER] Enqueued job ID {} to Redis!", job_id),
+            Err(e) => eprintln!("Failed to enqueue: {}", e),
         }
 
         Response::ok("Email job enqueued to Redis background queue!")
@@ -172,5 +170,8 @@ impl EmailController {
 
 ```rust
 let redis_client = redis::Client::open("redis://127.0.0.1:6379/")?;
-let router = Router::new().with_job_queue(Arc::new(RedisJobQueue::new(redis_client, "grit_jobs")), 10);
+let mut router = Router::new();
+// `with_job_queue` does not exist in 0.3; swap the public field before ignite().
+router.job_queue = Arc::new(RedisJobQueue::new(redis_client, "grit_jobs"));
+ignite("127.0.0.1", "8080", router).await;
 ```

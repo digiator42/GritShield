@@ -21,7 +21,9 @@ Both are generated per request from the route inventory written by
 documentation; there is no second copy of your API to maintain.
 
 The `admin` feature is **not** required. `register_swagger_routes` is gated on
-`swagger` alone.
+`swagger` alone — but `admin` implies `swagger` (`admin = ["swagger"]` in
+`Cargo.toml`), so enabling the admin panel automatically enables these two routes
+as well.
 
 ## What is generated
 

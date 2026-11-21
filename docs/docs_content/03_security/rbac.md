@@ -10,20 +10,26 @@ GritShield provides convenient built-in role checking methods directly on `Reque
 
 ```rust
 use gritshield::routing::engine::ShieldResult;
+use gritshield::security::errors::ShieldError;
 
 #[post("/login")]
 async fn login(ctx: RequestContext) -> ShieldResult<Response> {
-    let creds: LoginDto = ctx.json()?;
+    let body = ctx
+        .json_body()
+        .await
+        .ok_or_else(|| ShieldError::BadRequest("invalid JSON".into()))?;
+    let user_id = body.get("user_id").and_then(|v| v.as_str()).unwrap_or("");
 
-    if authenticate(&creds) {
-        ctx.login_user_id(&creds.user_id);
-        ctx.set_session_data("role", "admin");
-        Ok(Response::redirect(303, "/dashboard"))
-    } else {
-        Err(ShieldError::UnauthorizedAccess)
-    }
+    ctx.login_user_id(user_id);
+    ctx.set_session_data("role", "Admin");
+    Ok(Response::redirect(303, "/dashboard"))
 }
 ```
+
+Role strings are **case-sensitive** — `"Admin"` and `"admin"` are different
+roles. The login handler is where you choose the exact string every later check
+must use. `ctx.json::<T>().await?` is also available, but `T` must derive
+`GritSanitizable` (`#[derive(GritSanitizer)]`).
 
 ## Now you can use built-in ctx methods
 
@@ -54,8 +60,8 @@ pub async fn admin_panel(ctx: RequestContext) -> Response {
 }
 
 // Simpler
-pub async fn admin_panel(ctx: RequestContext) -> ShieldResult<Response> {
-    // Or using strict guard with ?, Admin passes, Auditor will not!
+pub async fn operator_panel(ctx: RequestContext) -> ShieldResult<Response> {
+    // Strict guard: Admin passes through inheritance, Auditor does not.
     ctx.require_role("Operator")?;
 
     Ok(Response::ok("Welcome Operator"))
@@ -105,21 +111,22 @@ How It Works
                      [Contributor]
 ```
 
-- **But** `Operator` cann't access `Manager` or it's `childs` content, because they are on different branches!.
+- **But** `Operator` cannot access `Manager` or its children's content, because they are on different branches.
 
 ### Now use built-in functions inside your handlers
 
 ```rust
-pub async fn manage_users(ctx: RequestContext) -> Response {
+pub async fn manage_users(ctx: RequestContext) -> ShieldResult<Response> {
     // Check with inheritance tree
     if !ctx.has_role("Manager") {
-        return Response::forbidden("Manager role or higher required");
+        return Err(ShieldError::Forbidden);
     }
 
     // Strict version with ? (Recommended)
-    ctx.require_role("Manager")?; // needs ShieldResult, or use unwrap
+    ctx.require_role("Manager")?;
 
     // Handler logic...
+    Ok(Response::ok("managed"))
 }
 
 pub async fn edit_post(ctx: RequestContext) -> ShieldResult<Response> {
@@ -148,6 +155,7 @@ impl Middleware for RoleMiddleware {
             if role == &self.required_role {
                 return MiddlewareResult::Next(None);
             }
+        }
 
         MiddlewareResult::Error(Response::forbidden(
             Sanitizer::trust("<h1>403 Forbidden - Insufficient Role</h1>")
@@ -204,7 +212,8 @@ pub async fn admin_panel(ctx: RequestContext) -> Response {
 }
 ```
 
-Gritshield checks dyncamically for inheritance roles first if defined, falling back to fixed role checks, giving you zero boilerplate rbac helper.
+GritShield checks the dynamic inheritance tree first if one is defined, then
+falls back to the fixed role checks, giving you zero-boilerplate RBAC.
 
 The `role` attribute is enforced in the connection loop *before* your handler is
 called (`src/http/connection.rs`), so a handler cannot forget it. A failure is
@@ -224,7 +233,8 @@ logs in as five roles and measures the whole matrix - role attribute, inline
 cargo run --manifest-path examples/rbac_caps/Cargo.toml
 ```
 
-Note that `has_fixed_role` above is *not* the tree: it applies a fixed
-`Admin > Operator > Auditor` ladder compiled into the framework. Prefer
-`has_role` with an explicit `add_role_inheritance` tree, which you can read in
-`main.rs`.
+`RequestContext` also exposes `has_fixed_role`, which is *not* the tree: it
+applies a hardcoded `Admin > Operator > Auditor` ladder and is not used by the
+route guards. Prefer `has_role` with an explicit `add_role_inheritance` tree, as
+the example's `main.rs` does. Literal role `"SuperAdmin"` passes every `has_role`
+check.

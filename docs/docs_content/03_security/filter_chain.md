@@ -40,7 +40,7 @@ With `Shield`, attach the chain the same way:
 ```rust
 Shield::new()
     .add_security_chain(chain)
-    .ignite()
+    .launch()
     .await;
 ```
 

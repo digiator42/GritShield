@@ -1,162 +1,146 @@
-To add Redis into your crate, you can leverage dependency injection system. This allows any controller or service to access a shared, thread-safe Redis connection pool dynamically without hardcoded dependencies.
+To add Redis into your crate, you can leverage the dependency injection system. This allows any controller or service to access a shared, thread-safe Redis connection pool dynamically without hardcoded dependencies.
 
 ### Step 1: Add the Redis Crate
 
-First, add the `redis` crate to your framework's `Cargo.toml`. Since GritShield is asynchronous, we'll enable the `tokio-comp` (Tokio runtime compatibility) and `connection-manager` features:
+Since GritShield is asynchronous, enable the `tokio-comp` and `connection-manager` features:
 
-TOML
-
-```
+```toml
 [dependencies]
-redis = { version = "1", features = ["tokio-comp", "connection-manager"] }
+redis = { version = "0.24", features = ["tokio-comp", "connection-manager"] }
 ```
 
 ### Step 2: Wrap Redis into a GritShield Component
 
-Create a wrapper struct `RedisService` to encapsulate connection pool initialization and keep database commands clean and robust. Since it relies on custom runtime configuration strings (the Redis URL), we will register it manually using `AutoWire::component` or `inject!` macro.
+Create a wrapper struct `RedisService` around the async `ConnectionManager`. Since
+it needs a `redis_url` from configuration, register the instance manually with
+`inject!` rather than using `#[component]`.
 
-Create `src/services/redis_service.rs` (or place it in your service directory):
-
-Rust
+`src/services/redis_service.rs`:
 
 ```rust
 use redis::aio::ConnectionManager;
 use redis::AsyncCommands;
-use std::sync::Arc;
-use tokio::sync::OnceCell;
 
 #[derive(Clone)]
 pub struct RedisService {
-    pub manager: ConnectionManager,
+    manager: ConnectionManager,
 }
 
-// Because RedisService relies on redis_url as config url, we can't use #[component]
 impl RedisService {
-    /// Create a new asynchronous thread-safe Redis manager
     pub async fn new(redis_url: &str) -> Result<Self, redis::RedisError> {
         let client = redis::Client::open(redis_url)?;
         let manager = ConnectionManager::new(client).await?;
         Ok(Self { manager })
     }
 
-    /// Internal helper to lazily get or establish the connection manager
-    async fn get_manager(&self) -> Result<&ConnectionManager, redis::RedisError> {
-        self.manager
-            .get_or_try_init(|| async { ConnectionManager::new(self.client.clone()).await })
-            .await
-    }
+    pub async fn set(&self, key: &str, value: &str, expiry_secs: Option<u64>) -> Result<(), redis::RedisError> {
+        let mut conn = self.manager.clone();
+        if let Some(secs) = expiry_secs {
+            conn.set_ex(key, value, secs).await?;
+        } else {
+            conn.set(key, value).await?;
+        }
+        Ok(())
+    }
 
-    /// Safely set a value with an optional expiration time in seconds
-    pub async fn set(
-        &self,
-        key: &str,
-        value: &str,
-        expiry_secs: Option<u64>,
-    ) -> Result<(), redis::RedisError> {
-        // Lazily get the connection manager (will attempt connection here, on-demand)
-        let manager = self.get_manager().await?;
-        let mut conn = manager.clone();
-        if let Some(secs) = expiry_secs {
-            let () = conn.set_ex(key, value, secs).await?;
-        } else {
-            let () = conn.set(key, value).await?;
-        }
-        Ok(())
-    }
-
-    /// Retrieve a cached string value
-    pub async fn get(&self, key: &str) -> Result<Option<String>, redis::RedisError> {
-        let manager = self.get_manager().await?;
-        let mut conn = manager.clone();
-        let val: Option<String> = conn.get(key).await?;
-        Ok(val)
-    }
+    pub async fn get(&self, key: &str) -> Result<Option<String>, redis::RedisError> {
+        let mut conn = self.manager.clone();
+        conn.get(key).await
+    }
 }
 ```
+
+`ConnectionManager` is cheap to clone and multiplexes connections, so one
+instance is shared by the whole process.
 
 ### Step 3: Instantiate and Register in Your Setup Bootstrapper
 
-In your main setup file, initialize `RedisService` asynchronously and register it into the DI context before triggering `boot_di_container()`:
-
-Rust
+`mark_injectable!` must be at module scope. `inject!` must run **before**
+`Router::new()` (boot hooks resolve dependencies while the router is built).
+`new()` is async, so await it first.
 
 ```rust
-use gritshield::core::ioc::AutoWire;
+use gritshield::{inject, mark_injectable};
 use your_crate::services::RedisService;
+
+mark_injectable!(RedisService);
 
 #[tokio::main]
 async fn main() {
-     // Setup local environment configurations, preferred to get it from std env
-    let redis_url = "redis://127.0.0.1:6379/";
+    let redis_url = "redis://127.0.0.1:6379/";
+    let redis_service = RedisService::new(redis_url).await.unwrap();
 
-	// Use provider macro to inject RedisService into DI container
-    inject!(RedisService, RedisService::new(redis_url).unwrap());
+    inject!(RedisService, redis_service);
 
-	// OR
-
-    // Instantiate your Redis service
-    let redis_service = RedisService::new(redis_url).unwrap();
-
-	// Then call AutoWire::component
-    AutoWire::component(redis_service);
-
-    // Router init ... boot_di_container is called here by default
+    // boot_di_container() is called inside Router::new()
+    let router = Router::new() /* ... */;
 }
 ```
 
-### Step 4: Access Redis in Your Controllers
+`inject!` stores the value in the dynamic `CONTEXT` container, where
+`CONTEXT.resolve::<RedisService>()` returns `Arc<RedisService>`. Resolved
+components are memoized for the process lifetime (effectively singletons).
 
-Now that `RedisService` is registered, (`#[controller]`) routing endpoints can request it directly.
+### Step 4: Access Redis in Your Controllers
 
 #### A. Inside a Structural Controller (`#[derive(GritComponent)]`)
 
-GritShield's Lombok-style struct derive will inject the `RedisService` component automatically upon resolution:
-
-Rust
+The derive injects `Arc<RedisService>` for every non-skipped field:
 
 ```rust
 use std::sync::Arc;
-use gritshield::routing::engine::RequestContext;
-use gritshield::http::response::Response;
+use gritshield::{controller, get, GritComponent};
+use gritshield::prelude::*;
 use crate::services::RedisService;
 
 #[derive(GritComponent)]
 pub struct CacheController {
-    pub redis: Arc<RedisService>, // <-- Autowired automatically!
+    pub redis: Arc<RedisService>, // autowired on resolution
 }
 
-#[scontroller("/api/cache")]
+#[controller("/api/cache")]
 impl CacheController {
     #[get("/status")]
-    pub async fn check_cache(&self, ctx: RequestContext) -> Response {
-        // Use the injected Redis wrapper seamlessly
+    pub async fn check_cache(&self, _ctx: RequestContext) -> Response {
         match self.redis.get("system_status").await {
-            Ok(Some(status)) => Response::ok(format!("System Status from Cache: {}", status)),
+            Ok(Some(status)) => Response::ok(format!("System Status from Cache: {status}")),
             Ok(None) => Response::ok("Cache empty"),
-            Err(e) => Response::error(format!("Redis Error: {}", e)),
+            Err(e) => Response::internal_error(format!("Redis Error: {e}")),
         }
     }
 }
 ```
 
+A `#[controller]` whose methods take `&self` is resolved from `CONTEXT` on each
+request, so the controller type must itself be registered (`#[derive(GritComponent)]`
+does that).
+
 #### B. Inside a Dynamic Functional Controller (`#[controller]`)
 
-Your unified dynamic route compiler will seamlessly extract `Arc<RedisService>` at runtime from your core context when a request hits the handler:
-
-Rust
+Route macros resolve any typed argument other than `RequestContext` from the
+container:
 
 ```rust
+use std::sync::Arc;
+use gritshield::{controller, post};
+use gritshield::prelude::*;
+use crate::services::RedisService;
+
 #[controller("/api/store")]
 impl StoreController {
     #[post("/save")]
     pub async fn save_item(
-        ctx: RequestContext,
-        redis: Arc<RedisService>, // <-- Dynamically injected argument!
+        _ctx: RequestContext,
+        redis: Arc<RedisService>, // dynamically injected argument
     ) -> Response {
         if let Err(e) = redis.set("last_stored_item", "item_data_123", Some(60)).await {
-            return Response::error(format!("Caching failed: {}", e));
+            return Response::internal_error(format!("Caching failed: {e}"));
         }
         Response::ok("Item cached for 60 seconds!")
     }
 }
 ```
+
+For a zero-runtime-cost alternative, use `#[derive(WireContainer)]` on an
+all-`Arc` container plus `#[derive(GritWire)]` on the controllers and call
+`Type::wire(&container)` in `main`.

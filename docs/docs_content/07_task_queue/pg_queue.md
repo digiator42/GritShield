@@ -33,7 +33,7 @@ use async_trait::async_trait;
 use sea_orm::{DatabaseConnection, ConnectionTrait, Statement, DbBackend};
 use std::sync::Arc;
 use std::fmt::Debug;
-use gritshield::core::event_bus::{JobEnvelope, JobStorage};
+use gritshield::core::job_queue::{JobEnvelope, JobStorage};
 
 pub struct PostgresJobQueue {
     db: Arc<DatabaseConnection>,
@@ -191,9 +191,9 @@ impl InvoiceController {
             amount: 250.75,
         };
 
-        if let Some(queue) = &ctx.job_queue {
-            let _ = job.enqueue_in(queue, Duration::from_secs(10)).await;
-        }
+        // enqueue_in(delay) uses the task-local queue installed from
+        // `router.job_queue` (set in main.rs below) and returns the job id.
+        let _ = job.enqueue_in(Duration::from_secs(10)).await;
 
         Response::ok("Invoice processing job persisted to PostgreSQL!")
     }
@@ -204,5 +204,8 @@ impl InvoiceController {
 
 ```rust
 let db = Arc::new(Database::connect("postgres://postgres:password@localhost:5432/db").await?);
-let router = Router::new().with_job_queue(Arc::new(PostgresJobQueue::new(db)), 10);
+let mut router = Router::new();
+// `with_job_queue` does not exist in 0.3; swap the public field before ignite().
+router.job_queue = Arc::new(PostgresJobQueue::new(db));
+ignite("127.0.0.1", "8080", router).await;
 ```
