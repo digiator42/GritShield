@@ -59,7 +59,7 @@ pub fn generate_registration(
                         #crate_root::gritadmin::dashboard::handle_list(
                             ctx,
                             repo,
-                            table_name,
+                            table_slug,
                         )
                         .await
                     })
@@ -77,7 +77,7 @@ pub fn generate_registration(
                         #crate_root::gritadmin::dashboard::handle_search(
                             ctx,
                             repo,
-                            table_name,
+                            table_slug,
                         )
                         .await
                     })
@@ -95,7 +95,7 @@ pub fn generate_registration(
                         #crate_root::gritadmin::dashboard::handle_delete(
                             ctx,
                             repo,
-                            table_name,
+                            table_slug,
                         )
                         .await
                     })
@@ -113,7 +113,7 @@ pub fn generate_registration(
                         #crate_root::gritadmin::dashboard::handle_patch(
                             ctx,
                             repo,
-                            table_name,
+                            table_slug,
                         )
                         .await
                     })
@@ -130,7 +130,7 @@ pub fn generate_registration(
                         #crate_root::gritadmin::dashboard::handle_custom_search_viewer(
                             ctx,
                             repo,
-                            table_name,
+                            table_slug,
                         )
                         .await
                     })
@@ -146,7 +146,7 @@ pub fn generate_registration(
                         #crate_root::gritadmin::dashboard::handle_detail(
                             ctx,
                             repo,
-                            table_name,
+                            table_slug,
                         )
                         .await
                         .into_response()
@@ -163,7 +163,7 @@ pub fn generate_registration(
                         #crate_root::gritadmin::dashboard::handle_bulk_delete(
                             ctx,
                             repo,
-                            table_name,
+                            table_slug,
                         )
                         .await
                         .into_response()
@@ -180,7 +180,7 @@ pub fn generate_registration(
                         #crate_root::gritadmin::dashboard::handle_bulk_create(
                             ctx,
                             repo,
-                            table_name,
+                            table_slug,
                         )
                         .await
                         .into_response()
@@ -197,7 +197,7 @@ pub fn generate_registration(
                         #crate_root::gritadmin::dashboard::handle_bulk_create_modal(
                             ctx,
                             repo,
-                            table_name,
+                            table_slug,
                         )
                         .await
                         .into_response()
@@ -213,7 +213,7 @@ pub fn generate_registration(
                         #crate_root::gritadmin::dashboard::handle_export(
                             ctx,
                             repo,
-                            table_name,
+                            table_slug,
                         )
                         .await
                     })

@@ -69,9 +69,12 @@ pub async fn handle_dashboard(ctx: RequestContext) -> Response {
                 .map(|row| {
                     // Get ID by index
                     let id_val: String = row
-                        .try_get_by_index::<String>(0)
+                        .try_get_by_index::<i64>(0)
+                        .or_else(|_| row.try_get::<i64>("", "id"))
+                        .map(|v| v.to_string())
+                        .or_else(|_| row.try_get_by_index::<String>(0))
                         .or_else(|_| row.try_get("", "id"))
-                        .unwrap_or("".to_string());
+                        .unwrap_or_default();
 
                     // Get first two data columns (skip ID)
                     let mut cols = Vec::new();
@@ -96,8 +99,8 @@ pub async fn handle_dashboard(ctx: RequestContext) -> Response {
                                 td class="p-1 truncate max-w-[100px]" { (col_val) }
                             }
                             td class="p-1" {
-                                a href=(format!("/admin/{}/{}", table_slug, id_val))
-                                  hx-get=(format!("/admin/{}/{}", table_slug, id_val))
+                                a href=(format!("{}/{}", route_path, id_val))
+                                  hx-get=(format!("{}/{}", route_path, id_val))
                                   hx-target="#main-content"
                                   hx-push-url="true"
                                   class="text-blue-400 hover:underline" {

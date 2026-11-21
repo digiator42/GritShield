@@ -419,7 +419,7 @@ where
                 }
 
                 // Modal Body (Form Container)
-                form hx-post=(format!("/admin/api/alter-table/{}/add-column", table_slug))
+                form hx-post=(format!("/admin/api/alter-table/{}/add-column", repo.table_name()))
                     hx-target="this"
                     hx-swap="none"
                     class="p-6 space-y-5" {
