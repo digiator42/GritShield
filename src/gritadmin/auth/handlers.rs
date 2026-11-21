@@ -1,4 +1,4 @@
-use crate::gritadmin::auth::creds::get_admin_credentials;
+use crate::gritadmin::auth::creds::{is_production, verify_admin_credentials};
 use crate::http::response::{Cookie, HttpStatus};
 use crate::http::response::SameSite;
 use crate::middleware::auth::get_session_store;
@@ -109,10 +109,9 @@ pub async fn handle_login_auth(ctx: RequestContext) -> Response {
         .and_then(|v| v.as_str())
         .unwrap_or("");
 
-    // Perform Credential Validation Checks (Static, In-Memory Cached Check)
-    let admin = get_admin_credentials();
-
-    if input_user != admin.username || input_pass != admin.password {
+    // Development accepts the plain-text password,
+    // production only validates against the configured PBKDF2 hash.
+    if !verify_admin_credentials(input_user, input_pass) {
         return Response::json(
             HttpStatus::Ok,
             &json!({
@@ -140,9 +139,9 @@ pub async fn handle_login_auth(ctx: RequestContext) -> Response {
     store.sessions.insert(new_sid.clone(), new_session);
 
     // Drop a secure signed cookie into the context jar matching the middleware identifier key
-    let is_production = crate::core::env::get_env("APP_ENV", "development") == "production";
+    let prod = is_production();
     let session_cookie = Cookie::new("GASESSION_ID", &new_sid)
-        .set_secure(is_production)
+        .set_secure(prod)
         .set_same_site(SameSite::Lax);
 
     let response = Response::json(

@@ -31,17 +31,53 @@ enable `swagger` separately.
 Add the following to your `.env` file or change with your credentials:
 
 ```env
+# Development: plain-text password is accepted for convenience.
+APP_ENV=development
 GRITSHIELD_ADMIN_USER=admin
 GRITSHIELD_ADMIN_PASSWORD=gritshield2026
 ```
 
-These credentials will be used to log into the admin panel at `/admin/login`.
+These credentials are used to log into the panel at `/admin/login`.
 
 > [!WARNING]
 > If either variable is missing, a random 12-character password is generated
-> instead. In development it is printed to stdout; when `APP_ENV=production` it
-> is **not** printed, so the panel is unreachable until you set the variables and
-> restart.
+> instead and printed to stdout in development.
+
+### Production: hashed password only
+
+When `APP_ENV=production`, the plain-text `GRITSHIELD_ADMIN_PASSWORD` is
+**ignored**. Set `GRITSHIELD_ADMIN_PASSWORD_HASH` instead:
+
+```env
+APP_ENV=production
+GRITSHIELD_ADMIN_USER=admin
+GRITSHIELD_ADMIN_PASSWORD_HASH=pbkdf2-sha256$210000$<salt-hex>$<hash-hex>
+```
+
+Format: `pbkdf2-sha256$<rounds>$<salt-hex>$<hash-hex>` — 16-byte salt, 32-byte
+PBKDF2-HMAC-SHA256 derived key, both hex encoded. The submitted password is
+hashed with the stored salt and rounds and compared in constant time.
+
+Generate one with any PBKDF2-HMAC-SHA256 implementation, for example Python:
+
+```bash
+python3 - <<'PY'
+import hashlib, os, binascii
+salt = os.urandom(16)
+dk = hashlib.pbkdf2_hmac('sha256', b'your-password', salt, 210000)
+print('pbkdf2-sha256$210000$%s$%s' % (
+    binascii.hexlify(salt).decode(), binascii.hexlify(dk).decode()))
+PY
+```
+
+The framework also exposes `gritadmin::auth::creds::hash_admin_password` if you
+prefer to generate the value from Rust.
+
+> [!IMPORTANT]
+> In production, a missing or malformed hash denies **every** login and prints a
+> loud startup warning — the panel fails closed rather than falling back to a
+> plain-text password. In development you may set both; either the plain password
+> or a configured hash will be accepted, so you can rehearse production locally.
 
 ---
 
@@ -177,19 +213,6 @@ surface is: `/admin/dashboard`, `/admin/login`, `/admin/metrics`,
 These handlers go on the **global** middleware stack, so enabling `admin` adds a
 middleware layer to every request your app serves. It no-ops outside `/admin`.
 
-### Sidebar behavior
-
-- Registered tables live under a collapsible **📦 Tables (N)** group. It starts
-  expanded for six or fewer tables and collapsed beyond that; click the chevron
-  to fold/unfold it so the links below stay reachable.
-- The navigation area scrolls independently and the **Create Table** button is
-  pinned to the bottom of the sidebar, so a large table list never pushes the
-  core views off screen.
-- Every full-page view is rendered through `admin_shell`. Navigating with HTMX
-  swaps only the content fragment, but reloading `/admin/settings/security`,
-  `/admin/rbac-matrix`, `/admin/jobs/topology`, `/admin/di/topology` or
-  `/admin/metrics` directly still returns the complete styled page.
-
 ---
 
 ## Repository Attributes Explained
@@ -234,8 +257,10 @@ The panel generates a developer surface. Four things to decide yourself:
 
 - **A rejected login returns `200`** with `{"status":"error"}`, not `401`. A
   client that branches on status code reads a failed login as a success. There
-  is no lockout, delay or attempt counter on that path, so put a rate limiter in
-  front of it or keep the panel behind your own authenticating proxy.
+  is still no lockout, delay or attempt counter on that path, so put a rate
+  limiter in front of it or keep the panel behind your own authenticating proxy.
+  Set `GRITSHIELD_ADMIN_PASSWORD_HASH` in production — plain-text comparison is
+  development-only and is ignored there.
 - **Sessions are in process memory.** The store is a global `HashMap`, so
   sessions do not survive a restart and do not work across replicas. The cookie
   is a signed `GASESSION_ID`, `Secure` only when `APP_ENV=production`.

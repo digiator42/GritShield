@@ -145,12 +145,16 @@ let router = Router::new()
 
 ## Credentials
 
-`GRITSHIELD_ADMIN_USER` and `GRITSHIELD_ADMIN_PASSWORD`. Set both.
+Development: `GRITSHIELD_ADMIN_USER` and `GRITSHIELD_ADMIN_PASSWORD`. Set both;
+if either is missing a random 12-character password is generated and printed to
+stdout.
 
-If either is missing, a random 12-character password is generated instead. In
-development it is printed to stdout; in production (`APP_ENV=production`) it is
-**not** printed, so a production process started without the environment
-variables is unreachable and has to be restarted to recover.
+Production (`APP_ENV=production`): the plain-text password is ignored. Set
+`GRITSHIELD_ADMIN_PASSWORD_HASH=pbkdf2-sha256$<rounds>$<salt-hex>$<hash-hex>`
+instead (16-byte salt, 32-byte PBKDF2-HMAC-SHA256 key). A missing or malformed
+hash denies every login and logs a warning at boot — there is no plaintext
+fallback. See `docs/docs_content/06_admin_panel/index.md` for a generation
+snippet.
 
 ---
 
