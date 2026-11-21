@@ -5,6 +5,7 @@ use std::collections::HashMap;
 
 /// High-fidelity structural metadata for RBAC transparency tracking
 pub async fn handle_rbac_dashboard(ctx: RequestContext) -> Response {
+    let is_htmx = ctx.req.has_header("hx-request");
     let inheritance = &ctx.role_inheritance;
 
     // 1. Collect declared capability configurations from the inventory engine
@@ -34,7 +35,11 @@ pub async fn handle_rbac_dashboard(ctx: RequestContext) -> Response {
 
     // Pass the declared_caps array down to your Maud render layout
     let markup = render_rbac_graph(inheritance, &route_capabilities, &declared_caps);
-    Response::ok(markup.into_string())
+    if is_htmx {
+        Response::ok(markup.into_string())
+    } else {
+        crate::admin_shell("Access Governance Matrix", markup, false)
+    }
 }
 
 pub fn render_rbac_graph(

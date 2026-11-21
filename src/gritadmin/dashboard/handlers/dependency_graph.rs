@@ -4,10 +4,17 @@ use crate::routing::engine::RequestContext;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use maud::{html, Markup, PreEscaped};
 
-pub async fn handle_topology_dashboard(_ctx: RequestContext) -> Response {
+pub async fn handle_topology_dashboard(ctx: RequestContext) -> Response {
+    let is_htmx = ctx.req.has_header("hx-request");
+
     let dot_schema = AutoWire::export_dot();
     let markup = render_topology_graph(&dot_schema);
-    Response::ok(markup.into_string())
+
+    if is_htmx {
+        Response::ok(markup.into_string())
+    } else {
+        crate::admin_shell("Service Topology", markup, false)
+    }
 }
 
 pub fn render_topology_graph(dot_schema: &str) -> Markup {

@@ -14,7 +14,7 @@ categories = ["web-programming::http-server"]
 [features]
 # Users default opt-in.
 default = ["mcp"]
-admin = []
+admin = ["swagger"]
 swagger = []
 mcp = []
 validator = ["dep:validator"]

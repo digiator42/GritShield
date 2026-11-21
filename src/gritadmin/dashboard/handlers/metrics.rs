@@ -220,10 +220,13 @@ pub async fn admin_metrics_html_handler(ctx: RequestContext) -> Response {
     let metrics_payload = gather_all_metrics(&ctx).await;
 
     // Render the Maud template code component into a raw String
-    let rendered_html = render_metrics_dashboard(&metrics_payload).into_string();
+    let rendered = render_metrics_dashboard(&metrics_payload);
 
-    // Return the response marked explicitly as HTML payload
-    Response::ok(rendered_html)
+    if ctx.req.has_header("hx-request") {
+        Response::ok(rendered.into_string())
+    } else {
+        shell::admin_shell("System Metrics", rendered, false)
+    }
 }
 
 // GET /admin/settings/security
@@ -322,7 +325,11 @@ pub async fn admin_security_matrix_view_handler(ctx: RequestContext) -> Response
         rate_limiting_degraded: is_rate_limiting_degraded,
     };
 
-    let html_payload = render_hardening_matrix(&matrix_state).into_string();
+    let markup = render_hardening_matrix(&matrix_state);
 
-    Response::ok(html_payload)
+    if ctx.req.has_header("hx-request") {
+        Response::ok(markup.into_string())
+    } else {
+        shell::admin_shell("Security Settings", markup, false)
+    }
 }

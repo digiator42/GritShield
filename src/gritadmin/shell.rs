@@ -7,6 +7,28 @@ pub fn admin_shell(title: &str, content: Markup, is_htmx: bool) -> Response {
         return Response::ok(content.into_string());
     }
 
+    let table_links: Vec<(String, String)> = {
+        let registry = ADMIN_REGISTRY.lock().unwrap();
+        registry
+            .iter()
+            .map(|(table_name, meta)| {
+                let display_name = format!(
+                    "{} Records",
+                    table_name
+                        .chars()
+                        .next()
+                        .map(|c| c.to_uppercase().to_string())
+                        .unwrap_or_default()
+                        + &table_name[1..]
+                )
+                .replace("_", "")
+                .replace("-", "");
+                (display_name, meta.route_path.to_string())
+            })
+            .collect()
+    };
+    let tables_open = table_links.len() <= 6;
+
     let shell = html! {
         (maud::DOCTYPE)
         html lang="en" {
@@ -139,33 +161,36 @@ pub fn admin_shell(title: &str, content: Markup, is_htmx: bool) -> Response {
                         scrollbar-width: thin;
                         scrollbar-color: #f59e0b #0d0d0d;
                     }
+
+                    details.sidebar-tables > summary { list-style: none; cursor: pointer; }
+                    details.sidebar-tables > summary::-webkit-details-marker { display: none; }
+                    details.sidebar-tables > summary .sidebar-chevron { display: inline-block; transition: transform 150ms ease; }
+                    details.sidebar-tables[open] > summary .sidebar-chevron { transform: rotate(180deg); }
                     "
                 }
             }
             body class="bg-gray-900 text-gray-100 font-sans" {
                 div class="flex h-screen overflow-hidden" {
-                    aside class="w-72 bg-gray-950 border-r border-gray-800 p-4" {
+                    aside class="w-72 bg-gray-950 border-r border-gray-800 p-4 flex flex-col min-h-0" {
                         h2 class="text-xl font-bold text-emerald-400 mb-6" { "🛡️ GritAdmin" }
-                        nav class="space-y-2" {
-
-                            // DYNAMIC SIDEBAR LINKS FROM THE REGISTRY
-                            @for (table_name, meta) in ADMIN_REGISTRY.lock().unwrap().iter() {
-                                @let display_name = format!(
-                                    "{} Records",
-                                    table_name
-                                        .chars()
-                                        .next()
-                                        .map(|c| c.to_uppercase().to_string())
-                                        .unwrap_or_default()
-                                        + &table_name[1..]
-                                ).replace("_", "")
-                                .replace("-", "");
-                                a href=(meta.route_path)
-                                   hx-get=(meta.route_path)
-                                   hx-target="#main-content"
-                                   hx-indicator="body"
-                                   hx-push-url="true"
-                                   class="block p-2 hover:bg-gray-800 rounded transition" { (display_name) }
+                        nav class="space-y-1 flex-1 min-h-0 overflow-y-auto pr-1" {
+                            details class="sidebar-tables" open?[tables_open] {
+                                summary class="flex items-center justify-between px-2 py-1.5 rounded hover:bg-gray-800 transition cursor-pointer" {
+                                    span class="text-xs font-mono font-semibold uppercase tracking-wider text-gray-300" {
+                                        "📦 Tables (" (table_links.len()) ")"
+                                    }
+                                    span class="sidebar-chevron text-gray-500 text-[10px]" { "▾" }
+                                }
+                                div class="space-y-1 mt-1 pl-1" {
+                                    @for (display_name, route_path) in &table_links {
+                                        a href=(route_path)
+                                           hx-get=(route_path)
+                                           hx-target="#main-content"
+                                           hx-indicator="body"
+                                           hx-push-url="true"
+                                           class="block p-2 hover:bg-gray-800 rounded transition" { (display_name) }
+                                    }
+                                }
                             }
 
                             // Static core application views can stay down here
@@ -233,13 +258,15 @@ pub fn admin_shell(title: &str, content: Markup, is_htmx: bool) -> Response {
                                hx-push-url="true"
                                class="block p-2 hover:bg-gray-800 rounded transition text-gray-400" { "🗺️ Jobs Graph" }
                         }
-                        hr class="border-gray-800 my-4";
-                        div class="flex items-center justify-between" {
-                            // Button to open the luxury dynamic builder modal
-                            button
-                                onclick="document.getElementById('schema-modal').classList.remove('hidden')"
-                                class="bg-emerald-950/40 w-full border border-emerald-800/60 hover:bg-emerald-900/40 text-emerald-400 text-xxs font-mono font-semibold px-3 py-1.5 rounded-lg transition duration-150 shadow-md" {
-                                "Create Table"
+
+                        div class="mt-auto pt-4 border-t border-gray-800" {
+                            div class="flex items-center justify-between" {
+                                // Button to open the luxury dynamic builder modal
+                                button
+                                    onclick="document.getElementById('schema-modal').classList.remove('hidden')"
+                                    class="bg-emerald-950/40 w-full border border-emerald-800/60 hover:bg-emerald-900/40 text-emerald-400 text-xxs font-mono font-semibold px-3 py-1.5 rounded-lg transition duration-150 shadow-md" {
+                                    "Create Table"
+                                }
                             }
                         }
 
